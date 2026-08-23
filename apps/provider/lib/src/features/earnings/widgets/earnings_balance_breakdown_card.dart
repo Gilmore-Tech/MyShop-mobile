@@ -12,13 +12,9 @@ class EarningsBalanceBreakdownCard extends StatelessWidget {
   const EarningsBalanceBreakdownCard({
     super.key,
     required this.summary,
-    this.earnedPesewas,
-    this.earnedLabel,
   });
 
   final EarningsSummary summary;
-  final int? earnedPesewas;
-  final String? earnedLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +28,7 @@ class EarningsBalanceBreakdownCard extends StatelessWidget {
     final remainingDebt = summary.remainingDebtPesewas!;
     final held = summary.heldBalancePesewas!;
     final headlineHasDebt = remainingDebt > 0;
+    final headlineLabel = headlineHasDebt ? 'Owings' : 'Available to withdraw';
 
     return Container(
       key: const Key('earnings-authoritative-balance-card'),
@@ -45,86 +42,84 @@ class EarningsBalanceBreakdownCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.account_balance_wallet_outlined,
+              Icon(
+                headlineHasDebt
+                    ? Icons.warning_amber_rounded
+                    : Icons.account_balance_wallet_outlined,
                 size: 17,
-                color: Colors.white70,
+                color: headlineHasDebt ? MyShopColors.error : Colors.white70,
               ),
               const SizedBox(width: 6),
-              Text(
-                'Balance after deductions',
-                style: MyShopTypography.body2.copyWith(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Server balance',
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+              Expanded(
+                child: Text(
+                  headlineLabel,
+                  style: MyShopTypography.body2.copyWith(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            headlineHasDebt
-                ? '− ${_money(remainingDebt)}'
-                : _money(withdrawable),
-            key: const Key('earnings-balance-after-deductions-amount'),
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 36,
-              fontWeight: FontWeight.w900,
-              color: headlineHasDebt ? MyShopColors.error : Colors.white,
-              letterSpacing: -0.8,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              headlineHasDebt
+                  ? '− ${_formatMoney(remainingDebt)}'
+                  : _formatMoney(withdrawable),
+              key: const Key('earnings-balance-after-deductions-amount'),
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                color: headlineHasDebt ? MyShopColors.error : Colors.white,
+                letterSpacing: -0.8,
+              ),
             ),
           ),
           const SizedBox(height: MyShopSpacing.md),
           Divider(height: 1, color: Colors.white.withValues(alpha: 0.18)),
           const SizedBox(height: MyShopSpacing.sm),
-          _BalanceRow(
-            label: earnedLabel ?? _earnedLabel(summary.period),
-            amountPesewas: earnedPesewas ?? summary.selectedPeriodEarnedPesewas,
-            amountKey: const Key('earnings-earned-amount'),
+          Text(
+            'How this amount is calculated',
+            style: MyShopTypography.caption.copyWith(
+              color: Colors.white70,
+              fontWeight: FontWeight.w700,
+            ),
           ),
+          const SizedBox(height: 4),
           _BalanceRow(
-            label: 'Available before deductions',
+            label: 'Eligible earnings before debt recovery',
             amountPesewas: availableBefore,
             amountKey: const Key('earnings-before-deductions-amount'),
           ),
           _BalanceRow(
-            label: 'Deductions applied',
+            label: 'Debt recovered from these earnings',
             amountPesewas: deductions,
             amountKey: const Key('earnings-deductions-amount'),
             negative: deductions > 0,
           ),
           _BalanceRow(
-            label: 'Held',
-            amountPesewas: held,
-            amountKey: const Key('earnings-held-amount'),
+            label: 'Available to withdraw',
+            amountPesewas: withdrawable,
+            amountKey: const Key('earnings-withdrawable-amount'),
           ),
-          _BalanceRow(
-            label: 'Remaining debt',
-            amountPesewas: remainingDebt,
-            amountKey: const Key('earnings-remaining-debt-amount'),
-            warning: remainingDebt > 0,
-          ),
+          if (held > 0)
+            _BalanceRow(
+              label: 'Not yet withdrawable',
+              amountPesewas: held,
+              amountKey: const Key('earnings-held-amount'),
+            ),
+          if (remainingDebt > 0)
+            _BalanceRow(
+              label: 'Still owed to MyShop',
+              amountPesewas: remainingDebt,
+              amountKey: const Key('earnings-remaining-debt-amount'),
+              warning: true,
+            ),
           if (held > 0 ||
               summary.reconciliationReason !=
                   EarningsReconciliationReason.none) ...[
@@ -148,16 +143,28 @@ class EarningsBalanceBreakdownCard extends StatelessWidget {
     );
   }
 
-  static String _earnedLabel(EarningsPeriod period) => switch (period) {
-        EarningsPeriod.today => 'Earned today',
-        EarningsPeriod.week => 'Earned this week',
-        EarningsPeriod.month => 'Earned this month',
-      };
-
   static String _heldExplanation(
     BuildContext context,
     EarningsSummary summary,
   ) {
+    final hasHeldFunds = (summary.heldBalancePesewas ?? 0) > 0;
+    if (!hasHeldFunds) {
+      return switch (summary.reconciliationReason) {
+        EarningsReconciliationReason.withdrawalDestinationReview =>
+          'Your withdrawal destination needs review before payouts can continue.',
+        EarningsReconciliationReason.withdrawalTransferFailed =>
+          'A transfer did not complete and needs review before a safe retry.',
+        EarningsReconciliationReason.withdrawalTransferReversed =>
+          'A transfer was reversed and is being reconciled.',
+        EarningsReconciliationReason.withdrawalFinalizationReview =>
+          'The transfer result is recorded, but the withdrawal records still need review.',
+        EarningsReconciliationReason.financialReconciliationRequired ||
+        EarningsReconciliationReason.unknown =>
+          'Your balance needs financial review.',
+        EarningsReconciliationReason.none => 'Your balance is being reviewed.',
+      };
+    }
+
     final reviewCopy = switch (summary.reconciliationReason) {
       EarningsReconciliationReason.withdrawalDestinationReview =>
         'These funds are held because the verified MoMo destination changed or needs review.',
@@ -185,9 +192,141 @@ class EarningsBalanceBreakdownCard extends StatelessWidget {
     ).formatTimeOfDay(TimeOfDay.fromDateTime(local));
     return 'The next held earnings become eligible after $date at $time.';
   }
+}
 
-  static String _money(int pesewas) =>
-      'GH₵ ${(pesewas / 100).toStringAsFixed(2)}';
+/// Keeps historical earnings separate from the balance MyShop can currently
+/// send. Net earnings never include tips; any tips shown here are a distinct,
+/// directly-paid line.
+class EarningsHistoryCard extends StatelessWidget {
+  const EarningsHistoryCard({
+    super.key,
+    required this.label,
+    required this.netEarningsPesewas,
+    this.secondaryLabel,
+    this.secondaryNetEarningsPesewas,
+    this.tipsPaidDirectlyPesewas = 0,
+    this.tipsLabel = 'Tips paid directly',
+  });
+
+  final String label;
+  final int netEarningsPesewas;
+  final String? secondaryLabel;
+  final int? secondaryNetEarningsPesewas;
+  final int tipsPaidDirectlyPesewas;
+  final String tipsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('earnings-history-card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatMoney(netEarningsPesewas),
+            key: const Key('earnings-history-net-amount'),
+            style: const TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textPrimary,
+              letterSpacing: -0.5,
+            ),
+          ),
+          Text(
+            'After MyShop commission',
+            style: MyShopTypography.caption.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+          if (secondaryLabel != null &&
+              secondaryNetEarningsPesewas != null) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            _HistoryRow(
+              label: secondaryLabel!,
+              amountPesewas: secondaryNetEarningsPesewas!,
+            ),
+          ],
+          if (tipsPaidDirectlyPesewas > 0) ...[
+            const SizedBox(height: 6),
+            _HistoryRow(
+              label: tipsLabel,
+              amountPesewas: tipsPaidDirectlyPesewas,
+              amountKey: const Key('earnings-history-tips-amount'),
+            ),
+          ],
+          const SizedBox(height: MyShopSpacing.sm),
+          Text(
+            'Earnings show what you made. Available to withdraw shows what MyShop can send now.',
+            style: MyShopTypography.caption.copyWith(
+              color: MyShopColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({
+    required this.label,
+    required this.amountPesewas,
+    this.amountKey,
+  });
+
+  final String label;
+  final int amountPesewas;
+  final Key? amountKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: MyShopTypography.caption.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              _formatMoney(amountPesewas),
+              key: amountKey,
+              style: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Fail-closed replacement for a malformed or partially rolled-out additive
@@ -258,14 +397,21 @@ class _BalanceRow extends StatelessWidget {
               style: MyShopTypography.caption.copyWith(color: Colors.white70),
             ),
           ),
-          Text(
-            '$prefix${EarningsBalanceBreakdownCard._money(amountPesewas)}',
-            key: amountKey,
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: color,
+          const SizedBox(width: 8),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$prefix${_formatMoney(amountPesewas)}',
+                key: amountKey,
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
             ),
           ),
         ],
@@ -273,3 +419,5 @@ class _BalanceRow extends StatelessWidget {
     );
   }
 }
+
+String _formatMoney(int pesewas) => 'GH₵ ${(pesewas / 100).toStringAsFixed(2)}';

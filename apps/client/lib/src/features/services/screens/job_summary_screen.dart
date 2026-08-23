@@ -789,7 +789,7 @@ class _SubmitButton extends ConsumerWidget {
 }
 
 // ── Dispute Window Footer ─────────────────────────────────────────────────────
-// The approved 24-hour clock begins at client-confirmed completion.
+// The approved 2-hour clock begins at client-confirmed completion.
 
 class _DisputeWindowFooter extends StatelessWidget {
   final double w;
@@ -835,7 +835,7 @@ class _DisputeWindowFooter extends StatelessWidget {
                     SizedBox(height: h * 0.005),
                     Text(
                       'If you need to dispute this job, use the in-app dispute '
-                      'flow within 24 hours after you confirmed completion.',
+                      'flow within 2 hours after you confirmed completion.',
                       style: TextStyle(
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w400,

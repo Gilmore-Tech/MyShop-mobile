@@ -8,7 +8,7 @@ import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
-// Client disputes a ride fare within 24 hours of ride.completedAt.
+// Client disputes a ride fare within 2 hours of ride.completedAt.
 // Admin reviews GPS trail vs optimal Google Maps route.
 // EDD: POST /v1/rides/:id/dispute
 
@@ -251,7 +251,7 @@ class _InfoBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'Disputes must be raised within 24 hours of ride completion.',
+                    'Disputes must be raised within 2 hours of ride completion.',
                     style: TextStyle(
                       color: MyShopColors.error,
                       fontSize: w * 0.034,
@@ -259,7 +259,7 @@ class _InfoBanner extends StatelessWidget {
                     )),
                 SizedBox(height: 4),
                 Text(
-                    'Our team reviews GPS data against the optimal route and will respond within 24 hours.',
+                    'Our team reviews GPS data against the optimal route. You will be notified after the review.',
                     style: TextStyle(
                         color: MyShopColors.error.withAlpha(180),
                         fontSize: w * 0.030,
@@ -577,7 +577,7 @@ class _SuccessBody extends StatelessWidget {
 String _disputeErrorMessage(ApiException error) {
   return switch (error.errorCode) {
     'DISPUTE_WINDOW_EXPIRED' =>
-      'The 24-hour dispute window for this ride has ended.',
+      'The 2-hour dispute window for this ride has ended.',
     'DISPUTE_ALREADY_OPEN' =>
       'A dispute has already been submitted for this ride.',
     'PAYMENT_NOT_READY' ||

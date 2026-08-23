@@ -29,6 +29,6 @@ void main() {
     expect(source, isNot(contains('Payment released from escrow')));
     expect(source, isNot(contains('3-hour safe period')));
     expect(source, isNot(contains('available for 48 hours')));
-    expect(source, contains('within 24 hours'));
+    expect(source, contains('within 2 hours'));
   });
 }

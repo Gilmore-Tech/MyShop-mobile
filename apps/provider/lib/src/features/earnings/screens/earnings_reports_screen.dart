@@ -345,25 +345,25 @@ class _ReportBody extends StatelessWidget {
           Expanded(
               child: _SummaryCard(
                   label: 'GROSS',
-                  value: 'GHS ${_fmtGhs(report.grossEarningsPesewas)}',
+                  value: 'GH₵ ${_fmtGhs(report.grossEarningsPesewas)}',
                   delta: 'Includes cash & in-app')),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
               child: _SummaryCard(
                   label: 'NET',
-                  value: 'GHS ${_fmtGhs(report.netEarningsPesewas)}',
+                  value: 'GH₵ ${_fmtGhs(report.netEarningsPesewas)}',
                   delta: 'After commission',
                   highlight: true)),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
         // TIPS card dropped 2026-05-13 — no tip surface exists in the
-        // rider app today, so the value was always GHS 0.00 and undermined
+        // rider app today, so the value was always GH₵ 0.00 and undermined
         // trust in the rest of the dashboard.
         Row(children: [
           Expanded(
               child: _SummaryCard(
                   label: 'COMMISSION',
-                  value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
+                  value: 'GH₵ ${_fmtGhs(report.commissionChargedPesewas)}',
                   delta: 'Recorded total')),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
@@ -379,7 +379,7 @@ class _ReportBody extends StatelessWidget {
                   label: 'AVG FARE',
                   value: report.bookingsCompleted == 0
                       ? '—'
-                      : 'GHS ${_fmtGhs(report.averageFarePesewas)}',
+                      : 'GH₵ ${_fmtGhs(report.averageFarePesewas)}',
                   delta: 'Per booking')),
         ]),
         const SizedBox(height: MyShopSpacing.lg),

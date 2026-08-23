@@ -185,9 +185,13 @@ void main() {
       ),
     );
 
-    expect(find.text('Commission Charged'), findsOneWidget);
-    expect(find.text('- GHS 10'), findsOneWidget);
-    expect(find.text('GHS 90'), findsOneWidget);
+    expect(find.text('Earnings breakdown'), findsOneWidget);
+    expect(find.text('Earnings before commission'), findsOneWidget);
+    expect(find.text('MyShop commission'), findsOneWidget);
+    expect(find.text('− GH₵ 10.00'), findsOneWidget);
+    expect(find.text('Earnings after commission'), findsOneWidget);
+    expect(find.text('GH₵ 90.00'), findsOneWidget);
+    expect(find.text('Auto-deducted'), findsNothing);
   });
 
   group('Driver and Artisan cash/digital/promo payout matrix', () {
@@ -372,7 +376,7 @@ void main() {
     );
 
     expect(find.text('BELOW WITHDRAWAL MINIMUM'), findsOneWidget);
-    expect(find.textContaining('GHS 15.00 minimum'), findsOneWidget);
+    expect(find.textContaining('GH₵ 15.00 minimum'), findsOneWidget);
     expect(find.byKey(const Key('earnings-request-payout')), findsNothing);
     expect(find.byType(ElevatedButton), findsNothing);
     expect(requests, 0);
@@ -553,10 +557,10 @@ void main() {
     );
 
     expect(state.kind, EarningsPayoutActionKind.belowMinimum);
-    expect(state.description, contains('GHS 15.00 minimum'));
+    expect(state.description, contains('GH₵ 15.00 minimum'));
     expect(
       state.description,
-      contains('GHS 11.00 more must become withdrawable'),
+      contains('GH₵ 11.00 more must become withdrawable'),
     );
   });
 
@@ -576,9 +580,9 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('GHS 15.00 minimum'), findsOneWidget);
+    expect(find.textContaining('GH₵ 15.00 minimum'), findsOneWidget);
     expect(
-      find.textContaining('GHS 11.00 more must become withdrawable'),
+      find.textContaining('GH₵ 11.00 more must become withdrawable'),
       findsOneWidget,
     );
     expect(find.byType(ElevatedButton), findsNothing);

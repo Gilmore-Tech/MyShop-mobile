@@ -16,7 +16,7 @@ import '../providers/earnings_providers.dart';
 class PayoutsList extends ConsumerWidget {
   const PayoutsList({super.key});
 
-  /// Hard cap — the "Recent Payouts" card never grows past this regardless
+  /// Hard cap — the "Payout history" card never grows past this regardless
   /// of how many records the backend hands over. Five gives the user a
   /// glanceable history without dominating the earnings screen.
   static const int _kMaxRecentRows = 5;

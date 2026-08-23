@@ -13,7 +13,7 @@ class CommissionCard extends StatelessWidget {
     required this.grossPesewas,
     required this.commissionPesewas,
     required this.netPesewas,
-    this.title = 'Commission & Tax',
+    this.title = 'Earnings breakdown',
   });
 
   /// Gross revenue for the window (pre-commission, includes cash + in-app).
@@ -58,38 +58,24 @@ class CommissionCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: MyShopSpacing.sm),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: MyShopColors.divider),
-                ),
-                child: Text(
-                  'Auto-deducted',
-                  style: MyShopTypography.body2
-                      .copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),
           _Row(
-            label: 'Gross Revenue',
-            value: 'GHS ${_fmtGhs(grossPesewas)}',
+            label: 'Earnings before commission',
+            value: 'GH₵ ${_fmtGhs(grossPesewas)}',
           ),
           const SizedBox(height: 12),
           _Row(
-            label: 'Commission Charged',
-            value: '- GHS ${_fmtGhs(commissionPesewas)}',
+            label: 'MyShop commission',
+            value: '− GH₵ ${_fmtGhs(commissionPesewas)}',
           ),
           const SizedBox(height: 12),
           const Divider(height: 1, thickness: 0.5, color: MyShopColors.divider),
           const SizedBox(height: 12),
           _Row(
-            label: 'Net Earnings',
-            value: 'GHS ${_fmtGhs(netPesewas)}',
+            label: 'Earnings after commission',
+            value: 'GH₵ ${_fmtGhs(netPesewas)}',
             bold: true,
           ),
         ],
@@ -139,7 +125,5 @@ class _Row extends StatelessWidget {
 }
 
 String _fmtGhs(int pesewas) {
-  final ghs = pesewas / 100;
-  if (ghs == ghs.truncateToDouble()) return ghs.toStringAsFixed(0);
-  return ghs.toStringAsFixed(2);
+  return (pesewas / 100).toStringAsFixed(2);
 }

@@ -20,7 +20,7 @@ const Duration _kEarningsRequestTimeout = Duration(seconds: 15);
 /// Plus the role-agnostic payouts list endpoint:
 ///   - `GET /payments/payouts`
 ///
-/// All money values are int pesewas (100 pesewas = ₵1).
+/// All money values are int pesewas (100 pesewas = GH₵1).
 class EarningsService {
   EarningsService(this._dio);
 
@@ -238,6 +238,6 @@ class DriverPayout {
 
   String get amountDisplay {
     final ghs = (amountPesewas / 100);
-    return '₵${ghs.toStringAsFixed(2)}';
+    return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
 }
