@@ -366,7 +366,7 @@ git fetch origin
 git checkout main
 git pull --ff-only origin main
 export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
-export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-38>
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-39>
 tool/build.sh client android
 ```
 
@@ -406,7 +406,7 @@ highest private build number in both stores, choose a larger unused number, and
 dispatch each workflow from `main`. For example, for a Provider-only run:
 
 ```bash
-RELEASE_BUILD_NUMBER=<greater-than-provider-console-values-and-38>
+RELEASE_BUILD_NUMBER=<greater-than-provider-console-values-and-39>
 RELEASE_SOURCE_COMMIT=$(git rev-parse origin/main)
 gh workflow run release-android.yml --ref main \
   -f app=provider -f build_number="$RELEASE_BUILD_NUMBER" \
@@ -470,7 +470,7 @@ requires it to remain the current tip throughout; artifact identity itself
 remains pinned to the reviewed dispatch SHA.
 
 The workflows produce signed builds and upload only to Internal tracks. You receive:
-- **TestFlight Internal** email within ~5 min (for example, "Build 1.4.6
+- **TestFlight Internal** email within ~5 min (for example, "Build 1.4.7
   (<selected build>) is now available").
 - **Play Console Internal Testing** link within ~30 min (or longer first time).
 

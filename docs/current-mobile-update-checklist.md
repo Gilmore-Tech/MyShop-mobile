@@ -4,6 +4,29 @@
 > path and pending-Backend wording, do not authorize the current release.
 > Executable release authority is [Release Setup](release-setup.md).
 
+## 2026-08-23 authoritative `1.4.7+40` store wave
+
+- [x] Client and Provider use marketing version `1.4.7`; build `40` is the
+      authorized common candidate.
+- [x] The owner confirmed build `40` is unused and greater than every private
+      build number for Client Android, Client iOS, Provider Android, and
+      Provider iOS.
+- [x] Pickup refresh, server-authored toll display, Provider earnings clarity,
+      two-hour dispute messaging, and the bootstrap/Pod lock correction are
+      integrated on staging at
+      `3555b51a7d6eab65b077547011f19e06b49dcb70`.
+- [x] Exact-staging Mobile CI passed analysis/tests plus both Android validation
+      builds before this release-preparation branch was cut.
+- [ ] Merge this release preparation through `staging` to `main`, then require
+      successful Mobile CI on the resulting exact `main` SHA.
+- [ ] Dispatch both protected release workflows from that exact `main` SHA,
+      install the Internal Testing/TestFlight artifacts, and complete the
+      pickup, toll/no-toll, earnings, dispute, ride, and service smoke tests.
+- [ ] Do not change production minimum builds during store review. Once the new
+      Client is approved and public on Android and iOS, perform the reviewed
+      Backend two-hour cutover and raise both Client floors together. Keep both
+      Provider floors at build `39`.
+
 ## 2026-08-17 authoritative `1.4.6+39` store wave
 
 - [x] Client and Provider use marketing version `1.4.6`; build `39` is the
