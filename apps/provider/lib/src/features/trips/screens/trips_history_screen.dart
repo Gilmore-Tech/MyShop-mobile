@@ -87,15 +87,24 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
       out = out.where((r) => r.status == RideStatus.cancelled);
     } else {
       // All — exclude in-flight rides; the active-ride screen owns those.
-      out = out.where((r) =>
-          r.status == RideStatus.completed || r.status == RideStatus.cancelled);
+      out = out.where(
+        (r) =>
+            r.status == RideStatus.completed ||
+            r.status == RideStatus.cancelled,
+      );
     }
     // Date range filter (inclusive on both ends — local-day boundaries).
     if (_hasFilter) {
-      final start =
-          DateTime(_rangeStart!.year, _rangeStart!.month, _rangeStart!.day);
-      final endExclusive =
-          DateTime(_rangeEnd!.year, _rangeEnd!.month, _rangeEnd!.day + 1);
+      final start = DateTime(
+        _rangeStart!.year,
+        _rangeStart!.month,
+        _rangeStart!.day,
+      );
+      final endExclusive = DateTime(
+        _rangeEnd!.year,
+        _rangeEnd!.month,
+        _rangeEnd!.day + 1,
+      );
       out = out.where((r) {
         final at = _bucketDate(r).toLocal();
         return !at.isBefore(start) && at.isBefore(endExclusive);
@@ -104,9 +113,9 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
     return out;
   }
 
-  /// Sum of the metered trip fares — the driver's pay base. A promo ride's
-  /// discounted client charge (which can be 0) must not shrink the driver's
-  /// earnings strip; the platform covers the discount.
+  /// Sum of the inclusive trip fares. A promo ride's discounted client charge
+  /// (which can be 0) must not shrink the driver's trip-value strip; the
+  /// platform covers the discount and any access charge is already included.
   int _sumPesewas(Iterable<Ride> rides) {
     var total = 0;
     for (final r in rides) {
@@ -131,9 +140,7 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
     }
     final maxVal =
         perDay.fold<int>(0, (m, v) => v > m ? v : m).clamp(1, 1 << 30);
-    return [
-      for (final v in perDay) (v / maxVal).clamp(0.05, 1.0),
-    ];
+    return [for (final v in perDay) (v / maxVal).clamp(0.05, 1.0)];
   }
 
   String _formatGhs(int pesewas) {
@@ -169,38 +176,52 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Trips',
-                      style: TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: MyShopColors.textPrimary)),
+                  const Text(
+                    'Trips',
+                    style: TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.textPrimary,
+                    ),
+                  ),
                   GestureDetector(
                     onTap: _openDatePicker,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: MyShopColors.offWhite,
                         borderRadius: BorderRadius.circular(17),
                         border: Border.all(color: MyShopColors.divider),
                         boxShadow: const [
                           BoxShadow(
-                              color: Color(0x12171A1F),
-                              blurRadius: 2.5,
-                              offset: Offset(0, 1)),
+                            color: Color(0x12171A1F),
+                            blurRadius: 2.5,
+                            offset: Offset(0, 1),
+                          ),
                         ],
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.calendar_today,
-                            size: 14, color: MyShopColors.darkSlate),
-                        const SizedBox(width: 6),
-                        Text(_dateLabel,
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 14,
+                            color: MyShopColors.darkSlate,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _dateLabel,
                             style: MyShopTypography.body2.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: MyShopColors.darkSlate,
-                                fontSize: 12)),
-                      ]),
+                              fontWeight: FontWeight.w600,
+                              color: MyShopColors.darkSlate,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -222,9 +243,10 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: const [
                     BoxShadow(
-                        color: Color(0x0D000000),
-                        blurRadius: 4,
-                        offset: Offset(0, 1))
+                      color: Color(0x0D000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
                   ],
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
@@ -232,18 +254,20 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                 labelColor: MyShopColors.textPrimary,
                 unselectedLabelColor: MyShopColors.textSecondary,
                 labelStyle: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700),
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
                 unselectedLabelStyle: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400),
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
+                ),
                 indicatorPadding: const EdgeInsets.all(3),
                 tabs: const [
                   Tab(text: 'All'),
                   Tab(text: 'Completed'),
-                  Tab(text: 'Cancelled')
+                  Tab(text: 'Cancelled'),
                 ],
               ),
             ),
@@ -263,7 +287,9 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                     onRefresh: () async => ref.invalidate(driverTripsProvider),
                     child: ListView.separated(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: MyShopSpacing.md, vertical: 4),
+                        horizontal: MyShopSpacing.md,
+                        vertical: 4,
+                      ),
                       itemCount: filtered.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
@@ -289,9 +315,11 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                 final now = DateTime.now();
                 final cutoff = now.subtract(const Duration(days: 30));
                 final completed = trips
-                    .where((r) =>
-                        r.status == RideStatus.completed &&
-                        _bucketDate(r).isAfter(cutoff))
+                    .where(
+                      (r) =>
+                          r.status == RideStatus.completed &&
+                          _bucketDate(r).isAfter(cutoff),
+                    )
                     .toList();
                 final monthlyTotal = _sumPesewas(completed);
                 final heights = _last7DaysHeights(completed);
@@ -299,7 +327,9 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                   width: double.infinity,
                   margin: const EdgeInsets.all(MyShopSpacing.md),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: MyShopSpacing.md, vertical: 14),
+                    horizontal: MyShopSpacing.md,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: MyShopColors.darkSlate,
                     borderRadius: BorderRadius.circular(16),
@@ -308,18 +338,26 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('LAST 30 DAYS',
-                                style: MyShopTypography.overline.copyWith(
-                                    fontSize: 9, color: Colors.white54)),
-                            Text(_formatGhs(monthlyTotal),
-                                style: const TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white)),
-                          ]),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'LAST 30 DAYS',
+                            style: MyShopTypography.overline.copyWith(
+                              fontSize: 9,
+                              color: Colors.white54,
+                            ),
+                          ),
+                          Text(
+                            _formatGhs(monthlyTotal),
+                            style: const TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
                       Row(
                         children: [
                           for (final h in heights)
@@ -328,9 +366,11 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                               height: 40 * h,
                               margin: const EdgeInsets.only(left: 3),
                               decoration: BoxDecoration(
-                                  color: Colors.white
-                                      .withValues(alpha: h < 0.1 ? 0.2 : 0.7),
-                                  borderRadius: BorderRadius.circular(2)),
+                                color: Colors.white.withValues(
+                                  alpha: h < 0.1 ? 0.2 : 0.7,
+                                ),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
                         ],
                       ),
@@ -420,8 +460,10 @@ class _TripCard extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: _statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
@@ -467,26 +509,37 @@ class _TripCard extends StatelessWidget {
                     ),
                   if (distance > 0) const SizedBox(width: 8),
                   if (duration > 0)
-                    _MetaChip(
-                      icon: Icons.access_time,
-                      label: '$duration mins',
-                    ),
+                    _MetaChip(icon: Icons.access_time, label: '$duration mins'),
                   const Spacer(),
                   // Fare is only meaningful when the ride actually completed —
                   // cancelled rides never charged the rider, so showing a number
                   // here reads as "you earned this" which is misleading. We
                   // surface a dash for non-completed terminal states instead.
                   if (trip.status == RideStatus.completed)
-                    Text(
-                      // Metered fare, not the promo-discounted client charge —
-                      // this list is the driver's earnings view.
-                      trip.tripFareDisplay,
-                      style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.textPrimary,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          // Inclusive provider fare, not the promo-discounted
+                          // client charge.
+                          trip.tripFareDisplay,
+                          style: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: MyShopColors.textPrimary,
+                          ),
+                        ),
+                        if ((trip.toll?.amountPesewas ?? 0) > 0)
+                          Text(
+                            '${trip.toll!.label} included',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: MyShopColors.textSecondary,
+                            ),
+                          ),
+                      ],
                     )
                   else
                     const Text(
@@ -600,18 +653,27 @@ class _TripsEmptyState extends StatelessWidget {
               color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(28),
             ),
-            child: const Icon(Icons.directions_car_outlined,
-                size: 28, color: MyShopColors.textSecondary),
+            child: const Icon(
+              Icons.directions_car_outlined,
+              size: 28,
+              color: MyShopColors.textSecondary,
+            ),
           ),
           const SizedBox(height: MyShopSpacing.md),
-          Text('No trips here',
-              style: MyShopTypography.body1.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: MyShopColors.textPrimary)),
+          Text(
+            'No trips here',
+            style: MyShopTypography.body1.copyWith(
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
           const SizedBox(height: MyShopSpacing.xs),
-          Text('Try a different filter or pull to refresh',
-              style: MyShopTypography.body2
-                  .copyWith(color: MyShopColors.textSecondary)),
+          Text(
+            'Try a different filter or pull to refresh',
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
@@ -629,12 +691,16 @@ class _TripsErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline_rounded,
-              size: 36, color: MyShopColors.error),
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 36,
+            color: MyShopColors.error,
+          ),
           const SizedBox(height: 8),
-          Text("Couldn't load your trips",
-              style:
-                  MyShopTypography.body1.copyWith(fontWeight: FontWeight.w600)),
+          Text(
+            "Couldn't load your trips",
+            style: MyShopTypography.body1.copyWith(fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 12),
           OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
         ],
@@ -649,8 +715,10 @@ class _TripsSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding:
-          const EdgeInsets.symmetric(horizontal: MyShopSpacing.md, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: MyShopSpacing.md,
+        vertical: 4,
+      ),
       itemCount: 4,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, __) => Container(
@@ -750,6 +818,7 @@ TripDetailData _rideToTripDetailData(Ride r) {
     providerSettlementBasisPesewas: providerSettlementBasisPesewas,
     financialsFinal: r.financialsFinal,
     commissionIsEffective: r.effectiveCommissionPesewas != null,
+    toll: r.toll,
   );
 }
 

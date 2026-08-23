@@ -456,6 +456,14 @@ class _RideBreakdownSection extends StatelessWidget {
             amount: receipt.taxesDisplay,
             w: w,
           ),
+          if ((receipt.toll?.amountPesewas ?? 0) > 0) ...[
+            SizedBox(height: h * 0.012),
+            _LineItem(
+              label: receipt.toll!.label,
+              amount: receipt.tollDisplay,
+              w: w,
+            ),
+          ],
           if (receipt.promoDiscountPesewas > 0) ...[
             SizedBox(height: h * 0.012),
             _LineItem(

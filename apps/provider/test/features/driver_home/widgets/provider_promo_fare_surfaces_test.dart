@@ -51,43 +51,96 @@ Ride _promoRide({
       completedAt: DateTime.utc(2026, 8, 15, 9, 10),
     );
 
+Ride _tollRide() => Ride(
+      id: 'toll-ride-12345678',
+      clientId: 'client-1',
+      status: RideStatus.completed,
+      pickupAddress: 'KNUST Gate',
+      dropoffAddress: 'Kumasi Airport',
+      pickupLat: 0,
+      pickupLng: 0,
+      dropoffLat: 0,
+      dropoffLng: 0,
+      estimatedFarePesewas: 1930,
+      finalFarePesewas: 1930,
+      totalPaidPesewas: 500,
+      prePromoFarePesewas: 1930,
+      promoDiscountPesewas: 1430,
+      promoApplied: true,
+      collectFromClientPesewas: 500,
+      toll: const RideToll(label: 'Airport toll', amountPesewas: 500),
+      effectiveCommissionPesewas: 186,
+      providerSettlementBasisPesewas: 1930,
+      providerEarningsPesewas: 1744,
+      financialsFinal: true,
+      estimatedDistanceKm: 3.2,
+      estimatedDurationMins: 10,
+      paymentMethod: 'cash',
+      createdAt: DateTime.utc(2026, 8, 15, 9),
+      completedAt: DateTime.utc(2026, 8, 15, 9, 10),
+    );
+
 void main() {
   testWidgets(
-      'active cash promo panel shows full fare and cash to collect details',
-      (tester) async {
-    final ride = _promoRide();
+    'active cash promo panel shows full fare and cash to collect details',
+    (tester) async {
+      final ride = _promoRide();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: ProviderActiveRideFarePanel(
+                fareCopy: providerActiveRideFareCopy(ride),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('EST. FULL FARE'), findsOneWidget);
+      expect(find.text('GHS 14.30'), findsOneWidget);
+      expect(find.text('PROMO / DISCOUNT'), findsOneWidget);
+      expect(find.text('- GHS 14.30'), findsOneWidget);
+      expect(find.text('COLLECT FROM CLIENT'), findsOneWidget);
+      expect(find.text('GHS 0.00'), findsOneWidget);
+      final copy = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((widget) => widget.data ?? '')
+          .join(' ')
+          .toLowerCase();
+      expect(copy, isNot(contains('toll')));
+    },
+  );
+
+  testWidgets('active ride shows a positive toll as full reimbursement', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 360,
-            child: ProviderActiveRideFarePanel(
-              fareCopy: providerActiveRideFareCopy(ride),
-            ),
+          body: ProviderActiveRideFarePanel(
+            fareCopy: providerActiveRideFareCopy(_tollRide()),
           ),
         ),
       ),
     );
 
-    expect(find.text('EST. FULL FARE'), findsOneWidget);
-    expect(find.text('GHS 14.30'), findsOneWidget);
-    expect(find.text('PROMO / DISCOUNT'), findsOneWidget);
-    expect(find.text('- GHS 14.30'), findsOneWidget);
-    expect(find.text('COLLECT FROM CLIENT'), findsOneWidget);
-    expect(find.text('GHS 0.00'), findsOneWidget);
+    expect(find.text('AIRPORT TOLL (100% TO YOU)'), findsOneWidget);
+    expect(find.text('GHS 5.00'), findsWidgets);
+    expect(find.text('GHS 19.30'), findsOneWidget);
   });
 
-  testWidgets('Recent Activity uses the provider full fare for a promo ride',
-      (tester) async {
+  testWidgets('Recent Activity uses the provider full fare for a promo ride', (
+    tester,
+  ) async {
     final ride = _promoRide();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           driverTripsProvider.overrideWith((_) async => [ride]),
         ],
-        child: const MaterialApp(
-          home: Scaffold(body: RecentActivitySection()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: RecentActivitySection())),
       ),
     );
     await tester.pumpAndSettle();
@@ -110,6 +163,22 @@ void main() {
     expect(summary.providerSettlementBasisPesewas, 1430);
     expect(summary.hasRefundAdjustedSettlement, isFalse);
   });
+
+  test(
+    'completion preserves server toll, commission, and earnings authority',
+    () {
+      final summary = providerTripSummaryFromRide(_tollRide());
+
+      expect(summary.totalFarePesewas, 1930);
+      expect(summary.toll?.amountPesewas, 500);
+      expect(summary.commissionPesewas, 186);
+      expect(summary.netEarningsPesewas, 1744);
+      expect(
+        summary.commissionPesewas! + summary.netEarningsPesewas!,
+        summary.providerSettlementBasisPesewas,
+      );
+    },
+  );
 
   test('completion keeps both settlement amounts pending when non-final', () {
     final summary = providerTripSummaryFromRide(
@@ -153,44 +222,46 @@ void main() {
     expect(summary.netEarningsDisplay, 'GHS 0.00');
   });
 
-  testWidgets('completion renders refund basis without full-fare earnings copy',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final completed = _promoRide(
-      id: '',
-      settlementBasisPesewas: 800,
-      effectiveCommissionPesewas: 100,
-      providerEarningsPesewas: 700,
-    );
+  testWidgets(
+    'completion renders refund basis without full-fare earnings copy',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final completed = _promoRide(
+        id: '',
+        settlementBasisPesewas: 800,
+        effectiveCommissionPesewas: 100,
+        providerEarningsPesewas: 700,
+      );
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          activeRideProvider.overrideWith(
-            (ref) => _SeededActiveRideNotifier(ref, completed),
-          ),
-        ],
-        child: const MaterialApp(home: DriverRideCompleteScreen()),
-      ),
-    );
-    await tester.pump();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeRideProvider.overrideWith(
+              (ref) => _SeededActiveRideNotifier(ref, completed),
+            ),
+          ],
+          child: const MaterialApp(home: DriverRideCompleteScreen()),
+        ),
+      );
+      await tester.pump();
 
-    expect(find.text('Settlement Basis'), findsOneWidget);
-    expect(find.text('GHS 8.00'), findsOneWidget);
-    expect(
-      find.text(
-        'MyShop covers promo and loyalty discounts. Refund-adjusted earnings '
-        'use the retained settlement basis shown below.',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.text(
-        'MyShop covers promo and loyalty discounts. Your earnings are based '
-        'on the full trip fare.',
-      ),
-      findsNothing,
-    );
-  });
+      expect(find.text('Settlement Basis'), findsOneWidget);
+      expect(find.text('GHS 8.00'), findsOneWidget);
+      expect(
+        find.text(
+          'MyShop covers promo and loyalty discounts. Refund-adjusted earnings '
+          'use the retained settlement basis shown below.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'MyShop covers promo and loyalty discounts. Your earnings are based '
+          'on the full trip fare.',
+        ),
+        findsNothing,
+      );
+    },
+  );
 }

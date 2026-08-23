@@ -13,6 +13,7 @@ import 'package:myshop_client/src/features/ride/screens/destination_search_scree
 import 'package:myshop_client/src/features/ride/screens/fare_estimate_screen.dart';
 import 'package:myshop_client/src/features/ride/widgets/fare_estimate_action_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_models/shared_models.dart' show RideToll;
 
 const _pickup = RideLocation(
   name: 'Adum',
@@ -95,6 +96,97 @@ class _SeededRecentLocationsNotifier extends RecentLocationsNotifier {
 }
 
 void main() {
+  testWidgets('selected estimate omits all toll copy when absent or zero',
+      (tester) async {
+    for (final toll in <RideToll?>[
+      null,
+      const RideToll(label: 'Airport toll', amountPesewas: 0),
+    ]) {
+      final option = VehicleOption(
+        id: 'regular',
+        name: 'Regular',
+        description: 'Everyday ride',
+        capacityPersons: 4,
+        farePesewas: 4000,
+        transportFarePesewas: 4000,
+        toll: toll,
+        estimatedTime: '4 min',
+        isMotorcycle: false,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            rideSearchProvider.overrideWith(
+              (_) => _searchNotifier(
+                const RideSearchState(
+                  pickup: _pickup,
+                  destination: _destination,
+                ),
+              ),
+            ),
+            pretripMultistopEnabledProvider.overrideWith((_) async => false),
+            fareEstimateProvider.overrideWith((_) async => [option]),
+          ],
+          child: const MaterialApp(home: FareEstimateScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final visibleCopy = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((widget) => widget.data ?? '')
+          .join(' ')
+          .toLowerCase();
+      expect(visibleCopy, isNot(contains('toll')));
+      expect(find.byKey(const Key('selected-fare-breakdown')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('selected estimate reconciles transport, toll, and total once',
+      (tester) async {
+    const option = VehicleOption(
+      id: 'regular',
+      name: 'Regular',
+      description: 'Everyday ride',
+      capacityPersons: 4,
+      farePesewas: 4500,
+      transportFarePesewas: 4000,
+      toll: RideToll(label: 'Airport toll', amountPesewas: 500),
+      estimatedTime: '4 min',
+      isMotorcycle: false,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          rideSearchProvider.overrideWith(
+            (_) => _searchNotifier(
+              const RideSearchState(
+                pickup: _pickup,
+                destination: _destination,
+              ),
+            ),
+          ),
+          pretripMultistopEnabledProvider.overrideWith((_) async => false),
+          fareEstimateProvider.overrideWith((_) async => [option]),
+        ],
+        child: const MaterialApp(home: FareEstimateScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('selected-fare-breakdown')), findsOneWidget);
+    expect(find.byKey(const Key('selected-toll-line')), findsOneWidget);
+    expect(find.text('Ride fare'), findsOneWidget);
+    expect(find.text('GH₵ 40.00'), findsOneWidget);
+    expect(find.text('Airport toll'), findsOneWidget);
+    expect(find.text('GH₵ 5.00'), findsOneWidget);
+    expect(find.text('Estimated total'), findsOneWidget);
+    expect(find.text('GH₵ 45.00'), findsWidgets);
+    expect(option.effectiveTransportFarePesewas + option.toll!.amountPesewas,
+        option.farePesewas);
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });

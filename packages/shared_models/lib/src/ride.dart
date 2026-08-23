@@ -1,3 +1,90 @@
+/// Positive, server-authored ride access charge.
+///
+/// The canonical wire shape is:
+/// `toll: {label, amountPesewas, applicationMode?}`. During the rollout,
+/// [fromRideJson] also accepts the flat `tollFeePesewas` alias. Callers should
+/// only render a row when this parser returns a value; a zero amount is the
+/// same as no charge and deliberately carries no display label.
+class RideToll {
+  const RideToll({
+    required this.label,
+    required this.amountPesewas,
+    this.applicationMode,
+  });
+
+  factory RideToll.fromJson(Map<String, dynamic> json) {
+    final amount = _positiveMoney(
+      json['amountPesewas'] ?? json['tollFeePesewas'],
+    );
+    if (amount == null) {
+      throw const FormatException('Ride toll amount must be positive');
+    }
+    return RideToll(
+      label: _displayLabel(json['label'] ?? json['tollLabel']),
+      amountPesewas: amount,
+      applicationMode: _optionalText(json['applicationMode']),
+    );
+  }
+
+  static RideToll? fromRideJson(Map<String, dynamic> json) {
+    final nested = json['toll'];
+    if (nested is Map) {
+      final nestedMap = <String, dynamic>{
+        for (final entry in nested.entries) entry.key.toString(): entry.value,
+      };
+      final amount = _positiveMoney(nestedMap['amountPesewas']);
+      if (amount != null) {
+        return RideToll(
+          label: _displayLabel(nestedMap['label']),
+          amountPesewas: amount,
+          applicationMode: _optionalText(nestedMap['applicationMode']),
+        );
+      }
+    }
+
+    final flatAmount = _positiveMoney(json['tollFeePesewas']);
+    if (flatAmount == null) return null;
+    return RideToll(
+      label: _displayLabel(json['tollLabel']),
+      amountPesewas: flatAmount,
+      applicationMode: _optionalText(json['tollApplicationMode']),
+    );
+  }
+
+  final String label;
+  final int amountPesewas;
+  final String? applicationMode;
+
+  String get amountDisplay => _formatGhs(amountPesewas);
+
+  static int? _positiveMoney(Object? value) {
+    final parsed = switch (value) {
+      final num value => value,
+      final String value => num.tryParse(value),
+      _ => null,
+    };
+    if (parsed == null ||
+        !parsed.isFinite ||
+        parsed != parsed.truncateToDouble() ||
+        parsed <= 0 ||
+        parsed > 9007199254740991) {
+      return null;
+    }
+    return parsed.toInt();
+  }
+
+  static String _displayLabel(Object? value) {
+    final label = _optionalText(value);
+    return label ?? 'Toll';
+  }
+
+  static String? _optionalText(Object? value) {
+    if (value is! String) return null;
+    final text = value.trim();
+    return text.isEmpty ? null : text;
+  }
+}
+
 /// Ride model representing a ride-hailing trip.
 /// Money stored as int in pesewas (100 pesewas = GH₵1).
 class Ride {
@@ -20,6 +107,7 @@ class Ride {
     this.promoDiscountPesewas,
     this.loyaltyDiscountPesewas,
     this.platformDiscountPesewas,
+    this.toll,
     this.promoApplied = false,
     this.clientPayableEstimatePesewas,
     this.estimatedProviderEarningsPesewas,
@@ -200,6 +288,7 @@ class Ride {
       promoDiscountPesewas: _optionalInt(json['promoDiscountPesewas']),
       loyaltyDiscountPesewas: _optionalInt(json['loyaltyDiscountPesewas']),
       platformDiscountPesewas: _optionalInt(json['platformDiscountPesewas']),
+      toll: RideToll.fromRideJson(json),
       // Older payloads lack the explicit flag — infer from a non-zero discount.
       promoApplied: json['promoApplied'] == true ||
           (_optionalInt(json['promoDiscountPesewas']) ?? 0) > 0,
@@ -302,6 +391,14 @@ class Ride {
   /// Authoritative combined platform-funded discount for the current quote.
   final int? platformDiscountPesewas;
 
+  /// Optional server-authored access charge included in every quoted/final
+  /// total. A missing, malformed, or non-positive charge is represented as
+  /// null so UI surfaces can omit the row entirely for legacy/no-charge rides.
+  final RideToll? toll;
+
+  int get tollFeePesewas => toll?.amountPesewas ?? 0;
+  bool get hasToll => tollFeePesewas > 0;
+
   /// True when a promo code/campaign discounted this ride.
   final bool promoApplied;
 
@@ -391,9 +488,11 @@ class Ride {
       ? _formatGhs(totalPaidPesewas!)
       : finalFareDisplay;
 
-  /// The metered trip fare — what the provider is paid on. A completed legacy
-  /// payload may expose both a full `finalFarePesewas` and a discounted
-  /// `totalPaidPesewas`; the full fare must win.
+  /// The full trip fare, inclusive of any positive access charge. A completed
+  /// legacy payload may expose both a full `finalFarePesewas` and a discounted
+  /// `totalPaidPesewas`; the full fare must win. Provider commission and
+  /// earnings remain server-authored because the access charge is excluded
+  /// from commission but passed through fully to the provider.
   int get tripFarePesewas =>
       prePromoFarePesewas ??
       finalFarePesewas ??
@@ -481,6 +580,7 @@ class Ride {
       promoDiscountPesewas: promoDiscountPesewas,
       loyaltyDiscountPesewas: loyaltyDiscountPesewas,
       platformDiscountPesewas: platformDiscountPesewas,
+      toll: toll,
       promoApplied: promoApplied,
       clientPayableEstimatePesewas: clientPayableEstimatePesewas,
       estimatedProviderEarningsPesewas: estimatedProviderEarningsPesewas,
@@ -621,6 +721,7 @@ class TripSummary {
     this.taxesPesewas = 0,
     this.promoPesewas = 0,
     this.loyaltyPesewas = 0,
+    this.toll,
     this.promoApplied = false,
     required this.totalFarePesewas,
     this.collectFromClientPesewas,
@@ -650,11 +751,17 @@ class TripSummary {
   final int promoPesewas;
   final int loyaltyPesewas;
 
+  /// Full pass-through reimbursement included in [totalFarePesewas].
+  /// Commission/earnings remain backend-authored and are never recalculated
+  /// from this value on-device.
+  final RideToll? toll;
+
   /// True when a platform promo discounted what the client pays. The provider
   /// is still paid on the full [totalFarePesewas] (BR-49).
   final bool promoApplied;
 
-  /// The actual metered trip fare (pre-promo) — the provider's pay base.
+  /// The full pre-promo trip fare, inclusive of any positive access charge.
+  /// Server-authored commission and earnings apply the pass-through rules.
   final int totalFarePesewas;
 
   /// What the client hands over after the promo — for cash trips, the amount

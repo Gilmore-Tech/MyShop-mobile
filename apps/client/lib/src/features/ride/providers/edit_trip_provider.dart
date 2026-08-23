@@ -5,7 +5,11 @@ import 'package:shared_models/shared_models.dart' as models;
 
 import '../../../core/di/providers.dart';
 import 'ride_provider.dart'
-    show activeRideIdProvider, matchedDriverProvider, selectedVehicleProvider;
+    show
+        activeRideIdProvider,
+        clearRideRequestDraft,
+        matchedDriverProvider,
+        rideRequestDraftResetEpochProvider;
 import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -103,7 +107,13 @@ class FareRecalculation {
 
 final tripStopsProvider =
     StateNotifierProvider<TripStopsNotifier, List<TripStop>>(
-  TripStopsNotifier.new,
+  (ref) {
+    // Completion is applied in ride_provider.dart, which cannot import this
+    // module without a cycle. Watching its monotonic reset signal disposes the
+    // old notifier and recreates this booking-time stop list empty.
+    ref.watch(rideRequestDraftResetEpochProvider);
+    return TripStopsNotifier(ref);
+  },
 );
 
 class TripStopsNotifier extends StateNotifier<List<TripStop>> {
@@ -355,9 +365,7 @@ void seedTripStopsFromCurrentRide(WidgetReader read) {
 /// these inputs forces the next booking to obtain a fresh pickup, destination,
 /// stop list, vehicle category and fare estimate.
 void resetRideRequestDraft(WidgetReader read) {
-  read(rideSearchProvider.notifier).reset();
-  read(tripStopsProvider.notifier).clear();
-  read(selectedVehicleProvider.notifier).state = '';
+  clearRideRequestDraft(read);
 }
 
 /// Tiny abstraction so the seed helper works with both `Ref.read` and

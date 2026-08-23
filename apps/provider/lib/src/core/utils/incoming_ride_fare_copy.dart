@@ -14,6 +14,7 @@ class IncomingRideFareSnapshot {
     this.promoDiscountPesewas,
     this.loyaltyDiscountPesewas,
     this.platformDiscountPesewas,
+    this.toll,
     this.promoApplied = false,
     this.legacyEstimatedFarePesewas,
   });
@@ -35,6 +36,7 @@ class IncomingRideFareSnapshot {
       promoDiscountPesewas: ride.promoDiscountPesewas,
       loyaltyDiscountPesewas: ride.loyaltyDiscountPesewas,
       platformDiscountPesewas: ride.platformDiscountPesewas,
+      toll: ride.toll,
       promoApplied: ride.promoApplied,
       legacyEstimatedFarePesewas:
           ride.hasEstimatedFareQuote ? ride.estimatedFarePesewas : null,
@@ -81,6 +83,7 @@ class IncomingRideFareSnapshot {
       promoDiscountPesewas: promoDiscount,
       loyaltyDiscountPesewas: loyaltyDiscount,
       platformDiscountPesewas: platformDiscount,
+      toll: RideToll.fromRideJson(json),
       promoApplied: boolean(json['promoApplied']) || (promoDiscount ?? 0) > 0,
       legacyEstimatedFarePesewas: legacyEstimatedFare,
     );
@@ -91,6 +94,7 @@ class IncomingRideFareSnapshot {
   final int? promoDiscountPesewas;
   final int? loyaltyDiscountPesewas;
   final int? platformDiscountPesewas;
+  final RideToll? toll;
   final bool promoApplied;
   final int? legacyEstimatedFarePesewas;
 
@@ -168,6 +172,15 @@ class IncomingRideFareCopy {
     }
 
     final lines = <IncomingRideFareLine>[];
+    if ((fare.toll?.amountPesewas ?? 0) > 0) {
+      final toll = fare.toll!;
+      lines.add(
+        IncomingRideFareLine(
+          '${toll.label.toUpperCase()} (100% TO YOU)',
+          formatIncomingRidePesewas(toll.amountPesewas),
+        ),
+      );
+    }
     if (fare.hasCurrentPricingContract) {
       lines.add(
         IncomingRideFareLine(

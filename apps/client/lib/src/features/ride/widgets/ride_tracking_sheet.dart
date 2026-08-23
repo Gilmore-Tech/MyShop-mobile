@@ -182,6 +182,18 @@ class _FareRow extends StatelessWidget {
                     height: 1.1,
                   ),
                 ),
+                if ((driver.toll?.amountPesewas ?? 0) > 0) ...[
+                  SizedBox(height: h * 0.004),
+                  Text(
+                    '${driver.toll!.label}: ${driver.tollDisplay} included',
+                    key: const Key('active-ride-toll-line'),
+                    style: TextStyle(
+                      fontSize: w * 0.029,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
                 SizedBox(height: h * 0.007),
                 _PaymentMethod(method: driver.paymentMethod),
               ],

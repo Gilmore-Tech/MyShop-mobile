@@ -442,6 +442,13 @@ class _VehicleSelectionSection extends ConsumerWidget {
           data: (options) {
             final firstAvailable = firstAvailableRideOption(options);
             final noDrivers = options.isNotEmpty && firstAvailable == null;
+            VehicleOption? selectedOption;
+            for (final option in options) {
+              if (option.id == selectedId) {
+                selectedOption = option;
+                break;
+              }
+            }
             // Auto-select the first available option when the current category
             // is absent or unavailable. The confirm button remains disabled
             // until this post-frame state update lands, so booking can never
@@ -472,9 +479,109 @@ class _VehicleSelectionSection extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (selectedOption?.hasToll == true) ...[
+                  const SizedBox(height: 4),
+                  _SelectedFareBreakdown(option: selectedOption!),
+                ],
               ],
             );
           },
+        ),
+      ],
+    );
+  }
+}
+
+class _SelectedFareBreakdown extends StatelessWidget {
+  const _SelectedFareBreakdown({required this.option});
+
+  final VehicleOption option;
+
+  @override
+  Widget build(BuildContext context) {
+    final charge = option.toll!;
+    return Container(
+      key: const Key('selected-fare-breakdown'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'FARE BREAKDOWN',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _EstimateAmountRow(
+            label: 'Ride fare',
+            amount: option.transportFareDisplay,
+          ),
+          const SizedBox(height: 10),
+          _EstimateAmountRow(
+            key: const Key('selected-toll-line'),
+            label: charge.label,
+            amount: 'GH₵ ${(charge.amountPesewas / 100).toStringAsFixed(2)}',
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, color: MyShopColors.divider),
+          ),
+          _EstimateAmountRow(
+            label: 'Estimated total',
+            amount: option.fareDisplay,
+            emphasized: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EstimateAmountRow extends StatelessWidget {
+  const _EstimateAmountRow({
+    super.key,
+    required this.label,
+    required this.amount,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String amount;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final weight = emphasized ? FontWeight.w800 : FontWeight.w500;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: emphasized ? 14 : 13,
+              fontWeight: weight,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          amount,
+          style: TextStyle(
+            fontSize: emphasized ? 15 : 13,
+            fontWeight: weight,
+            color: MyShopColors.textPrimary,
+          ),
         ),
       ],
     );

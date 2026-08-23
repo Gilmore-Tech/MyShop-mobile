@@ -9,6 +9,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:myshop_client/src/app/client_app.dart';
 import 'package:myshop_client/src/app/router.dart';
 import 'package:myshop_client/src/core/di/providers.dart';
+import 'package:myshop_client/src/core/providers/current_location_provider.dart';
 import 'package:myshop_client/src/core/providers/service_notice_provider.dart';
 import 'package:myshop_client/src/features/auth/data/auth_repository.dart';
 import 'package:myshop_client/src/features/auth/providers/auth_controller.dart';
@@ -20,6 +21,9 @@ import 'package:shared_models/shared_models.dart';
 class _MockTokenStorage extends Mock implements TokenStorage {}
 
 class _MockTelemetry extends Mock implements SystemTelemetryService {}
+
+class _MockCurrentLocationService extends Mock
+    implements CurrentLocationService {}
 
 class _AuthenticatedController extends ClientAuthController {
   _AuthenticatedController(ClientAuthState initial)
@@ -140,6 +144,61 @@ void main() {
       expect(router.routeInformationProvider.value.uri.path, path);
     });
   }
+
+  testWidgets(
+    'resuming does not issue an unconditional device location refresh',
+    (tester) async {
+      final location = _MockCurrentLocationService();
+      final testRouter = GoRouter(
+        initialLocation: AppRoutes.home,
+        routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (_, __) => const Scaffold(body: Text('Home')),
+          ),
+        ],
+      );
+      addTearDown(testRouter.dispose);
+
+      final base = _routerContainer();
+      final container = ProviderContainer(
+        parent: base,
+        overrides: [
+          routerProvider.overrideWithValue(testRouter),
+          currentLocationServiceProvider.overrideWithValue(location),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const ClientApp(),
+        ),
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      verifyNever(() => location.ensure(forceRefresh: true));
+      verifyNever(
+        () => location.ensure(forceRefresh: true, retryOnFailure: false),
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      verifyNever(() => location.ensure(forceRefresh: true));
+      verifyNever(
+        () => location.ensure(forceRefresh: true, retryOnFailure: false),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      container.dispose();
+      base.dispose();
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
 
   testWidgets(
     'automatic readiness recovery dismisses notice without replacing route',

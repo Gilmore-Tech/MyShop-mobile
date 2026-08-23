@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show RideToll;
 
 import '../../../core/di/providers.dart';
 import 'ride_provider.dart' show RideFareFields;
@@ -33,6 +34,7 @@ class RideReceiptData {
   final int distanceFarePesewas;
   final int bookingFeePesewas;
   final int taxesPesewas;
+  final RideToll? toll;
   final int promoDiscountPesewas;
   final int loyaltyDiscountPesewas;
   final int totalPaidPesewas;
@@ -53,6 +55,7 @@ class RideReceiptData {
     required this.distanceFarePesewas,
     required this.bookingFeePesewas,
     required this.taxesPesewas,
+    this.toll,
     required this.promoDiscountPesewas,
     required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
@@ -67,6 +70,7 @@ class RideReceiptData {
   String get distanceFareDisplay => _fmt(distanceFarePesewas);
   String get bookingFeeDisplay => _fmt(bookingFeePesewas);
   String get taxesDisplay => _fmt(taxesPesewas);
+  String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
   String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
   String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
   String get totalPaidDisplay => _fmt(totalPaidPesewas);
@@ -115,6 +119,7 @@ class _RideReceiptNotifier
         distanceFarePesewas: fare.distanceFarePesewas,
         bookingFeePesewas: fare.bookingFeePesewas,
         taxesPesewas: fare.taxesPesewas,
+        toll: fare.toll,
         promoDiscountPesewas: fare.promoDiscountPesewas,
         loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
         totalPaidPesewas: fare.totalFarePesewas,
