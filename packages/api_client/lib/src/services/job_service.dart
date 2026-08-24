@@ -442,7 +442,7 @@ class JobService {
     }
   }
 
-  /// POST /jobs/:id/dispute — Dispute job (24-hour window from client confirmation).
+  /// POST /jobs/:id/dispute — Dispute job (2-hour window from client confirmation).
   Future<Map<String, dynamic>> disputeJob(
     String jobId, {
     required String reason,

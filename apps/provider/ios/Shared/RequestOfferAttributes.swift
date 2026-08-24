@@ -18,6 +18,8 @@ struct RequestOfferAttributes: ActivityAttributes {
     let promoDiscountPesewas: Int?
     let loyaltyDiscountPesewas: Int?
     let platformDiscountPesewas: Int?
+    let tollLabel: String?
+    let tollFeePesewas: Int?
     let promoApplied: Bool?
     let paymentMethod: String?
     let minimumBidPesewas: Int?

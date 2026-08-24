@@ -49,13 +49,23 @@ class RideLocation {
 class RideSearchState {
   final RideLocation? pickup;
   final RideLocation? destination;
+  final bool wasSubmitted;
 
-  const RideSearchState({this.pickup, this.destination});
+  const RideSearchState({
+    this.pickup,
+    this.destination,
+    this.wasSubmitted = false,
+  });
 
-  RideSearchState copyWith({RideLocation? pickup, RideLocation? destination}) =>
+  RideSearchState copyWith({
+    RideLocation? pickup,
+    RideLocation? destination,
+    bool? wasSubmitted,
+  }) =>
       RideSearchState(
         pickup: pickup ?? this.pickup,
         destination: destination ?? this.destination,
+        wasSubmitted: wasSubmitted ?? this.wasSubmitted,
       );
 }
 
@@ -64,8 +74,15 @@ class RideSearchNotifier extends StateNotifier<RideSearchState> {
 
   void setLocation(RideSearchField field, RideLocation location) {
     state = field == RideSearchField.pickup
-        ? state.copyWith(pickup: location)
-        : state.copyWith(destination: location);
+        ? state.copyWith(pickup: location, wasSubmitted: false)
+        : state.copyWith(destination: location, wasSubmitted: false);
+  }
+
+  /// Marks these endpoints as consumed by an authoritative ride creation.
+  /// If completion delivery is missed while the app is backgrounded, Home can
+  /// still distinguish the previous ride's pickup from a new manual choice.
+  void markSubmitted() {
+    state = state.copyWith(wasSubmitted: true);
   }
 
   void clear(RideSearchField field) {

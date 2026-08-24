@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,10 +7,38 @@ import '../di/providers.dart';
 import '../services/google_places_service.dart';
 import 'current_location_provider.dart';
 
-const _reverseGeocodeRetryDelays = <Duration>[
-  Duration(milliseconds: 250),
-  Duration(milliseconds: 750),
-];
+typedef LocationCoordinates = ({double latitude, double longitude});
+
+/// One coordinate-bound reverse-geocode operation shared by every consumer.
+///
+/// Home's current-location label and the automatic ride pickup can request the
+/// same point on the same frame. A family provider gives that point one
+/// in-flight request/result instead of sending duplicate backend/Google calls.
+/// Unobserved results stay alive briefly so sequential consumers in the same
+/// booking flow also share the lookup. The currently displayed coordinate may
+/// remain cached while Home observes it; old coordinates auto-dispose.
+final reverseGeocodedPlaceProvider = FutureProvider.autoDispose
+    .family<ReverseGeocodePlace, LocationCoordinates>((ref, coordinates) async {
+  final keepAlive = ref.keepAlive();
+  final expiry = Timer(const Duration(seconds: 30), keepAlive.close);
+  ref.onDispose(expiry.cancel);
+
+  final places = ref.watch(reverseGeocodingServiceProvider);
+  ReverseGeocodePlace? place;
+  try {
+    place = await places.reverseGeocodePlace(
+      coordinates.latitude,
+      coordinates.longitude,
+    );
+  } catch (error) {
+    debugPrint('[LOC] current-location reverse-geocode failed: $error');
+  }
+  if (place != null && place.address.trim().isNotEmpty) return place;
+  return _coordinateFallback(
+    coordinates.latitude,
+    coordinates.longitude,
+  );
+});
 
 /// Structured current-location label used when seeding a ride pickup.
 final currentLocationPlaceProvider =
@@ -27,39 +57,13 @@ final currentLocationPlaceProvider =
 
   if (position == null) return fallback;
 
-  final places = ref.watch(googlePlacesServiceProvider);
-  final place = await _reverseGeocodeWithRetry(
-    places,
-    position.latitude,
-    position.longitude,
+  return ref.watch(
+    reverseGeocodedPlaceProvider((
+      latitude: position.latitude,
+      longitude: position.longitude,
+    )).future,
   );
-  return place ?? _coordinateFallback(position.latitude, position.longitude);
 });
-
-Future<ReverseGeocodePlace?> _reverseGeocodeWithRetry(
-  GooglePlacesService places,
-  double latitude,
-  double longitude,
-) async {
-  for (var attempt = 0;
-      attempt <= _reverseGeocodeRetryDelays.length;
-      attempt += 1) {
-    try {
-      final place = await places.reverseGeocodePlace(latitude, longitude);
-      if (place != null && place.address.trim().isNotEmpty) return place;
-    } catch (error) {
-      debugPrint(
-        '[LOC] current-location reverse-geocode attempt '
-        '${attempt + 1} failed: $error',
-      );
-    }
-
-    if (attempt < _reverseGeocodeRetryDelays.length) {
-      await Future<void>.delayed(_reverseGeocodeRetryDelays[attempt]);
-    }
-  }
-  return null;
-}
 
 ReverseGeocodePlace _coordinateFallback(double latitude, double longitude) {
   return ReverseGeocodePlace(

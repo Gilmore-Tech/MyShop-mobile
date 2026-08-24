@@ -36,7 +36,7 @@ struct RequestLiveActivityWidget: Widget {
               Text(summary)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(3)
             }
           }
         }
@@ -111,7 +111,7 @@ struct RequestLiveActivityWidget: Widget {
         Text(summary)
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
-          .lineLimit(2)
+          .lineLimit(3)
           .minimumScaleFactor(0.8)
       }
 
@@ -186,13 +186,21 @@ struct RequestLiveActivityWidget: Widget {
   ) -> String? {
     guard isRide(context) else { return nil }
     let state = context.state
-    guard let tripFare = state.prePromoFarePesewas,
-          let clientPrice = resolvedClientPrice(state),
-          tripFare >= 0,
-          clientPrice <= tripFare
-    else { return nil }
-    let discount = tripFare - clientPrice
-    return "PROMO / DISCOUNT  - \(cedis(discount))\nCLIENT PRICE  \(cedis(clientPrice))"
+    var lines: [String] = []
+    if let fee = state.tollFeePesewas, fee > 0 {
+      let label = state.tollLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let resolvedLabel = label?.isEmpty == false ? label! : "Toll"
+      lines.append("\(resolvedLabel.uppercased()) (100% TO YOU)  \(cedis(fee))")
+    }
+    if let tripFare = state.prePromoFarePesewas,
+       let clientPrice = resolvedClientPrice(state),
+       tripFare >= 0,
+       clientPrice <= tripFare {
+      let discount = tripFare - clientPrice
+      lines.append("PROMO / DISCOUNT  - \(cedis(discount))")
+      lines.append("CLIENT PRICE  \(cedis(clientPrice))")
+    }
+    return lines.isEmpty ? nil : lines.joined(separator: "\n")
   }
 
   private func resolvedClientPrice(_ state: RequestOfferAttributes.ContentState) -> Int? {

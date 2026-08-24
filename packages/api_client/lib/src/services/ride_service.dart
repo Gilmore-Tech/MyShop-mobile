@@ -364,7 +364,7 @@ class RideService {
     }
   }
 
-  /// POST /rides/:id/dispute — Client: dispute ride fare (24-hour window).
+  /// POST /rides/:id/dispute — Client: dispute ride fare (2-hour window).
   Future<Map<String, dynamic>> disputeRide(
     String rideId, {
     required String reason,

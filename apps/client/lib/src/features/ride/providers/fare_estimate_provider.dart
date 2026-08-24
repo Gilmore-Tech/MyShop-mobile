@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show RideToll;
 
 import '../../../core/di/providers.dart';
 import 'edit_trip_provider.dart';
@@ -77,6 +78,7 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
   final distanceKm = _distanceKmFromEstimate(result);
   final durationMins = _durationMinsFromEstimate(result);
   final categories = (result['categories'] as List?) ?? const [];
+  final topLevelToll = RideToll.fromRideJson(result);
 
   developer.log(
     'Estimate: ${categories.length} categories · ${distanceKm}km '
@@ -93,13 +95,30 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     // shown struck through. Absent key (old backend) = no promo.
     final promo = cat['promo'];
     final promoMap = promo is Map<String, dynamic> ? promo : null;
+    final toll = RideToll.fromRideJson(cat) ??
+        (categories.length == 1 ? topLevelToll : null);
+    final estimatedFare = (cat['estimatedFarePesewas'] as num).toInt();
+    final candidateTransportFare = _readNum(
+          cat,
+          const ['transportFarePesewas'],
+        )?.toInt() ??
+        (categories.length == 1
+            ? _readNum(result, const ['transportFarePesewas'])?.toInt()
+            : null);
+    final transportFare = candidateTransportFare != null &&
+            candidateTransportFare >= 0 &&
+            candidateTransportFare + (toll?.amountPesewas ?? 0) == estimatedFare
+        ? candidateTransportFare
+        : null;
     return VehicleOption(
       // id carries the slug so the booking flow can send it back on POST /rides.
       id: slug,
       name: cat['name'] as String? ?? slug,
       description: cat['description'] as String? ?? '',
       capacityPersons: (cat['capacityPersons'] as num?)?.toInt() ?? 4,
-      farePesewas: (cat['estimatedFarePesewas'] as num).toInt(),
+      farePesewas: estimatedFare,
+      transportFarePesewas: transportFare,
+      toll: toll,
       estimatedTime: '$eta min',
       // Motorcycle tiers are identified by slug convention (none seeded today).
       isMotorcycle: slug.contains('moto'),

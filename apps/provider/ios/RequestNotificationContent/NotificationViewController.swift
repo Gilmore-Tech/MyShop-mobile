@@ -110,7 +110,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
 
     pricingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
     pricingLabel.textColor = .secondaryLabel
-    pricingLabel.numberOfLines = 2
+    pricingLabel.numberOfLines = 3
     pricingLabel.adjustsFontSizeToFitWidth = true
     pricingLabel.minimumScaleFactor = 0.8
 
@@ -256,31 +256,40 @@ private struct RequestPayload {
       let platformDiscount = Self.money(values["platformDiscountPesewas"])
       let promoDiscount = Self.money(values["promoDiscountPesewas"])
       let loyaltyDiscount = Self.money(values["loyaltyDiscountPesewas"])
+      let toll = values["toll"] as? [String: Any]
+      let tollFee = Self.money(toll?["amountPesewas"])
+        ?? Self.money(values["tollFeePesewas"])
+      let tollLabel = Self.string(toll?["label"])
+        ?? Self.string(values["tollLabel"])
       let hasCurrentContext = tripFare != nil
         || explicitClientPrice != nil
         || platformDiscount != nil
         || promoDiscount != nil
         || loyaltyDiscount != nil
       let clientPrice = explicitClientPrice ?? (hasCurrentContext ? legacyFare : nil)
+      var pricingLines: [String] = []
+      if let tollFee, tollFee > 0 {
+        let resolvedLabel = (tollLabel?.isEmpty == false ? tollLabel! : "Toll").uppercased()
+        pricingLines.append("\(resolvedLabel) (100% TO YOU)  \(Self.cedis(tollFee))")
+      }
 
       if let tripFare, let clientPrice, clientPrice <= tripFare {
         amountText = Self.cedis(tripFare)
         amountCaption = "EST. FULL FARE"
         let discount = tripFare - clientPrice
-        pricingText = "PROMO / DISCOUNT  - \(Self.cedis(discount))\nCLIENT PRICE  \(Self.cedis(clientPrice))"
+        pricingLines.append("PROMO / DISCOUNT  - \(Self.cedis(discount))")
+        pricingLines.append("CLIENT PRICE  \(Self.cedis(clientPrice))")
       } else if let tripFare {
         amountText = Self.cedis(tripFare)
         amountCaption = "EST. FULL FARE"
-        pricingText = nil
       } else if let clientPrice {
         amountText = Self.cedis(clientPrice)
         amountCaption = "CLIENT PRICE"
-        pricingText = nil
       } else {
         amountText = legacyFare.map(Self.cedis) ?? "Fare shown in MyShop"
         amountCaption = "ESTIMATED FARE"
-        pricingText = nil
       }
+      pricingText = pricingLines.isEmpty ? nil : pricingLines.joined(separator: "\n")
       var facts: [String] = []
       if let km = Self.double(values["distanceKm"]) {
         facts.append(String(format: "%.1f km trip", km))

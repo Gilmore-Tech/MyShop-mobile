@@ -25,6 +25,8 @@ void main() {
         'promoDiscountPesewas',
         'loyaltyDiscountPesewas',
         'platformDiscountPesewas',
+        'tollLabel',
+        'tollFeePesewas',
         'promoApplied',
         'paymentMethod',
       ]) {
@@ -52,6 +54,10 @@ void main() {
       expect(liveActivity, contains('ESTIMATED FARE'));
       expect(liveActivity, contains('hasCurrentContext'));
       expect(liveActivity, contains('tripFare - clientPrice'));
+      expect(notification, contains('(100% TO YOU)'));
+      expect(liveActivity, contains('(100% TO YOU)'));
+      expect(notification, contains('pricingLabel.numberOfLines = 3'));
+      expect(liveActivity, contains('.lineLimit(3)'));
     },
   );
 

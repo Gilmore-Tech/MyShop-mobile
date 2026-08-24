@@ -250,7 +250,7 @@ class _InfoBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'Disputes must be raised within 24 hours of job completion.',
+                    'Disputes must be raised within 2 hours of job completion.',
                     style: TextStyle(
                       color: MyShopColors.error,
                       fontSize: w * 0.034,
@@ -575,7 +575,7 @@ class _SuccessBody extends StatelessWidget {
 String _jobDisputeErrorMessage(ApiException error) {
   return switch (error.errorCode) {
     'DISPUTE_WINDOW_EXPIRED' =>
-      'The 24-hour dispute window for this job has ended.',
+      'The 2-hour dispute window for this job has ended.',
     'DISPUTE_ALREADY_OPEN' =>
       'A dispute has already been submitted for this job.',
     'PAYMENT_NOT_FOUND' ||

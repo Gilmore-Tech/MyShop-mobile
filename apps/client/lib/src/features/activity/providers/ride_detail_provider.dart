@@ -40,6 +40,9 @@ class RideDetailData {
   final int baseFarePesewas;
   final int distanceFarePesewas;
   final int bookingFeePesewas;
+  final int promoDiscountPesewas;
+  final int loyaltyDiscountPesewas;
+  final RideToll? toll;
   final int totalFarePesewas;
   final String paymentMethod;
 
@@ -62,6 +65,9 @@ class RideDetailData {
     required this.baseFarePesewas,
     required this.distanceFarePesewas,
     required this.bookingFeePesewas,
+    required this.promoDiscountPesewas,
+    required this.loyaltyDiscountPesewas,
+    this.toll,
     required this.totalFarePesewas,
     required this.paymentMethod,
   });
@@ -69,6 +75,9 @@ class RideDetailData {
   String get baseFareDisplay => _fmt(baseFarePesewas);
   String get distanceFareDisplay => _fmt(distanceFarePesewas);
   String get bookingFeeDisplay => _fmt(bookingFeePesewas);
+  String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
+  String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
+  String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get distanceDisplay => '${distanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$durationMins min';
@@ -184,6 +193,11 @@ class _RideDetailNotifier
       baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
       distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
       bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
+      promoDiscountPesewas:
+          (ride['promoDiscountPesewas'] as num?)?.toInt() ?? 0,
+      loyaltyDiscountPesewas:
+          (ride['loyaltyDiscountPesewas'] as num?)?.toInt() ?? 0,
+      toll: RideToll.fromRideJson(ride),
       totalFarePesewas: (ride['totalPaidPesewas'] as num?)?.toInt() ??
           (ride['amountPaidPesewas'] as num?)?.toInt() ??
           (ride['totalFare'] as num?)?.toInt() ??

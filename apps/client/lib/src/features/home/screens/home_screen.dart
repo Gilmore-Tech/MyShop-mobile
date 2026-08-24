@@ -9,13 +9,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/router.dart';
-import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/services/google_places_service.dart';
 import '../../../core/utils/ride_service_area.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
+import '../../ride/providers/ride_provider.dart' show clearRideRequestDraft;
 import '../providers/home_provider.dart';
 import '../providers/promo_campaigns_provider.dart';
 import '../widgets/location_search_card.dart';
@@ -249,9 +249,19 @@ class _Avatar extends StatelessWidget {
 
 // ── Service cards ─────────────────────────────────────────────────────────────
 
-class _ServiceCardsRow extends ConsumerWidget {
+class _ServiceCardsRow extends ConsumerStatefulWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ServiceCardsRow> createState() => _ServiceCardsRowState();
+}
+
+class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
+  static const _maximumAutomaticPickupAge = Duration(seconds: 30);
+  static const _maximumAutomaticPickupAccuracyMetres = 100.0;
+
+  bool _openingRide = false;
+
+  @override
+  Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -260,11 +270,7 @@ class _ServiceCardsRow extends ConsumerWidget {
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.ride,
-              onTap: () async {
-                await _seedPickupFromCurrentLocation(ref);
-                if (!context.mounted) return;
-                context.push(AppRoutes.rideEstimate);
-              },
+              onTap: _openRide,
             ),
           ),
           SizedBox(width: w * 0.031),
@@ -279,79 +285,123 @@ class _ServiceCardsRow extends ConsumerWidget {
     );
   }
 
-  /// Carries the home-screen current location into the ride flow so the user
-  /// doesn't have to pick it again. If GPS is ready but reverse-geocoding is
-  /// still resolving, seed the precise coordinates immediately and refresh the
-  /// human-readable label as soon as the backend returns it. This prevents the
-  /// pickup from getting permanently stuck as the generic "Current location".
-  Future<void> _seedPickupFromCurrentLocation(WidgetRef ref) async {
-    if (ref.read(rideSearchProvider).pickup != null) return;
-    var pos = ref.read(currentDevicePositionProvider);
-    pos ??= await ref
-        .read(currentLocationServiceProvider)
-        .ensure()
-        .timeout(const Duration(seconds: 8), onTimeout: () => null);
-    if (pos == null) return;
+  Future<void> _openRide() async {
+    if (_openingRide) return;
+    _openingRide = true;
+    try {
+      await _seedPickupFromCurrentLocation();
+      if (!mounted) return;
+      await context.push<void>(AppRoutes.rideEstimate);
+    } finally {
+      _openingRide = false;
+    }
+  }
 
-    // Await the place tied to the provider's current GPS dependency rather
-    // than reading `valueOrNull`: Riverpod retains the previous value while a
-    // FutureProvider refreshes, which could pair an old address with these new
-    // exact coordinates.
+  /// Carries the home-screen current location into the ride flow so the user
+  /// doesn't have to pick it again. Each new ride asks for a fresh GPS fix;
+  /// otherwise a process-lifetime cache can keep using the previous trip's
+  /// pickup after the rider has moved. The location service may return its
+  /// recent last-known fix only after confirming permission and service state;
+  /// an unrelated process-lifetime cache is never reused here. An explicitly
+  /// selected pickup is never replaced.
+  Future<void> _seedPickupFromCurrentLocation() async {
+    final existingDraft = ref.read(rideSearchProvider);
+    if (existingDraft.pickup != null && !existingDraft.wasSubmitted) return;
+    if (existingDraft.wasSubmitted) clearRideRequestDraft(ref.read);
+
+    Position? position;
+    try {
+      position = await ref
+          .read(currentLocationServiceProvider)
+          .ensure(forceRefresh: true, retryOnFailure: false)
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      position = null;
+    } catch (error) {
+      debugPrint('[LOC] ride pickup GPS refresh failed: $error');
+      position = null;
+    }
+
+    if (!mounted) return;
+    // The rider may have selected a pickup while the platform location request
+    // was in flight. That explicit choice always wins over automatic GPS.
+    if (ref.read(rideSearchProvider).pickup != null) return;
+    if (position == null ||
+        !_isSafeAutomaticPickupPosition(position, DateTime.now())) {
+      return;
+    }
+
+    // Reverse-geocode the chosen fix directly. Reading the FutureProvider's
+    // retained value here could pair an old address with the fresh coordinates.
+    final placeLookup = _reverseGeocodePosition(position);
     ReverseGeocodePlace? place;
     try {
-      place = await ref
-          .read(currentLocationPlaceProvider.future)
-          .timeout(const Duration(seconds: 2));
+      place = await placeLookup.timeout(const Duration(seconds: 2));
     } on TimeoutException {
+      place = null;
+    } catch (error) {
+      debugPrint('[LOC] ride pickup reverse-geocode failed: $error');
       place = null;
     }
 
-    _writePickup(ref, pos, place);
+    if (!mounted) return;
+    final seededPickup = _writePickup(position, place);
 
     if (_isGenericCurrentPlace(place)) {
-      unawaited(_refreshPickupLabel(ref, pos));
+      unawaited(_refreshPickupLabel(position, placeLookup, seededPickup));
     }
   }
 
-  Future<ReverseGeocodePlace?> _reverseGeocodePosition(
-    WidgetRef ref,
-    Position pos,
-  ) {
-    return ref.read(googlePlacesServiceProvider).reverseGeocodePlace(
-          pos.latitude,
-          pos.longitude,
-        );
+  Future<ReverseGeocodePlace> _reverseGeocodePosition(Position pos) {
+    return ref.read(
+      reverseGeocodedPlaceProvider((
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      )).future,
+    );
   }
 
-  Future<void> _refreshPickupLabel(WidgetRef ref, Position pos) async {
-    final place = await _reverseGeocodePosition(ref, pos);
-    if (_isGenericCurrentPlace(place)) return;
-    final current = ref.read(rideSearchProvider).pickup;
-    if (current == null) return;
-    if (!_sameCoordinate(current.lat, pos.latitude) ||
-        !_sameCoordinate(current.lng, pos.longitude)) {
+  Future<void> _refreshPickupLabel(
+    Position pos,
+    Future<ReverseGeocodePlace> placeLookup,
+    RideLocation seededPickup,
+  ) async {
+    ReverseGeocodePlace place;
+    try {
+      // Reuse the exact lookup that hit the UI timeout. Starting a second
+      // request here would duplicate backend, Redis and geocoding work.
+      place = await placeLookup;
+    } catch (error) {
+      debugPrint('[LOC] delayed ride pickup reverse-geocode failed: $error');
       return;
     }
-    _writePickup(ref, pos, place);
+    if (!mounted) return;
+    if (_isGenericCurrentPlace(place)) return;
+    final current = ref.read(rideSearchProvider);
+    if (current.wasSubmitted || !identical(current.pickup, seededPickup)) {
+      return;
+    }
+    _writePickup(pos, place);
   }
 
-  void _writePickup(
-    WidgetRef ref,
+  RideLocation _writePickup(
     Position pos,
     ReverseGeocodePlace? place,
   ) {
     final label = _isGenericCurrentPlace(place)
         ? 'Pickup selected from GPS'
         : place!.name;
+    final pickup = RideLocation(
+      name: label,
+      address: _isGenericCurrentPlace(place) ? label : place!.address,
+      lat: pos.latitude,
+      lng: pos.longitude,
+    );
     ref.read(rideSearchProvider.notifier).setLocation(
           RideSearchField.pickup,
-          RideLocation(
-            name: label,
-            address: _isGenericCurrentPlace(place) ? label : place!.address,
-            lat: pos.latitude,
-            lng: pos.longitude,
-          ),
+          pickup,
         );
+    return pickup;
   }
 
   bool _isGenericCurrentPlace(ReverseGeocodePlace? place) {
@@ -362,9 +412,19 @@ class _ServiceCardsRow extends ConsumerWidget {
         name == 'using gps location';
   }
 
-  bool _sameCoordinate(double? a, double b) {
-    if (a == null) return false;
-    return (a - b).abs() < 0.00001;
+  bool _isSafeAutomaticPickupPosition(Position position, DateTime now) {
+    final age = now.difference(position.timestamp);
+    return position.latitude.isFinite &&
+        position.latitude >= -90 &&
+        position.latitude <= 90 &&
+        position.longitude.isFinite &&
+        position.longitude >= -180 &&
+        position.longitude <= 180 &&
+        position.accuracy.isFinite &&
+        position.accuracy >= 0 &&
+        position.accuracy <= _maximumAutomaticPickupAccuracyMetres &&
+        !age.isNegative &&
+        age <= _maximumAutomaticPickupAge;
   }
 }
 

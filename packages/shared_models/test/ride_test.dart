@@ -2,6 +2,70 @@ import 'package:shared_models/shared_models.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('parses canonical and transitional positive ride tolls only', () {
+    final canonical = Ride.fromJson({
+      'id': 'ride-toll-canonical',
+      'status': 'requested',
+      'estimatedFarePesewas': 4500,
+      'toll': {
+        'label': 'Airport toll',
+        'amountPesewas': 500,
+        'applicationMode': 'dropoff',
+      },
+    });
+    final transitional = Ride.fromJson({
+      'id': 'ride-toll-flat',
+      'status': 'requested',
+      'estimatedFarePesewas': 4500,
+      'tollFeePesewas': '500',
+      'tollLabel': 'Airport toll',
+    });
+
+    expect(canonical.toll?.label, 'Airport toll');
+    expect(canonical.tollFeePesewas, 500);
+    expect(canonical.toll?.applicationMode, 'dropoff');
+    expect(transitional.tollFeePesewas, 500);
+  });
+
+  test(
+    'absent, zero, negative, and fractional tolls have no display model',
+    () {
+      for (final value in <Object?>[null, 0, -1, 1.5, '0', '1.5']) {
+        final ride = Ride.fromJson({
+          'id': 'ride-no-toll-$value',
+          'status': 'requested',
+          'estimatedFarePesewas': 4000,
+          if (value != null)
+            'toll': {'label': 'Airport toll', 'amountPesewas': value},
+        });
+
+        expect(ride.toll, isNull, reason: 'value=$value');
+        expect(ride.tollFeePesewas, 0, reason: 'value=$value');
+      }
+    },
+  );
+
+  test('provider settlement conserves inclusive fare without mobile math', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-toll-settlement',
+      'status': 'completed',
+      'prePromoFarePesewas': 4500,
+      'finalFarePesewas': 4500,
+      'toll': {'label': 'Airport toll', 'amountPesewas': 500},
+      // 20% commission is charged on the 4000 transport fare only.
+      'effectiveCommissionPesewas': 800,
+      // Provider receives 3200 transport earnings + all 500 toll.
+      'providerEarningsPesewas': 3700,
+      'providerSettlementBasisPesewas': 4500,
+      'financialsFinal': true,
+    });
+
+    expect(ride.tripFarePesewas, 4500);
+    expect(ride.providerCommissionPesewas, 800);
+    expect(ride.settledProviderEarningsPesewas, 3700);
+    expect(ride.hasConservedProviderFinancials, isTrue);
+  });
+
   test('uses totalFare as the estimate for active rides', () {
     final ride = Ride.fromJson({
       'id': 'ride-1',
@@ -144,45 +208,39 @@ void main() {
     expect(ride.totalPaidPesewas, 4000);
   });
 
-  test('uses effective settlement commission and fails closed while pending',
-      () {
-    final finalRide = Ride.fromJson({
-      'id': 'ride-relief-final',
-      'status': 'completed',
-      'prePromoFarePesewas': 10000,
-      'commissionPesewas': 2000,
-      'effectiveCommissionPesewas': 600,
-      'providerSettlementBasisPesewas': 10000,
-      'providerEarningsPesewas': 9400,
-      'financialsFinal': true,
-    });
-    final pendingRide = Ride.fromJson({
-      'id': 'ride-relief-pending',
-      'status': 'completed',
-      'commissionPesewas': 2000,
-      'providerEarningsPesewas': 8000,
-      'financialsFinal': false,
-    });
+  test(
+    'uses effective settlement commission and fails closed while pending',
+    () {
+      final finalRide = Ride.fromJson({
+        'id': 'ride-relief-final',
+        'status': 'completed',
+        'prePromoFarePesewas': 10000,
+        'commissionPesewas': 2000,
+        'effectiveCommissionPesewas': 600,
+        'providerSettlementBasisPesewas': 10000,
+        'providerEarningsPesewas': 9400,
+        'financialsFinal': true,
+      });
+      final pendingRide = Ride.fromJson({
+        'id': 'ride-relief-pending',
+        'status': 'completed',
+        'commissionPesewas': 2000,
+        'providerEarningsPesewas': 8000,
+        'financialsFinal': false,
+      });
 
-    expect(finalRide.providerCommissionPesewas, 600);
-    expect(finalRide.settledProviderEarningsPesewas, 9400);
-    expect(pendingRide.providerCommissionPesewas, isNull);
-    expect(pendingRide.settledProviderEarningsPesewas, isNull);
-  });
+      expect(finalRide.providerCommissionPesewas, 600);
+      expect(finalRide.settledProviderEarningsPesewas, 9400);
+      expect(pendingRide.providerCommissionPesewas, isNull);
+      expect(pendingRide.settledProviderEarningsPesewas, isNull);
+    },
+  );
 
   test('malformed explicit final financial pairs fail closed together', () {
     for (final financials in <Map<String, dynamic>>[
-      {
-        'commissionPesewas': 2000,
-        'providerEarningsPesewas': 8000,
-      },
-      {
-        'effectiveCommissionPesewas': 2000,
-      },
-      {
-        'effectiveCommissionPesewas': 2000,
-        'providerEarningsPesewas': 8100,
-      },
+      {'commissionPesewas': 2000, 'providerEarningsPesewas': 8000},
+      {'effectiveCommissionPesewas': 2000},
+      {'effectiveCommissionPesewas': 2000, 'providerEarningsPesewas': 8100},
       {
         'effectiveCommissionPesewas': 2000,
         'providerSettlementBasisPesewas': null,
@@ -294,24 +352,26 @@ void main() {
     expect(ride.settledProviderEarningsPesewas, isNull);
   });
 
-  test('present malformed financial finality never enables legacy fallback',
-      () {
-    for (final malformed in <Object?>['true', 1, null]) {
-      final ride = Ride.fromJson({
-        'id': 'ride-malformed-finality',
-        'status': 'completed',
-        'prePromoFarePesewas': 10000,
-        'commissionPesewas': 2000,
-        'providerEarningsPesewas': 8000,
-        'financialsFinal': malformed,
-      });
+  test(
+    'present malformed financial finality never enables legacy fallback',
+    () {
+      for (final malformed in <Object?>['true', 1, null]) {
+        final ride = Ride.fromJson({
+          'id': 'ride-malformed-finality',
+          'status': 'completed',
+          'prePromoFarePesewas': 10000,
+          'commissionPesewas': 2000,
+          'providerEarningsPesewas': 8000,
+          'financialsFinal': malformed,
+        });
 
-      expect(ride.hasFinancialsFinalContract, isTrue);
-      expect(ride.providerCommissionPesewas, isNull);
-      expect(ride.settledProviderEarningsPesewas, isNull);
-      expect(ride.settledProviderSettlementBasisPesewas, isNull);
-    }
-  });
+        expect(ride.hasFinancialsFinalContract, isTrue);
+        expect(ride.providerCommissionPesewas, isNull);
+        expect(ride.settledProviderEarningsPesewas, isNull);
+        expect(ride.settledProviderSettlementBasisPesewas, isNull);
+      }
+    },
+  );
 
   test('absent finality key retains conserved legacy compatibility', () {
     final ride = Ride.fromJson({
@@ -328,55 +388,59 @@ void main() {
     expect(ride.settledProviderSettlementBasisPesewas, 10000);
   });
 
-  test('parses the additive incoming-offer fare contract including zero quote',
-      () {
-    final ride = Ride.fromJson({
-      'id': 'ride-offer-fare',
-      'status': 'requested',
-      // Legacy post-discount rider quote remains separate.
-      'estimatedFarePesewas': 0,
-      'estimatedProviderEarningsPesewas': '1144',
-      'prePromoFarePesewas': 1430,
-      'clientPayableEstimatePesewas': 0,
-      'promoDiscountPesewas': 1000,
-      'loyaltyDiscountPesewas': 430,
-      'platformDiscountPesewas': 1430,
-      'providerEarningsPesewas': 999,
-      'pickupAddress': 'KNUST Gate',
-      'dropoffAddress': 'Kejetia Market',
-    });
+  test(
+    'parses the additive incoming-offer fare contract including zero quote',
+    () {
+      final ride = Ride.fromJson({
+        'id': 'ride-offer-fare',
+        'status': 'requested',
+        // Legacy post-discount rider quote remains separate.
+        'estimatedFarePesewas': 0,
+        'estimatedProviderEarningsPesewas': '1144',
+        'prePromoFarePesewas': 1430,
+        'clientPayableEstimatePesewas': 0,
+        'promoDiscountPesewas': 1000,
+        'loyaltyDiscountPesewas': 430,
+        'platformDiscountPesewas': 1430,
+        'providerEarningsPesewas': 999,
+        'pickupAddress': 'KNUST Gate',
+        'dropoffAddress': 'Kejetia Market',
+      });
 
-    expect(ride.estimatedProviderEarningsPesewas, 1144);
-    expect(ride.prePromoFarePesewas, 1430);
-    expect(ride.clientPayableEstimatePesewas, 0);
-    expect(ride.promoDiscountPesewas, 1000);
-    expect(ride.loyaltyDiscountPesewas, 430);
-    expect(ride.platformDiscountPesewas, 1430);
-    // Settlement earnings remain a separate field.
-    expect(ride.providerEarningsPesewas, 999);
-  });
+      expect(ride.estimatedProviderEarningsPesewas, 1144);
+      expect(ride.prePromoFarePesewas, 1430);
+      expect(ride.clientPayableEstimatePesewas, 0);
+      expect(ride.promoDiscountPesewas, 1000);
+      expect(ride.loyaltyDiscountPesewas, 430);
+      expect(ride.platformDiscountPesewas, 1430);
+      // Settlement earnings remain a separate field.
+      expect(ride.providerEarningsPesewas, 999);
+    },
+  );
 
-  test('keeps legacy payment rate unknown instead of fabricating 20 percent',
-      () {
-    const summary = TripSummary(
-      rideId: 'ride-legacy',
-      clientName: 'Passenger',
-      clientRating: 5,
-      paymentMethod: 'Cash',
-      pickupAddress: 'KNUST Gate',
-      dropoffAddress: 'Kejetia Market',
-      distanceKm: 1,
-      durationMins: 5,
-      baseFarePesewas: 0,
-      distanceFarePesewas: 0,
-      timeFarePesewas: 0,
-      totalFarePesewas: 1000,
-      commissionPesewas: 200,
-      payoutMethod: 'MoMo',
-      payoutStatus: 'PROCESSING',
-    );
+  test(
+    'keeps legacy payment rate unknown instead of fabricating 20 percent',
+    () {
+      const summary = TripSummary(
+        rideId: 'ride-legacy',
+        clientName: 'Passenger',
+        clientRating: 5,
+        paymentMethod: 'Cash',
+        pickupAddress: 'KNUST Gate',
+        dropoffAddress: 'Kejetia Market',
+        distanceKm: 1,
+        durationMins: 5,
+        baseFarePesewas: 0,
+        distanceFarePesewas: 0,
+        timeFarePesewas: 0,
+        totalFarePesewas: 1000,
+        commissionPesewas: 200,
+        payoutMethod: 'MoMo',
+        payoutStatus: 'PROCESSING',
+      );
 
-    expect(summary.commissionLabel, 'Platform Commission');
-    expect(summary.commissionDisplay, 'GHS 2');
-  });
+      expect(summary.commissionLabel, 'Platform Commission');
+      expect(summary.commissionDisplay, 'GHS 2');
+    },
+  );
 }

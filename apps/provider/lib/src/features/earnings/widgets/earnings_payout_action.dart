@@ -136,8 +136,8 @@ EarningsPayoutActionState resolveEarningsPayoutAction({
       return EarningsPayoutActionState(
         kind: EarningsPayoutActionKind.belowMinimum,
         label: 'BELOW WITHDRAWAL MINIMUM',
-        description: 'GHS 15.00 minimum. '
-            'GHS ${_formatPesewas(moreNeeded)} more must become withdrawable.',
+        description: 'GH₵ 15.00 minimum. '
+            'GH₵ ${_formatPesewas(moreNeeded)} more must become withdrawable.',
       );
     }
     return const EarningsPayoutActionState(
@@ -297,8 +297,8 @@ EarningsPayoutActionState _belowMinimumAction(
   return EarningsPayoutActionState(
     kind: EarningsPayoutActionKind.belowMinimum,
     label: 'BELOW WITHDRAWAL MINIMUM',
-    description: 'GHS ${_formatPesewas(minimum)} minimum. '
-        'GHS ${_formatPesewas(moreNeeded)} more must become withdrawable.',
+    description: 'GH₵ ${_formatPesewas(minimum)} minimum. '
+        'GH₵ ${_formatPesewas(moreNeeded)} more must become withdrawable.',
   );
 }
 

@@ -427,6 +427,27 @@ class _FareCard extends StatelessWidget {
                 value: data.bookingFeeDisplay,
                 w: w,
                 h: h),
+          if ((data.toll?.amountPesewas ?? 0) > 0)
+            _FareRow(
+              label: data.toll!.label,
+              value: data.tollDisplay,
+              w: w,
+              h: h,
+            ),
+          if (data.promoDiscountPesewas > 0)
+            _FareRow(
+              label: 'Promotional discount',
+              value: data.promoDiscountDisplay,
+              w: w,
+              h: h,
+            ),
+          if (data.loyaltyDiscountPesewas > 0)
+            _FareRow(
+              label: 'Loyalty discount',
+              value: data.loyaltyDiscountDisplay,
+              w: w,
+              h: h,
+            ),
           Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.010),
             child: const Divider(height: 1, color: MyShopColors.divider),

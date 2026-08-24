@@ -11,7 +11,8 @@ class FareBreakdownCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasBreakdown = driver.baseFarePesewas +
             driver.distanceFarePesewas +
-            driver.bookingFeePesewas >
+            driver.bookingFeePesewas +
+            (driver.toll?.amountPesewas ?? 0) >
         0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -32,6 +33,24 @@ class FareBreakdownCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _FareRow(label: 'Booking Fee', amount: driver.bookingFeeDisplay),
+            if ((driver.toll?.amountPesewas ?? 0) > 0) ...[
+              const SizedBox(height: 10),
+              _FareRow(label: driver.toll!.label, amount: driver.tollDisplay),
+            ],
+            if (driver.promoDiscountPesewas > 0) ...[
+              const SizedBox(height: 10),
+              _FareRow(
+                label: 'Promotional discount',
+                amount: driver.promoDiscountDisplay,
+              ),
+            ],
+            if (driver.loyaltyDiscountPesewas > 0) ...[
+              const SizedBox(height: 10),
+              _FareRow(
+                label: 'Loyalty discount',
+                amount: driver.loyaltyDiscountDisplay,
+              ),
+            ],
             const SizedBox(height: 14),
             const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
             const SizedBox(height: 14),

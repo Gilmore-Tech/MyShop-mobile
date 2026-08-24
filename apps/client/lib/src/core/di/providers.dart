@@ -206,3 +206,13 @@ final googlePlacesServiceProvider = Provider<GooglePlacesService>((ref) {
     biasLongitude: position?.longitude,
   );
 });
+
+/// Stable Google proxy client for coordinate-bound reverse geocoding.
+///
+/// Autocomplete needs a location-biased service that rebuilds as the rider
+/// moves. Reverse geocoding already carries its exact coordinate in each call,
+/// so coupling it to that bias can invalidate an in-flight request and send the
+/// same backend/Google lookup twice when only Position metadata changes.
+final reverseGeocodingServiceProvider = Provider<GooglePlacesService>((ref) {
+  return GooglePlacesService(dio: ref.watch(dioProvider));
+});
