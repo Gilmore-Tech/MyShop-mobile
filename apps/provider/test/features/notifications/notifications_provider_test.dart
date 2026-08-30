@@ -35,6 +35,10 @@ void main() {
         contains('Reason: The licence photo is unreadable.'));
     expect(notification.payload['resubmissionRequired'], isTrue);
     expect(notification.payload['route'], '/untrusted/backend/path');
+    expect(
+      notification.createdAt,
+      DateTime.parse('2026-08-17T08:00:00Z').toLocal(),
+    );
   });
 
   test('parses legacy items, type, string payload, and readAt', () {
@@ -123,5 +127,113 @@ void main() {
     expect(notifications.single.type, NotifType.announcement);
     expect(notifications.single.eventType, 'announcement');
     expect(notifications.single.payload['destination'], 'promotions');
+  });
+
+  test('renders ISO creation timestamps as relative and readable local time',
+      () {
+    final notification = Notif.fromJson({
+      'id': 'notification_time',
+      'eventType': 'announcement',
+      'title': 'Service update',
+      'createdAt': '2026-08-30T19:30:00.000Z',
+    });
+    final now = DateTime.parse('2026-08-30T21:00:00.000Z');
+
+    expect(
+      providerNotificationTimeAgo(notification.createdAt, now: now),
+      '1 hour ago',
+    );
+    expect(
+      providerNotificationLocalDateTime(notification.createdAt),
+      isNot(contains('T')),
+    );
+    expect(
+      providerNotificationIsToday(notification, now: now),
+      isTrue,
+    );
+  });
+
+  test('groups by local calendar day instead of age-label wording', () {
+    final notification = Notif.fromJson({
+      'id': 'notification_yesterday',
+      'eventType': 'announcement',
+      'title': 'Service update',
+      'createdAt': '2026-08-29T23:55:00',
+    });
+
+    expect(
+      providerNotificationIsToday(
+        notification,
+        now: DateTime.parse('2026-08-30T00:05:00'),
+      ),
+      isFalse,
+    );
+    expect(
+      providerNotificationTimeAgo(
+        notification.createdAt,
+        now: DateTime.parse('2026-08-30T00:05:00'),
+      ),
+      '10 mins ago',
+    );
+  });
+
+  test('never renders a malformed database timestamp verbatim', () {
+    final notification = Notif.fromJson({
+      'id': 'notification_bad_time',
+      'eventType': 'announcement',
+      'title': 'Service update',
+      'createdAt': 'raw-db-timestamp',
+      'timeAgo': 'Recently',
+    });
+
+    expect(notification.createdAt, isNull);
+    expect(
+      providerNotificationTimeAgo(
+        notification.createdAt,
+        fallback: notification.fallbackTimeAgo,
+      ),
+      'Recently',
+    );
+    expect(providerNotificationLocalDateTime(notification.createdAt), isEmpty);
+  });
+
+  test('rejects an ISO timestamp supplied in legacy timeAgo', () {
+    final notification = Notif.fromJson({
+      'id': 'notification_iso_fallback',
+      'eventType': 'announcement',
+      'title': 'Service update',
+      'timeAgo': '2026-08-30T20:00:00.000Z',
+    });
+
+    expect(notification.createdAt, isNull);
+    expect(notification.fallbackTimeAgo, isEmpty);
+    expect(
+      providerNotificationTimeAgo(
+        notification.createdAt,
+        fallback: notification.fallbackTimeAgo,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('rejects raw non-relative values supplied in legacy timeAgo', () {
+    for (final raw in ['1788120000000', 'raw-db-timestamp']) {
+      final notification = Notif.fromJson({
+        'id': 'notification_raw_fallback_$raw',
+        'eventType': 'announcement',
+        'title': 'Service update',
+        'timeAgo': raw,
+      });
+
+      expect(notification.fallbackTimeAgo, isEmpty);
+    }
+  });
+
+  test('notification state starts in loading rather than empty', () {
+    const state = ProviderNotifsState.initial();
+
+    expect(state.isLoading, isTrue);
+    expect(state.items, isEmpty);
+    expect(state.hasLoadError, isFalse);
   });
 }

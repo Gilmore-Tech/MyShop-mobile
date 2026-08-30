@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
 
@@ -16,7 +17,8 @@ class Notif {
     required this.eventType,
     required this.title,
     required this.body,
-    required this.time,
+    required this.createdAt,
+    required this.fallbackTimeLabel,
     this.payload = const {},
     this.isRead = false,
   });
@@ -33,6 +35,7 @@ class Notif {
         : json['read'] is bool
             ? json['read'] as bool
             : null;
+    final rawCreatedAt = _notificationText(json['createdAt']);
 
     return Notif(
       id: (json['id'] ?? '').toString(),
@@ -46,9 +49,9 @@ class Notif {
           _notificationText(payload['body']) ??
           _notificationText(payload['message']) ??
           '',
-      time: _notificationText(json['timeAgo']) ??
-          _notificationText(json['createdAt']) ??
-          '',
+      createdAt: rawCreatedAt == null ? null : DateTime.tryParse(rawCreatedAt),
+      fallbackTimeLabel:
+          _safeFallbackTimeLabel(_notificationText(json['timeAgo'])),
       payload: payload,
       isRead: explicitRead ?? _hasReadTimestamp(json['readAt']),
     );
@@ -59,7 +62,16 @@ class Notif {
   final String eventType;
   final String title;
   final String body;
-  final String time;
+
+  /// Authoritative server creation time. PostgreSQL `timestamptz` values are
+  /// serialized by the API as ISO-8601 and converted to local time only when
+  /// rendered. Keeping the parsed value also makes calendar grouping reliable.
+  final DateTime? createdAt;
+
+  /// Legacy fallback for old responses that do not include `createdAt`.
+  /// Raw database timestamps are deliberately rejected here so they can never
+  /// leak into the user interface again.
+  final String fallbackTimeLabel;
   final Map<String, dynamic> payload;
   final bool isRead;
 
@@ -69,10 +81,81 @@ class Notif {
         eventType: eventType,
         title: title,
         body: body,
-        time: time,
+        createdAt: createdAt,
+        fallbackTimeLabel: fallbackTimeLabel,
         payload: payload,
         isRead: true,
       );
+}
+
+/// Human-friendly relative age for a notification.
+///
+/// [now] is injectable so tests and all tiles in one render use the exact same
+/// clock snapshot. Future clock skew is displayed as "Just now" rather than a
+/// negative duration.
+String clientNotificationTimeAgo(
+  Notif notification, {
+  DateTime? now,
+}) {
+  final createdAt = notification.createdAt;
+  if (createdAt == null) return notification.fallbackTimeLabel;
+
+  final reference = now ?? DateTime.now();
+  final elapsed = reference.toUtc().difference(createdAt.toUtc());
+  if (elapsed.isNegative || elapsed.inSeconds < 60) return 'Just now';
+
+  final minutes = elapsed.inMinutes;
+  if (minutes < 60) return minutes == 1 ? '1 min ago' : '$minutes mins ago';
+
+  final hours = elapsed.inHours;
+  if (hours < 24) return hours == 1 ? '1 hour ago' : '$hours hours ago';
+
+  final days = elapsed.inDays;
+  if (days == 1) return 'Yesterday';
+  if (days < 7) return '$days days ago';
+
+  final weeks = days ~/ 7;
+  if (days < 30) return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+
+  final months = days ~/ 30;
+  if (days < 365) return months == 1 ? '1 month ago' : '$months months ago';
+
+  final years = days ~/ 365;
+  return years == 1 ? '1 year ago' : '$years years ago';
+}
+
+/// Readable local date/time shown alongside the relative age.
+String? clientNotificationLocalDateTime(Notif notification) {
+  final createdAt = notification.createdAt;
+  if (createdAt == null) return null;
+  return DateFormat('d MMM yyyy · h:mm a').format(createdAt.toLocal());
+}
+
+/// Calendar-day grouping must use the local date, not English display text.
+bool clientNotificationIsToday(
+  Notif notification, {
+  DateTime? now,
+}) {
+  final createdAt = notification.createdAt;
+  if (createdAt == null) {
+    final fallback = notification.fallbackTimeLabel.toLowerCase();
+    return fallback == 'just now' ||
+        fallback.contains('min') ||
+        fallback.contains('hour');
+  }
+  final localCreatedAt = createdAt.toLocal();
+  final localNow = (now ?? DateTime.now()).toLocal();
+  return localCreatedAt.year == localNow.year &&
+      localCreatedAt.month == localNow.month &&
+      localCreatedAt.day == localNow.day;
+}
+
+String _safeFallbackTimeLabel(String? value) {
+  if (value == null) return 'Recently';
+  // An ISO/database timestamp belongs in [createdAt], never in a display
+  // label. Accept only a concise server-produced relative label.
+  if (DateTime.tryParse(value) != null || value.length > 40) return 'Recently';
+  return value;
 }
 
 String? _notificationText(Object? value) {
@@ -133,8 +216,8 @@ List<Notif> clientNotificationItemsFromResponse(
 // EDD: GET /v1/notifications?page=1&limit=30
 //      PATCH /v1/notifications/:id/read
 
-class NotifsNotifier extends StateNotifier<List<Notif>> {
-  NotifsNotifier(this._notificationService) : super(const []) {
+class NotifsNotifier extends StateNotifier<AsyncValue<List<Notif>>> {
+  NotifsNotifier(this._notificationService) : super(const AsyncLoading()) {
     _loadFromApi();
   }
 
@@ -144,29 +227,45 @@ class NotifsNotifier extends StateNotifier<List<Notif>> {
     try {
       final data =
           await _notificationService.getNotifications(page: 1, limit: 30);
-      state = clientNotificationItemsFromResponse(data);
-    } catch (_) {
-      // Leave the list empty on failure. Pull-to-refresh retries the request.
+      if (!mounted) return;
+      state = AsyncData(clientNotificationItemsFromResponse(data));
+    } catch (error, stackTrace) {
+      // Keep already-rendered data during a failed manual refresh. Initial
+      // failures get an explicit retry state instead of masquerading as an
+      // empty inbox.
+      if (mounted && state.asData == null) {
+        state = AsyncError(error, stackTrace);
+      }
     }
   }
 
-  Future<void> reload() => _loadFromApi();
+  Future<void> reload() {
+    if (!state.hasValue) state = const AsyncLoading();
+    return _loadFromApi();
+  }
 
   void markRead(String id) {
-    state = state.map((n) => n.id == id ? n.copyWithRead() : n).toList();
+    final notifications = state.asData?.value;
+    if (notifications == null) return;
+    state = AsyncData(
+      notifications.map((n) => n.id == id ? n.copyWithRead() : n).toList(),
+    );
     _notificationService.markAsRead(id).catchError((_) {});
   }
 
   void markAllRead() {
-    state = state.map((n) => n.copyWithRead()).toList();
-    for (final n in state) {
+    final notifications = state.asData?.value;
+    if (notifications == null) return;
+    state = AsyncData(notifications.map((n) => n.copyWithRead()).toList());
+    for (final n in notifications) {
       _notificationService.markAsRead(n.id).catchError((_) {});
     }
   }
 }
 
 final notifsProvider =
-    StateNotifierProvider.autoDispose<NotifsNotifier, List<Notif>>((ref) {
+    StateNotifierProvider.autoDispose<NotifsNotifier, AsyncValue<List<Notif>>>(
+        (ref) {
   final notificationService = ref.watch(notificationServiceProvider);
   return NotifsNotifier(notificationService);
 });

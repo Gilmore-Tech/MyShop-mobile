@@ -188,6 +188,19 @@ String clientAnnouncementRoute(Object? rawDestination) {
   };
 }
 
+const clientDashboardRoute = '/home';
+
+/// A system-tray tap starts a fresh navigation intent. Seed the authenticated
+/// dashboard before presenting the destination so Back has a deterministic,
+/// safe place to return to. In-app inbox taps do not use this stack; they push
+/// onto the user's existing navigation history instead.
+List<String> clientTrayNavigationStack(String destinationRoute) {
+  if (destinationRoute == clientDashboardRoute) {
+    return const [clientDashboardRoute];
+  }
+  return [clientDashboardRoute, destinationRoute];
+}
+
 /// Thin wrapper around `flutter_local_notifications`. Responsibilities:
 ///   • Register notification channels once on init.
 ///   • Render FCM pushes that arrive while the app is backgrounded or

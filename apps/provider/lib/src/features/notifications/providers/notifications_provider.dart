@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
 
@@ -16,7 +17,8 @@ class Notif {
     required this.eventType,
     required this.title,
     required this.body,
-    required this.time,
+    this.createdAt,
+    this.fallbackTimeAgo = '',
     this.payload = const {},
     this.reason,
     this.isRead = false,
@@ -57,9 +59,8 @@ class Notif {
           _notificationText(payload['title']) ??
           '',
       body: body,
-      time: _notificationText(json['timeAgo']) ??
-          _notificationText(json['createdAt']) ??
-          '',
+      createdAt: _notificationDateTime(json['createdAt']),
+      fallbackTimeAgo: _notificationFallbackTimeAgo(json['timeAgo']),
       payload: payload,
       reason: reason,
       isRead: explicitRead ?? _hasReadTimestamp(json['readAt']),
@@ -71,7 +72,13 @@ class Notif {
   final String eventType;
   final String title;
   final String body;
-  final String time;
+
+  /// Authoritative creation time normalised to the device's timezone.
+  /// Keeping this parsed prevents database/ISO values leaking into the UI.
+  final DateTime? createdAt;
+
+  /// Compatibility fallback for legacy responses without `createdAt`.
+  final String fallbackTimeAgo;
   final Map<String, dynamic> payload;
   final String? reason;
   final bool isRead;
@@ -82,11 +89,102 @@ class Notif {
         eventType: eventType,
         title: title,
         body: body,
-        time: time,
+        createdAt: createdAt,
+        fallbackTimeAgo: fallbackTimeAgo,
         payload: payload,
         reason: reason,
         isRead: true,
       );
+}
+
+DateTime? _notificationDateTime(Object? value) {
+  if (value is DateTime) return value.toLocal();
+  final text = _notificationText(value);
+  return text == null ? null : DateTime.tryParse(text)?.toLocal();
+}
+
+String _notificationFallbackTimeAgo(Object? value) {
+  final text = _notificationText(value);
+  if (text == null) return '';
+  // `timeAgo` is a legacy display fallback, never another timestamp field.
+  // Reject ISO/database timestamp values so they cannot leak into the UI if a
+  // response is mis-shaped or an older API aliases `createdAt` into it.
+  if (DateTime.tryParse(text) != null) return '';
+  final normalized = text.toLowerCase();
+  if (const {
+    'now',
+    'just now',
+    'recently',
+    'today',
+    'yesterday',
+  }.contains(normalized)) {
+    return text;
+  }
+  final relativePattern = RegExp(
+    r'^(?:a|an|one|\d+)\s*'
+    r'(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks|mo|month|months|y|yr|yrs|year|years)\s+ago$',
+  );
+  return relativePattern.hasMatch(normalized) ? text : '';
+}
+
+/// Human-readable relative time used by notification tiles.
+///
+/// An invalid/missing database timestamp is never shown verbatim. Legacy
+/// server-rendered relative labels remain usable through [fallback].
+String providerNotificationTimeAgo(
+  DateTime? createdAt, {
+  DateTime? now,
+  String fallback = '',
+}) {
+  if (createdAt == null) return fallback;
+
+  final difference =
+      (now ?? DateTime.now()).toLocal().difference(createdAt.toLocal());
+  if (difference.isNegative || difference.inMinutes < 1) return 'Just now';
+  if (difference.inMinutes < 60) {
+    final minutes = difference.inMinutes;
+    return '$minutes ${minutes == 1 ? 'min' : 'mins'} ago';
+  }
+  if (difference.inHours < 24) {
+    final hours = difference.inHours;
+    return '$hours ${hours == 1 ? 'hour' : 'hours'} ago';
+  }
+  if (difference.inDays < 30) {
+    final days = difference.inDays;
+    return '$days ${days == 1 ? 'day' : 'days'} ago';
+  }
+  if (difference.inDays < 365) {
+    final months = difference.inDays ~/ 30;
+    return '$months ${months == 1 ? 'month' : 'months'} ago';
+  }
+  final years = difference.inDays ~/ 365;
+  return '$years ${years == 1 ? 'year' : 'years'} ago';
+}
+
+/// Readable local date and time shown beneath the relative label.
+String providerNotificationLocalDateTime(DateTime? createdAt) {
+  if (createdAt == null) return '';
+  return DateFormat('d MMM yyyy · h:mm a').format(createdAt.toLocal());
+}
+
+/// Uses the actual local calendar date instead of guessing from a rendered
+/// label (which put every ISO timestamp under EARLIER).
+bool providerNotificationIsToday(
+  Notif notification, {
+  DateTime? now,
+}) {
+  final createdAt = notification.createdAt;
+  if (createdAt == null) {
+    final fallback = notification.fallbackTimeAgo.toLowerCase();
+    return fallback == 'just now' ||
+        fallback.contains('min') ||
+        fallback.contains('hour');
+  }
+  final localCreatedAt = createdAt.toLocal();
+  final localNow = (now ?? DateTime.now()).toLocal();
+  return localCreatedAt.year == localNow.year &&
+      localCreatedAt.month == localNow.month &&
+      localCreatedAt.day == localNow.day;
 }
 
 String? _notificationText(Object? value) {
@@ -156,41 +254,81 @@ List<Notif> providerNotificationItemsFromResponse(
 //      PATCH /v1/notifications/:id/read
 //      PATCH /v1/notifications/read-all
 
-class NotifsNotifier extends StateNotifier<List<Notif>> {
-  NotifsNotifier(this._notificationService) : super(const []) {
+class ProviderNotifsState {
+  const ProviderNotifsState({
+    this.items = const [],
+    this.isLoading = false,
+    this.hasLoadError = false,
+  });
+
+  const ProviderNotifsState.initial()
+      : items = const [],
+        isLoading = true,
+        hasLoadError = false;
+
+  final List<Notif> items;
+  final bool isLoading;
+  final bool hasLoadError;
+}
+
+class NotifsNotifier extends StateNotifier<ProviderNotifsState> {
+  NotifsNotifier(this._notificationService)
+      : super(const ProviderNotifsState.initial()) {
     _loadFromApi();
   }
 
   final NotificationService _notificationService;
 
   Future<void> _loadFromApi() async {
+    state = ProviderNotifsState(
+      items: state.items,
+      isLoading: true,
+    );
     try {
       final data =
           await _notificationService.getNotifications(page: 1, limit: 30);
-      state = providerNotificationItemsFromResponse(data);
+      if (!mounted) return;
+      state = ProviderNotifsState(
+        items: providerNotificationItemsFromResponse(data),
+      );
     } catch (_) {
-      // Leave the list empty on failure — the inbox screen renders an
-      // empty state and a pull-to-refresh re-runs reload().
+      if (!mounted) return;
+      // A failed request is not an empty inbox. Preserve prior items during
+      // refreshes and let the screen offer an explicit retry.
+      state = ProviderNotifsState(
+        items: state.items,
+        hasLoadError: true,
+      );
     }
   }
 
   Future<void> reload() => _loadFromApi();
 
   void markRead(String id) {
-    state = state.map((n) => n.id == id ? n.copyWithRead() : n).toList();
+    state = ProviderNotifsState(
+      items: state.items.map((n) => n.id == id ? n.copyWithRead() : n).toList(),
+      isLoading: state.isLoading,
+      hasLoadError: state.hasLoadError,
+    );
     _notificationService.markAsRead(id).catchError((_) {});
   }
 
   void markAllRead() {
-    state = state.map((n) => n.copyWithRead()).toList();
-    for (final n in state) {
+    final items = state.items.map((n) => n.copyWithRead()).toList();
+    state = ProviderNotifsState(
+      items: items,
+      isLoading: state.isLoading,
+      hasLoadError: state.hasLoadError,
+    );
+    for (final n in items) {
       _notificationService.markAsRead(n.id).catchError((_) {});
     }
   }
 }
 
 final providerNotifsProvider =
-    StateNotifierProvider.autoDispose<NotifsNotifier, List<Notif>>((ref) {
+    StateNotifierProvider.autoDispose<NotifsNotifier, ProviderNotifsState>(
+        (ref) {
   final notificationService = ref.watch(apiNotificationServiceProvider);
   return NotifsNotifier(notificationService);
 });

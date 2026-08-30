@@ -16,4 +16,19 @@ void main() {
     expect(clientAnnouncementRoute('/profile/payments'), '/notifications');
     expect(clientAnnouncementRoute(null), '/notifications');
   });
+
+  test('tray destinations are stacked above the client dashboard', () {
+    expect(
+      clientTrayNavigationStack('/notifications'),
+      [clientDashboardRoute, '/notifications'],
+    );
+    expect(
+      clientTrayNavigationStack('/profile/support'),
+      [clientDashboardRoute, '/profile/support'],
+    );
+    expect(
+      clientTrayNavigationStack(clientDashboardRoute),
+      [clientDashboardRoute],
+    );
+  });
 }
