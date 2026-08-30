@@ -2466,6 +2466,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         .trim()
         .toUpperCase();
     final router = ref.read(goRouterProvider);
+
+    void openSystemTrayDestination(String destination) {
+      openProviderSystemTrayDestination(
+        destination: destination,
+        go: router.go,
+        push: (route) => unawaited(router.push(route)),
+      );
+    }
+
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
     if (type != null && isEarningsSettlementNotification(type)) {
@@ -2517,7 +2526,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           ref.read(authControllerProvider.notifier).refreshProfile(),
         );
       }
-      router.go(lifecycleRoute);
+      openSystemTrayDestination(lifecycleRoute);
       releaseUntransferredRideClaim();
       return;
     }
@@ -2911,7 +2920,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
     switch (type) {
       case NotificationPayload.typeAnnouncement:
-        router.go(
+        openSystemTrayDestination(
           providerAnnouncementRoute(
             payload[NotificationPayload.keyDestination],
           ),

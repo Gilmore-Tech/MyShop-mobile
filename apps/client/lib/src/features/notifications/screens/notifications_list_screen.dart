@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,30 +10,58 @@ import '../providers/notifications_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
-class NotificationsListScreen extends ConsumerWidget {
+class NotificationsListScreen extends ConsumerStatefulWidget {
   const NotificationsListScreen({super.key});
+
+  @override
+  ConsumerState<NotificationsListScreen> createState() =>
+      _NotificationsListScreenState();
+}
+
+class _NotificationsListScreenState
+    extends ConsumerState<NotificationsListScreen> {
+  late DateTime _now;
+  Timer? _relativeTimeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    // Relative labels remain correct while the inbox stays open. This is only
+    // a local rebuild; it makes no API, map, or Redis calls.
+    _relativeTimeTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _relativeTimeTimer?.cancel();
+    super.dispose();
+  }
 
   void _openNotification(
     BuildContext context,
-    WidgetRef ref,
     Notif notification,
   ) {
     ref.read(notifsProvider.notifier).markRead(notification.id);
     final eventType = NotificationPayload.normaliseType(notification.eventType);
     if (eventType != NotificationPayload.typeAnnouncement) return;
-    context.go(
-      clientAnnouncementRoute(
-        notification.payload[NotificationPayload.keyDestination],
-      ),
+    final destination = clientAnnouncementRoute(
+      notification.payload[NotificationPayload.keyDestination],
     );
+    // This tap originated inside the app, so preserve the inbox beneath the
+    // destination. A destination of "notifications" already means this page.
+    if (destination != '/notifications') context.push(destination);
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
-    final notifs = ref.watch(notifsProvider);
+    final notificationsState = ref.watch(notifsProvider);
+    final notifs = notificationsState.asData?.value ?? const <Notif>[];
     final unread = notifs.where((n) => !n.isRead).length;
 
     return Scaffold(
@@ -40,15 +70,24 @@ class NotificationsListScreen extends ConsumerWidget {
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go(clientDashboardRoute),
         ),
         title: Row(
           children: [
-            Text('Notifications',
+            Flexible(
+              child: Text(
+                'Notifications',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    color: MyShopColors.textPrimary,
-                    fontSize: w * 0.044,
-                    fontWeight: FontWeight.w700)),
+                  color: MyShopColors.textPrimary,
+                  fontSize: w * 0.044,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
             if (unread > 0) ...[
               SizedBox(width: w * 0.020),
               Container(
@@ -70,23 +109,45 @@ class NotificationsListScreen extends ConsumerWidget {
         ),
         actions: [
           if (unread > 0)
-            TextButton(
+            IconButton(
               onPressed: () => ref.read(notifsProvider.notifier).markAllRead(),
-              child: Text('Mark all read',
-                  style: TextStyle(
-                      color: MyShopColors.primaryGold, fontSize: w * 0.032)),
+              tooltip: 'Mark all read',
+              icon: const Icon(
+                Icons.done_all_rounded,
+                color: MyShopColors.primaryGold,
+              ),
             ),
         ],
       ),
-      body: notifs.isEmpty
-          ? _EmptyState(w: w, h: h)
-          : _NotifList(
-              notifs: notifs,
-              onTap: (notification) =>
-                  _openNotification(context, ref, notification),
-              w: w,
-              h: h,
-            ),
+      body: notificationsState.when(
+        loading: () => const _LoadingState(),
+        error: (_, __) => _ErrorState(
+          onRetry: () => ref.read(notifsProvider.notifier).reload(),
+          w: w,
+        ),
+        data: (notifications) => RefreshIndicator(
+          onRefresh: () => ref.read(notifsProvider.notifier).reload(),
+          color: MyShopColors.primaryGold,
+          child: notifications.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(w: w, h: h),
+                    ),
+                  ],
+                )
+              : _NotifList(
+                  notifs: notifications,
+                  now: _now,
+                  onTap: (notification) =>
+                      _openNotification(context, notification),
+                  w: w,
+                  h: h,
+                ),
+        ),
+      ),
     );
   }
 }
@@ -95,11 +156,13 @@ class NotificationsListScreen extends ConsumerWidget {
 
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
+  final DateTime now;
   final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifList({
     required this.notifs,
+    required this.now,
     required this.onTap,
     required this.w,
     required this.h,
@@ -107,27 +170,44 @@ class _NotifList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Group into "Today" and "Earlier"
-    final today = notifs.where((n) => _isToday(n.time)).toList();
-    final earlier = notifs.where((n) => !_isToday(n.time)).toList();
+    // Use the actual local calendar date. The old implementation tried to
+    // infer "today" from strings such as "2 hours ago", so ISO timestamps
+    // from the API incorrectly placed every row under Earlier.
+    final today =
+        notifs.where((n) => clientNotificationIsToday(n, now: now)).toList();
+    final earlier =
+        notifs.where((n) => !clientNotificationIsToday(n, now: now)).toList();
 
     return ListView(
       padding: EdgeInsets.symmetric(vertical: h * 0.010),
       children: [
         if (today.isNotEmpty) ...[
           _GroupLabel(label: 'TODAY', w: w),
-          ...today.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...today.map(
+            (n) => _NotifTile(
+              notif: n,
+              now: now,
+              onTap: onTap,
+              w: w,
+              h: h,
+            ),
+          ),
         ],
         if (earlier.isNotEmpty) ...[
           _GroupLabel(label: 'EARLIER', w: w),
-          ...earlier.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...earlier.map(
+            (n) => _NotifTile(
+              notif: n,
+              now: now,
+              onTap: onTap,
+              w: w,
+              h: h,
+            ),
+          ),
         ],
       ],
     );
   }
-
-  static bool _isToday(String time) =>
-      time == 'Just now' || time.contains('min') || time.contains('hour');
 }
 
 class _GroupLabel extends StatelessWidget {
@@ -154,11 +234,13 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
+  final DateTime now;
   final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifTile({
     required this.notif,
+    required this.now,
     required this.onTap,
     required this.w,
     required this.h,
@@ -167,6 +249,8 @@ class _NotifTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (iconData, iconColor, iconBg) = _iconFor(notif.type);
+    final relativeTime = clientNotificationTimeAgo(notif, now: now);
+    final absoluteTime = clientNotificationLocalDateTime(notif);
 
     return InkWell(
       onTap: () => onTap(notif),
@@ -204,7 +288,7 @@ class _NotifTile extends StatelessWidget {
                             )),
                       ),
                       SizedBox(width: w * 0.020),
-                      Text(notif.time,
+                      Text(relativeTime,
                           style: TextStyle(
                               color: MyShopColors.textSecondary,
                               fontSize: w * 0.028)),
@@ -216,6 +300,16 @@ class _NotifTile extends StatelessWidget {
                           color: MyShopColors.textSecondary,
                           fontSize: w * 0.032,
                           height: 1.4)),
+                  if (absoluteTime != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      absoluteTime,
+                      style: TextStyle(
+                        color: MyShopColors.textSecondary.withAlpha(180),
+                        fontSize: w * 0.027,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -272,6 +366,67 @@ class _NotifTile extends StatelessWidget {
             MyShopColors.surfaceGrey
           ),
       };
+}
+
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(color: MyShopColors.primaryGold),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.onRetry, required this.w});
+
+  final VoidCallback onRetry;
+  final double w;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(w * 0.08),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              color: MyShopColors.textSecondary,
+              size: w * 0.12,
+            ),
+            SizedBox(height: w * 0.04),
+            Text(
+              'Could not load notifications',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.040,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: w * 0.02),
+            Text(
+              'Check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textSecondary,
+                fontSize: w * 0.032,
+              ),
+            ),
+            SizedBox(height: w * 0.05),
+            FilledButton(
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────────

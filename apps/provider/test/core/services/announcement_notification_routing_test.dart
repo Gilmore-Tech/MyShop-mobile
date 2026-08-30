@@ -16,4 +16,16 @@ void main() {
     expect(providerAnnouncementRoute('/account/payouts'), '/notifications');
     expect(providerAnnouncementRoute(null), '/notifications');
   });
+
+  test('tray destination seeds home before pushing the allowlisted route', () {
+    final operations = <String>[];
+
+    openProviderSystemTrayDestination(
+      destination: providerAnnouncementRoute('promotions'),
+      go: (route) => operations.add('go:$route'),
+      push: (route) => operations.add('push:$route'),
+    );
+
+    expect(operations, ['go:/home', 'push:/earnings']);
+  });
 }

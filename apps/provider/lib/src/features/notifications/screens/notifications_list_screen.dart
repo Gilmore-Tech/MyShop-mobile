@@ -16,23 +16,59 @@ import '../providers/notifications_provider.dart';
 /// onto the same five icons.
 ///
 /// EDD § 5.4 — GET /notifications, PATCH /notifications/:id/read.
-class ProviderNotificationsScreen extends ConsumerWidget {
+class ProviderNotificationsScreen extends ConsumerStatefulWidget {
   const ProviderNotificationsScreen({super.key});
+
+  @override
+  ConsumerState<ProviderNotificationsScreen> createState() =>
+      _ProviderNotificationsScreenState();
+}
+
+class _ProviderNotificationsScreenState
+    extends ConsumerState<ProviderNotificationsScreen> {
+  Timer? _relativeTimeTicker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Recompute relative labels locally. This makes "1 min ago" advance while
+    // the inbox is open without polling the API.
+    _relativeTimeTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _relativeTimeTicker?.cancel();
+    super.dispose();
+  }
+
+  void _goBack(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    // A tray deep-link is opened with go(), so there is no meaningful inbox
+    // route below it. Always return to the active role's /home dashboard.
+    context.go('/home');
+  }
 
   void _openNotification(
     BuildContext context,
-    WidgetRef ref,
     Notif notification,
   ) {
     ref.read(providerNotifsProvider.notifier).markRead(notification.id);
 
     final eventType = NotificationPayload.normaliseType(notification.eventType);
     if (eventType == NotificationPayload.typeAnnouncement) {
-      context.go(
-        providerAnnouncementRoute(
-          notification.payload[NotificationPayload.keyDestination],
-        ),
+      final route = providerAnnouncementRoute(
+        notification.payload[NotificationPayload.keyDestination],
       );
+      // Do not stack a second copy of the inbox for an announcement whose
+      // destination is Notifications. Other in-app taps push so Back returns
+      // to this inbox and then to the user's original screen.
+      if (route != '/notifications') context.push(route);
       return;
     }
 
@@ -48,74 +84,101 @@ class ProviderNotificationsScreen extends ConsumerWidget {
       // the authoritative verification response on entry.
       unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
     }
-    context.go(route);
+    // Lifecycle destinations come only from the local allowlist above. Push
+    // them so opening an inbox item never destroys the user's prior stack.
+    context.push(route);
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
-    final notifs = ref.watch(providerNotifsProvider);
+    final notificationState = ref.watch(providerNotifsProvider);
+    final notifs = notificationState.items;
     final unread = notifs.where((n) => !n.isRead).length;
 
-    return Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      appBar: AppBar(
-        backgroundColor: MyShopColors.surfaceWhite,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: Row(
-          children: [
-            Text('Notifications',
-                style: TextStyle(
+    return PopScope(
+      canPop: context.canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBack(context);
+      },
+      child: Scaffold(
+        backgroundColor: MyShopColors.offWhite,
+        appBar: AppBar(
+          backgroundColor: MyShopColors.surfaceWhite,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => _goBack(context),
+          ),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'Notifications',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     color: MyShopColors.textPrimary,
                     fontSize: w * 0.044,
-                    fontWeight: FontWeight.w700)),
-            if (unread > 0) ...[
-              SizedBox(width: w * 0.020),
-              Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
-                decoration: BoxDecoration(
-                  color: MyShopColors.primaryGold,
-                  borderRadius: BorderRadius.circular(20),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                child: Text('$unread',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w700,
-                    )),
               ),
+              if (unread > 0) ...[
+                SizedBox(width: w * 0.020),
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGold,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('$unread',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: w * 0.026,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ),
+              ],
             ],
+          ),
+          actions: [
+            if (unread > 0)
+              IconButton(
+                onPressed: () =>
+                    ref.read(providerNotifsProvider.notifier).markAllRead(),
+                tooltip: 'Mark all as read',
+                icon: const Icon(
+                  Icons.done_all_rounded,
+                  color: MyShopColors.primaryGold,
+                ),
+              ),
           ],
         ),
-        actions: [
-          if (unread > 0)
-            TextButton(
-              onPressed: () =>
-                  ref.read(providerNotifsProvider.notifier).markAllRead(),
-              child: Text('Mark all read',
-                  style: TextStyle(
-                      color: MyShopColors.primaryGold, fontSize: w * 0.032)),
-            ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => ref.read(providerNotifsProvider.notifier).reload(),
-        color: MyShopColors.primaryGold,
-        child: notifs.isEmpty
-            ? _EmptyState(w: w, h: h)
-            : _NotifList(
-                notifs: notifs,
-                onTap: (notification) =>
-                    _openNotification(context, ref, notification),
-                w: w,
-                h: h,
-              ),
+        body: RefreshIndicator(
+          onRefresh: () => ref.read(providerNotifsProvider.notifier).reload(),
+          color: MyShopColors.primaryGold,
+          child: notificationState.isLoading && notifs.isEmpty
+              ? _LoadingState(w: w, h: h)
+              : notificationState.hasLoadError && notifs.isEmpty
+                  ? _LoadErrorState(
+                      w: w,
+                      h: h,
+                      onRetry: () =>
+                          ref.read(providerNotifsProvider.notifier).reload(),
+                    )
+                  : notifs.isEmpty
+                      ? _EmptyState(w: w, h: h)
+                      : _NotifList(
+                          notifs: notifs,
+                          onTap: (notification) =>
+                              _openNotification(context, notification),
+                          w: w,
+                          h: h,
+                        ),
+        ),
       ),
     );
   }
@@ -137,8 +200,9 @@ class _NotifList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final today = notifs.where((n) => _isToday(n.time)).toList();
-    final earlier = notifs.where((n) => !_isToday(n.time)).toList();
+    final today = notifs.where(providerNotificationIsToday).toList();
+    final earlier =
+        notifs.where((n) => !providerNotificationIsToday(n)).toList();
 
     return ListView(
       padding: EdgeInsets.symmetric(vertical: h * 0.010),
@@ -155,9 +219,6 @@ class _NotifList extends StatelessWidget {
       ],
     );
   }
-
-  static bool _isToday(String time) =>
-      time == 'Just now' || time.contains('min') || time.contains('hour');
 }
 
 class _GroupLabel extends StatelessWidget {
@@ -232,10 +293,7 @@ class _NotifTile extends StatelessWidget {
                             )),
                       ),
                       SizedBox(width: w * 0.020),
-                      Text(notif.time,
-                          style: TextStyle(
-                              color: MyShopColors.textSecondary,
-                              fontSize: w * 0.028)),
+                      _NotificationTime(notification: notif, w: w),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -303,6 +361,134 @@ class _NotifTile extends StatelessWidget {
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────────
+
+class _NotificationTime extends StatelessWidget {
+  const _NotificationTime({
+    required this.notification,
+    required this.w,
+  });
+
+  final Notif notification;
+  final double w;
+
+  @override
+  Widget build(BuildContext context) {
+    final relative = providerNotificationTimeAgo(
+      notification.createdAt,
+      fallback: notification.fallbackTimeAgo,
+    );
+    final exact = providerNotificationLocalDateTime(notification.createdAt);
+
+    if (relative.isEmpty && exact.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (relative.isNotEmpty)
+          Text(
+            relative,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color: MyShopColors.textSecondary,
+              fontSize: w * 0.028,
+            ),
+          ),
+        if (exact.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            exact,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color: MyShopColors.textSecondary.withAlpha(180),
+              fontSize: w * 0.024,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _LoadingState extends StatelessWidget {
+  final double w, h;
+  const _LoadingState({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: h * 0.28),
+        Center(
+          child: Column(
+            children: [
+              SizedBox(
+                width: w * 0.08,
+                height: w * 0.08,
+                child: const CircularProgressIndicator(
+                  color: MyShopColors.primaryGold,
+                  strokeWidth: 3,
+                ),
+              ),
+              SizedBox(height: h * 0.018),
+              Text(
+                'Loading notifications…',
+                style: TextStyle(
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.034,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoadErrorState extends StatelessWidget {
+  final double w, h;
+  final VoidCallback onRetry;
+  const _LoadErrorState({
+    required this.w,
+    required this.h,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: h * 0.20),
+        Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.cloud_off_rounded,
+                color: MyShopColors.textSecondary.withAlpha(100),
+                size: w * 0.16,
+              ),
+              SizedBox(height: h * 0.016),
+              Text(
+                'Could not load notifications',
+                style: TextStyle(
+                  color: MyShopColors.textPrimary,
+                  fontSize: w * 0.040,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: h * 0.012),
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _EmptyState extends StatelessWidget {
   final double w, h;

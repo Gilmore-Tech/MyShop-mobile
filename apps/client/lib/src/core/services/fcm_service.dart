@@ -1009,8 +1009,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
-  // Two-step navigation for deep-links: first land on the activity tab so
-  // the navigator has at least one route, then push the detail screen on
+  // Two-step navigation for tray deep-links: first land on the dashboard so
+  // the navigator has at least one safe route, then push the detail screen on
   // top. Without the leading `go`, `router.go(detailPath)` replaces the
   // entire stack with the detail and tapping back throws
   // `GoError: There is nothing to pop`. Detail routes here use
@@ -1018,8 +1018,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
   // nested under the shell), so the parent stack isn't reconstructed
   // automatically — we have to seed it.
   void pushDeepLink(GoRouter router, String path, {Object? extra}) {
-    router.go(AppRoutes.activity);
+    router.go(clientDashboardRoute);
     router.push(path, extra: extra);
+  }
+
+  void openTrayDestination(GoRouter router, String path) {
+    final stack = clientTrayNavigationStack(path);
+    router.go(stack.first);
+    if (stack.length > 1) router.push(stack.last);
   }
 
   fcm.onTapMessage = (payload) async {
@@ -1040,7 +1046,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
     switch (type) {
       case NotificationPayload.typeAnnouncement:
-        router.go(
+        openTrayDestination(
+          router,
           clientAnnouncementRoute(
             payload[NotificationPayload.keyDestination],
           ),

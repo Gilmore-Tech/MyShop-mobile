@@ -243,6 +243,18 @@ String providerAnnouncementRoute(Object? rawDestination) {
   };
 }
 
+/// Opens an allowlisted notification destination over a deterministic provider
+/// dashboard base. System-tray taps do not have a meaningful Flutter route
+/// beneath them, so seeding `/home` first makes AppBar and OS Back consistent.
+void openProviderSystemTrayDestination({
+  required String destination,
+  required void Function(String route) go,
+  required void Function(String route) push,
+}) {
+  go('/home');
+  if (destination != '/home') push(destination);
+}
+
 /// Returns the only corrective destination accepted for provider-document
 /// lifecycle notifications. Routing is derived from a known event type rather
 /// than an arbitrary server-supplied path.

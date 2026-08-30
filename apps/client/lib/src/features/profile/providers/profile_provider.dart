@@ -108,7 +108,7 @@ class AccountScreenNotifier
       // this provider rebuilds automatically when a push arrives or the
       // user marks one read on the notifications screen, so the badge
       // stays in sync without a separate /notifications/unread call.
-      final notifs = ref.watch(notifsProvider);
+      final notifs = ref.watch(notifsProvider).asData?.value ?? const <Notif>[];
       final unread = notifs.where((n) => !n.isRead).length;
 
       return AccountScreenData(
