@@ -1039,6 +1039,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         '[FCM-tap] type=$type (raw=$rawType) jobId=$jobId rideId=$rideId');
 
     switch (type) {
+      case NotificationPayload.typeAnnouncement:
+        router.go(
+          clientAnnouncementRoute(
+            payload[NotificationPayload.keyDestination],
+          ),
+        );
+        break;
+
       case NotificationPayload.typeCallIncoming:
         final callId = payload['callId'] as String?;
         if (callId == null || callId.isEmpty) {

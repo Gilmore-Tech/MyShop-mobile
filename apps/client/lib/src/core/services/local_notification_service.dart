@@ -23,6 +23,7 @@ class NotificationPayload {
   static const keyBookingId = 'bookingId';
   static const keyCallId = 'callId';
   static const keyExpiresAt = 'expiresAt';
+  static const keyDestination = 'destination';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_submitted`, `chat.message`).
@@ -128,6 +129,10 @@ class NotificationPayload {
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
+  /// Admin-authored push campaign. Its destination is resolved through the
+  /// local allowlist in [clientAnnouncementRoute].
+  static const typeAnnouncement = 'announcement';
+
   /// In-app voice call fallback. iOS should route this through CallKit when
   /// Flutter receives it; background/locked iOS must still rely on PushKit.
   static const typeCallIncoming = 'call_incoming';
@@ -167,6 +172,20 @@ class NotificationPayload {
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
   /// conversational pings — time-sensitive but not call-style.
   static const Set<String> chatTypes = {typeNewMessage};
+}
+
+/// Resolves an admin announcement destination without ever trusting a remote
+/// path. App-store campaigns fall back to the inbox until the payload contract
+/// includes a separately validated store URL.
+String clientAnnouncementRoute(Object? rawDestination) {
+  final destination = rawDestination?.toString().trim().toLowerCase();
+  return switch (destination) {
+    'activity' => '/activity',
+    'support' => '/profile/support',
+    'promotions' => '/home',
+    'notifications' || 'app_store' => '/notifications',
+    _ => '/notifications',
+  };
 }
 
 /// Thin wrapper around `flutter_local_notifications`. Responsibilities:

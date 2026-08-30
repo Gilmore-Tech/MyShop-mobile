@@ -2910,6 +2910,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }
 
     switch (type) {
+      case NotificationPayload.typeAnnouncement:
+        router.go(
+          providerAnnouncementRoute(
+            payload[NotificationPayload.keyDestination],
+          ),
+        );
+        break;
+
       case NotificationPayload.typeCallIncoming:
         final callId = payload['callId'] as String?;
         if (callId == null || callId.isEmpty) {

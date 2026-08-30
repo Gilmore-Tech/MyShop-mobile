@@ -26,6 +26,7 @@ class NotificationPayload {
   static const keyExpiresAt = 'expiresAt';
   static const keyOfferId = 'offerId';
   static const keyActionId = 'actionId';
+  static const keyDestination = 'destination';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_accepted`, `chat.message`).
@@ -120,6 +121,10 @@ class NotificationPayload {
 
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
+
+  /// Admin-authored push campaign. Its destination is resolved through the
+  /// local allowlist in [providerAnnouncementRoute].
+  static const typeAnnouncement = 'announcement';
 
   // Provider-document lifecycle alerts. These route to the corrective
   // Documents & Verification screen instead of silently falling back Home.
@@ -222,6 +227,20 @@ class NotificationPayload {
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
   /// conversational pings — time-sensitive but not call-style.
   static const Set<String> chatTypes = {typeNewMessage};
+}
+
+/// Resolves an admin announcement destination without ever trusting a remote
+/// path. App-store campaigns fall back to the inbox until the payload contract
+/// includes a separately validated store URL.
+String providerAnnouncementRoute(Object? rawDestination) {
+  final destination = rawDestination?.toString().trim().toLowerCase();
+  return switch (destination) {
+    'activity' => '/trips',
+    'support' => '/account/support',
+    'promotions' => '/earnings',
+    'notifications' || 'app_store' => '/notifications',
+    _ => '/notifications',
+  };
 }
 
 /// Returns the only corrective destination accepted for provider-document

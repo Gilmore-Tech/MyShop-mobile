@@ -105,4 +105,23 @@ void main() {
       'legacy_1',
     ]);
   });
+
+  test('parses announcement as a first-class inbox type', () {
+    final notifications = providerNotificationItemsFromResponse({
+      'data': [
+        {
+          'id': 'announcement_1',
+          'channel': 'in_app',
+          'type': 'announcement',
+          'title': 'Service update',
+          'payload': {'destination': 'promotions'},
+        },
+      ],
+    });
+
+    expect(notifications, hasLength(1));
+    expect(notifications.single.type, NotifType.announcement);
+    expect(notifications.single.eventType, 'announcement');
+    expect(notifications.single.payload['destination'], 'promotions');
+  });
 }

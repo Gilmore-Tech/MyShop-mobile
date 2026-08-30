@@ -26,6 +26,16 @@ class ProviderNotificationsScreen extends ConsumerWidget {
   ) {
     ref.read(providerNotifsProvider.notifier).markRead(notification.id);
 
+    final eventType = NotificationPayload.normaliseType(notification.eventType);
+    if (eventType == NotificationPayload.typeAnnouncement) {
+      context.go(
+        providerAnnouncementRoute(
+          notification.payload[NotificationPayload.keyDestination],
+        ),
+      );
+      return;
+    }
+
     // Never navigate to a route supplied by the notification payload. Only
     // known event types can resolve to a local corrective destination.
     final route = providerLifecycleNotificationRoute(notification.eventType);
@@ -278,6 +288,11 @@ class _NotifTile extends StatelessWidget {
             Icons.security_rounded,
             MyShopColors.error,
             MyShopColors.errorLight
+          ),
+        NotifType.announcement => (
+            Icons.campaign_rounded,
+            MyShopColors.primaryGold,
+            MyShopColors.primaryGoldLight
           ),
         NotifType.system => (
             Icons.notifications_rounded,

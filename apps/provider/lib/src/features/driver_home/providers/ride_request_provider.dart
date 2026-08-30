@@ -447,6 +447,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return 'This ride request was not sent to you.';
       case 'DRIVER_PROFILE_REQUIRED':
         return 'Your driver profile is incomplete — finish verification to accept rides.';
+      case 'PROVIDER_CANCELLATION_BLOCK':
+        return 'New ride requests are temporarily unavailable because your provider account reached the cancellation limit. Contact support if you need help.';
       default:
         return 'Could not accept the ride. Please try again.';
     }

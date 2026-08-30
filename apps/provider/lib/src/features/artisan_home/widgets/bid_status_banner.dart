@@ -40,6 +40,7 @@ class BidStatusBanner extends StatefulWidget {
     required this.status,
     this.expiresAt,
     this.showCountdown = true,
+    this.directedAssignment = false,
     this.onEdit,
     this.onWithdraw,
     this.onMessage,
@@ -59,6 +60,10 @@ class BidStatusBanner extends StatefulWidget {
   /// their own pace — so we hide the timer and show a "Quote when ready"
   /// hint instead.
   final bool showCountdown;
+
+  /// The bid is the quote requested from a specifically assigned artisan.
+  /// After submission it waits for the client; it is not ready to start yet.
+  final bool directedAssignment;
 
   final VoidCallback? onEdit;
   final VoidCallback? onWithdraw;
@@ -163,7 +168,9 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
                 child: Text(
                   widget.showCountdown
                       ? 'Bid pending — waiting'
-                      : 'Quote when ready',
+                      : widget.directedAssignment
+                          ? 'Waiting for client'
+                          : 'Quote submitted',
                   style: MyShopTypography.h3.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -204,7 +211,9 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
           Text(
             widget.showCountdown
                 ? 'The client is currently reviewing all submitted bids. You will be notified instantly if your bid is selected or if further details are needed.'
-                : "An admin has assigned this job to you. Submit your price whenever you're ready — there's no bidding window on admin-routed jobs.",
+                : widget.directedAssignment
+                    ? 'Your quote was sent to the client. You will be notified when they accept it; do not start work before confirmation.'
+                    : 'Your quote has been submitted and is waiting for review.',
             style: MyShopTypography.body2.copyWith(
               color: MyShopColors.textSecondary,
               height: 1.5,

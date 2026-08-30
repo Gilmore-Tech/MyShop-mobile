@@ -24,6 +24,19 @@ import '../providers/bid_drafts_provider.dart';
 import '../widgets/bid_confirmation_modal.dart';
 import '../widgets/bid_status_banner.dart';
 
+/// A successful quote submission only opens active work when the server
+/// explicitly confirms it. `admin_assigned` by itself still means the client
+/// must accept the directed quote.
+bool submittedBidResponseIsConfirmed(Map<String, dynamic> response) {
+  final bidStatus = response['status'] ?? response['bidStatus'];
+  if (bidStatus == 'accepted') return true;
+  final rawJob = response['job'];
+  final nestedJobStatus =
+      rawJob is Map<String, dynamic> ? rawJob['status'] : null;
+  final jobStatus = response['jobStatus'] ?? nestedJobStatus;
+  return jobStatus == 'confirmed';
+}
+
 /// Submit bid bottom sheet — shown over the Request Details screen.
 ///
 /// PRD Reference: PRD 5.3 — bid submission with category-minimum validation,
@@ -305,11 +318,17 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     }
   }
 
-  /// Extract `expiresAt` from the bid response so the countdown stays
-  /// anchored to the backend's clock rather than the device's.
+  /// Extract the server-authored deadline from the bid response. Directed
+  /// quotes use the client's acceptance deadline; normal bids keep using the
+  /// bid expiry.
   DateTime? _expiresFromResponse(Map<String, dynamic>? response) {
     if (response == null) return null;
-    final raw = response['expiresAt'] ?? response['bidExpiresAt'];
+    final assignment = response['assignment'];
+    final acceptDeadline = assignment is Map<String, dynamic>
+        ? assignment['acceptDeadlineAt']
+        : null;
+    final raw =
+        acceptDeadline ?? response['expiresAt'] ?? response['bidExpiresAt'];
     if (raw is String) return DateTime.tryParse(raw);
     return null;
   }
@@ -329,6 +348,8 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
       case 'BID_BELOW_MINIMUM':
         return 'Your bid is below the minimum for this category. '
             'Increase the amount and try again.';
+      case 'PROVIDER_CANCELLATION_BLOCK':
+        return 'New job requests are temporarily unavailable because your provider account reached the cancellation limit. Contact support if you need help.';
       default:
         return userSafeApiErrorMessage(
           e,
@@ -512,11 +533,9 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
       }
     } catch (_) {}
 
-    // On an admin-assigned job the backend auto-confirms the bid and moves
-    // the job straight to `confirmed` — we use that to skip the "pending"
-    // banner below and land on the active-job flow.
-    final wasAdminAssigned = widget.job.status == JobStatus.adminAssigned ||
-        _wasAutoAccepted(bidResponse);
+    // A directed assignment remains pre-work after the quote is submitted.
+    // Only an explicit accepted/confirmed response may enter active work.
+    final wasConfirmed = submittedBidResponseIsConfirmed(bidResponse);
 
     if (!mounted) return;
     final navigator = Navigator.of(context);
@@ -537,9 +556,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     );
     if (!rootContext.mounted) return;
 
-    if (wasAdminAssigned) {
-      // Auto-confirmed — land the artisan directly on the active-job flow,
-      // not the "pending, waiting for client" banner.
+    if (wasConfirmed) {
       rootContext.go('/active-job');
       return;
     }
@@ -552,17 +569,6 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         submittedBidAmount: ghs,
       ),
     );
-  }
-
-  /// True when the submitBid response indicates the bid was auto-accepted
-  /// (i.e. admin-assigned flow where the artisan was pre-picked).
-  bool _wasAutoAccepted(Map<String, dynamic>? response) {
-    if (response == null) return false;
-    final bidStatus = response['status'] ?? response['bidStatus'];
-    if (bidStatus == 'accepted') return true;
-    final jobStatus = response['jobStatus'] ?? response['job']?['status'];
-    if (jobStatus == 'confirmed') return true;
-    return false;
   }
 
   @override

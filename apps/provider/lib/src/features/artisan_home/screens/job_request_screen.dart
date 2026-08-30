@@ -168,6 +168,30 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
 
   Future<void> _declineRequest(Job job) async {
     if (_decliningRequest) return;
+    if (job.isAdminAssigned) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Decline assigned job?'),
+          content: const Text(
+            'MyShop assigned this request specifically to you. Declining sends '
+            'it back for reassignment and you will no longer be able to quote.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep assignment'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+              child: const Text('Decline assignment'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     setState(() => _decliningRequest = true);
     try {
       await ref.read(jobServiceProvider).declineJobRequest(
@@ -184,8 +208,10 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       if (!mounted) return;
       setState(() => _decliningRequest = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not decline this request. Please try again.'),
+        SnackBar(
+          content: Text(job.isAdminAssigned
+              ? 'Could not decline this assignment. Please try again.'
+              : 'Could not decline this request. Please try again.'),
         ),
       );
     }
@@ -256,6 +282,11 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                 liveEntry.job.clientPhotoUrl ?? source.clientPhotoUrl,
             categoryName: liveEntry.job.categoryName ?? source.categoryName,
             addressText: liveEntry.job.addressText ?? source.addressText,
+            assignment: liveEntry.job.assignment ?? source.assignment,
+            assignedArtisanId:
+                liveEntry.job.assignedArtisanId ?? source.assignedArtisanId,
+            assignedByAdmin:
+                liveEntry.job.assignedByAdmin ?? source.assignedByAdmin,
           );
     final effectiveBidStatus = liveEntry != null
         ? _bidStatusFor(liveEntry, fallback: widget.bidStatus)
@@ -306,7 +337,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       }
     }
     final canPlaceBid = effectiveBidStatus == BidStatus.none &&
-        _isBiddable(
+        isJobBiddableForArtisan(
           effectiveJob,
           artisanUserId: currentUser?.id,
         );
@@ -344,6 +375,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       // countdown for a "Quote when ready" hint.
                       showCountdown:
                           effectiveJob.status != JobStatus.adminAssigned,
+                      directedAssignment: effectiveJob.isAdminAssigned,
                       onAcceptStartJob: () {
                         // Seed the active-job slot so the next screen can
                         // drive the status machine from this job. Kicking
@@ -387,6 +419,11 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     etaMinutes: etaMinutes,
                     postedAgo: _formatPostedAgo(effectiveJob.createdAt),
                   ),
+                  if (effectiveJob.isAdminAssigned &&
+                      effectiveBidStatus == BidStatus.none) ...[
+                    const SizedBox(height: MyShopSpacing.sm),
+                    const _DirectedAssignmentNotice(),
+                  ],
                   const SizedBox(height: MyShopSpacing.md),
                   _LocationCard(
                     label: effectiveJob.addressText ?? 'Location pending',
@@ -462,6 +499,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     ] else
                       _NotBiddableNotice(
                         status: effectiveJob.status,
+                        assignmentPhase: effectiveJob.assignment?.phase,
                         assignedToMe: effectiveJob.assignedArtisanId != null &&
                             effectiveJob.assignedArtisanId ==
                                 ref.watch(currentUserProvider)?.id,
@@ -496,6 +534,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                 ),
                 onSkip: () => _declineRequest(effectiveJob),
                 skipping: _decliningRequest,
+                directedAssignment: effectiveJob.isAdminAssigned,
               ),
           ],
         ),
@@ -684,9 +723,13 @@ bool _isActiveWork(JobStatus status) =>
 ///
 /// Everything else (`pendingAdmin`, `queued`, `confirmed+`, `cancelled`)
 /// rejects bids with `JOB_NOT_OPEN` (400) — we mirror that gate in the UI.
-bool _isBiddable(Job job, {String? artisanUserId}) {
+bool isJobBiddableForArtisan(Job job, {String? artisanUserId}) {
   if (job.status == JobStatus.open) return true;
   if (job.status == JobStatus.adminAssigned) {
+    final phase = job.assignment?.phase;
+    if (phase != null && phase != JobAssignmentPhase.awaitingQuote) {
+      return false;
+    }
     // Only the artisan the admin picked can quote on an admin-assigned job.
     return artisanUserId != null &&
         job.assignedArtisanId != null &&
@@ -694,6 +737,13 @@ bool _isBiddable(Job job, {String? artisanUserId}) {
   }
   return false;
 }
+
+({String primary, String secondary}) jobRequestActionLabels({
+  required bool directedAssignment,
+}) =>
+    directedAssignment
+        ? (primary: 'Submit quote', secondary: 'Decline assignment')
+        : (primary: 'Submit bid', secondary: 'Skip');
 
 double _distanceKm(double lat1, double lng1, double lat2, double lng2) {
   final meters = Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
@@ -707,15 +757,15 @@ class _NotBiddableNotice extends StatelessWidget {
   const _NotBiddableNotice({
     required this.status,
     this.assignedToMe = false,
+    this.assignmentPhase,
   });
 
   final JobStatus status;
 
-  /// True when the job is admin-assigned and this artisan is the one
-  /// picked. (We only get here if `_isBiddable` returned false — which for
-  /// an admin-assigned job means the assignment belongs to someone else,
-  /// so this is almost always false.)
+  /// True when the job is admin-assigned and this artisan is the one picked.
+  /// The notice also uses this after a quote advances beyond `awaiting_quote`.
   final bool assignedToMe;
+  final JobAssignmentPhase? assignmentPhase;
 
   (String, String, IconData, Color) get _content {
     switch (status) {
@@ -728,6 +778,22 @@ class _NotBiddableNotice extends StatelessWidget {
           MyShopColors.warning,
         );
       case JobStatus.adminAssigned:
+        if (assignmentPhase == JobAssignmentPhase.awaitingAdminReview) {
+          return (
+            'Quote under review',
+            'Your quote was submitted and is being reviewed. Wait for the next update before starting work.',
+            Icons.fact_check_outlined,
+            MyShopColors.warning,
+          );
+        }
+        if (assignmentPhase == JobAssignmentPhase.awaitingClientAccept) {
+          return (
+            'Waiting for client',
+            'Your quote was sent to the client. Start work only after they accept it.',
+            Icons.hourglass_top,
+            MyShopColors.warning,
+          );
+        }
         return assignedToMe
             ? (
                 'Ready to quote',
@@ -895,6 +961,52 @@ class _Header extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Decision summary + client card
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _DirectedAssignmentNotice extends StatelessWidget {
+  const _DirectedAssignmentNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.infoLight,
+        borderRadius: BorderRadius.circular(MyShopRadius.card),
+        border: Border.all(color: MyShopColors.info.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.assignment_ind_outlined,
+              color: MyShopColors.info, size: 20),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Assigned to you by MyShop',
+                  style: MyShopTypography.body1.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Review the request, submit your quote, then wait for the '
+                  'client to accept it before starting work.',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _JobDecisionHero extends StatelessWidget {
   const _JobDecisionHero({
@@ -1605,14 +1717,19 @@ class _JobRequestActionBar extends StatelessWidget {
     required this.onSubmitBid,
     required this.onSkip,
     required this.skipping,
+    required this.directedAssignment,
   });
 
   final VoidCallback onSubmitBid;
   final VoidCallback onSkip;
   final bool skipping;
+  final bool directedAssignment;
 
   @override
   Widget build(BuildContext context) {
+    final labels = jobRequestActionLabels(
+      directedAssignment: directedAssignment,
+    );
     return Container(
       padding: const EdgeInsets.fromLTRB(
         MyShopSpacing.md,
@@ -1628,12 +1745,20 @@ class _JobRequestActionBar extends StatelessWidget {
         children: [
           Expanded(
             flex: 2,
-            child: _DeclineButton(onTap: onSkip, loading: skipping),
+            child: _DeclineButton(
+              onTap: onSkip,
+              loading: skipping,
+              directedAssignment: directedAssignment,
+              label: labels.secondary,
+            ),
           ),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
             flex: 3,
-            child: _PlaceBidButton(onTap: skipping ? null : onSubmitBid),
+            child: _PlaceBidButton(
+              onTap: skipping ? null : onSubmitBid,
+              label: labels.primary,
+            ),
           ),
         ],
       ),
@@ -1642,9 +1767,10 @@ class _JobRequestActionBar extends StatelessWidget {
 }
 
 class _PlaceBidButton extends StatelessWidget {
-  const _PlaceBidButton({required this.onTap});
+  const _PlaceBidButton({required this.onTap, required this.label});
 
   final VoidCallback? onTap;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -1653,7 +1779,7 @@ class _PlaceBidButton extends StatelessWidget {
       child: ElevatedButton.icon(
         onPressed: onTap,
         icon: const Icon(Icons.edit_note, size: 19),
-        label: const Text('Submit bid'),
+        label: Text(label),
         style: ElevatedButton.styleFrom(
           backgroundColor: MyShopColors.buttonPrimary,
           foregroundColor: MyShopColors.textOnDarkSlate,
@@ -1869,10 +1995,17 @@ class _BidDraftBanner extends StatelessWidget {
 }
 
 class _DeclineButton extends StatelessWidget {
-  const _DeclineButton({required this.onTap, this.loading = false});
+  const _DeclineButton({
+    required this.onTap,
+    this.loading = false,
+    this.directedAssignment = false,
+    required this.label,
+  });
 
   final VoidCallback onTap;
   final bool loading;
+  final bool directedAssignment;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -1887,7 +2020,13 @@ class _DeclineButton extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.close, size: 18),
-        label: Text(loading ? 'Skipping…' : 'Skip'),
+        label: Text(
+          loading
+              ? directedAssignment
+                  ? 'Declining…'
+                  : 'Skipping…'
+              : label,
+        ),
         style: OutlinedButton.styleFrom(
           foregroundColor: MyShopColors.error,
           side: const BorderSide(color: MyShopColors.error),

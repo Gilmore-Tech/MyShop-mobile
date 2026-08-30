@@ -79,7 +79,9 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
   @override
   void initState() {
     super.initState();
-    final deadline = DateTime.tryParse(widget.job.expiresAt ?? '')?.toUtc();
+    final deadline = DateTime.tryParse(
+      widget.job.assignment?.quoteDeadlineAt ?? widget.job.expiresAt ?? '',
+    )?.toUtc();
     _remaining = deadline == null
         ? _kIncomingJobFallbackTimeout
         : deadline.difference(DateTime.now().toUtc());
@@ -173,11 +175,37 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
 
   Future<void> _skip() async {
     if (_skipping) return;
+    if (widget.job.isAdminAssigned) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Decline assigned job?'),
+          content: const Text(
+            'This request was assigned specifically to you. Declining returns '
+            'it to MyShop for reassignment.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep assignment'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+              child: const Text('Decline assignment'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     setState(() => _skipping = true);
     try {
       await ref.read(jobServiceProvider).declineJobRequest(
             widget.job.id,
-            reason: 'provider_skipped',
+            reason: widget.job.isAdminAssigned
+                ? 'provider_declined'
+                : 'provider_skipped',
           );
       ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
       await clearIncomingRequestAlert(
@@ -189,8 +217,11 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
       if (!mounted) return;
       setState(() => _skipping = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not skip this request. Try again.')),
+        SnackBar(
+          content: Text(widget.job.isAdminAssigned
+              ? 'Could not decline this assignment. Try again.'
+              : 'Could not skip this request. Try again.'),
+        ),
       );
     }
   }
@@ -246,7 +277,7 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'NEW JOB REQUEST  ·  $_countdownLabel',
+                  '${job.isAdminAssigned ? 'ASSIGNED JOB' : 'NEW JOB REQUEST'}  ·  $_countdownLabel',
                   style: MyShopTypography.overline.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
@@ -354,7 +385,7 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
 
           // View details button
           _PrimaryButton(
-            label: 'VIEW DETAILS',
+            label: job.isAdminAssigned ? 'REVIEW & QUOTE' : 'VIEW DETAILS',
             onTap: () => _viewDetails(context),
           ),
           const SizedBox(height: MyShopSpacing.sm),
@@ -364,7 +395,13 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
             child: TextButton(
               onPressed: _skipping ? null : _skip,
               child: Text(
-                _skipping ? 'Skipping…' : 'Skip / Ignore',
+                _skipping
+                    ? job.isAdminAssigned
+                        ? 'Declining…'
+                        : 'Skipping…'
+                    : job.isAdminAssigned
+                        ? 'Decline assignment'
+                        : 'Skip / Ignore',
                 style: MyShopTypography.body1.copyWith(
                   color: MyShopColors.textSecondary,
                   fontWeight: FontWeight.w700,
