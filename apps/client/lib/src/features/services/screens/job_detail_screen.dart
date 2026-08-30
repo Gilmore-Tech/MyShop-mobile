@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart' show JobAssignmentPhase;
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
@@ -124,6 +125,8 @@ class _JobDetailBody extends StatelessWidget {
           jobId: job.id,
           jobTitle: job.title,
           selectedArtisanId: job.selectedArtisanId,
+          bidCount: job.bids.count,
+          assignmentPhase: job.assignment?.phase,
           status: job.status,
           isPaymentAcknowledgedPending: job.isPaymentAcknowledgedPending,
           clientPaymentMethod: job.clientPaymentMethod,
@@ -1188,10 +1191,12 @@ class _TimelineBadge extends StatelessWidget {
 
 // ── Bottom Action Bar ──────────────────────────────────────────────────────────
 
-class _BottomActionBar extends StatelessWidget {
+class _BottomActionBar extends ConsumerWidget {
   final String jobId;
   final String jobTitle;
   final String? selectedArtisanId;
+  final int bidCount;
+  final JobAssignmentPhase? assignmentPhase;
   final JobStatus status;
 
   /// Backend has recorded `clientPaymentAcknowledgedAt` but the job is
@@ -1209,6 +1214,8 @@ class _BottomActionBar extends StatelessWidget {
     required this.jobId,
     required this.jobTitle,
     required this.selectedArtisanId,
+    required this.bidCount,
+    required this.assignmentPhase,
     required this.status,
     required this.isPaymentAcknowledgedPending,
     required this.clientPaymentMethod,
@@ -1217,8 +1224,12 @@ class _BottomActionBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final effectiveBidCount = ref.watch(bidsForJobProvider(jobId)).maybeWhen(
+          data: (bids) => bids.length,
+          orElse: () => bidCount,
+        );
     final hasSelectedArtisan =
         selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
 
@@ -1242,6 +1253,15 @@ class _BottomActionBar extends StatelessWidget {
       content = _PendingPaymentTile(jobId: jobId, w: w, h: h);
     } else if (status == JobStatus.completed) {
       content = _JobCompletedTile(w: w, h: h);
+    } else if (status == JobStatus.adminAssigned &&
+        (assignmentPhase != JobAssignmentPhase.awaitingClientAccept ||
+            effectiveBidCount == 0 ||
+            !hasSelectedArtisan)) {
+      content = _AssignedQuoteWaitTile(
+        phase: assignmentPhase,
+        w: w,
+        h: h,
+      );
     } else if (hasSelectedArtisan) {
       content = _ViewSelectedBidButton(
         jobId: jobId,
@@ -1270,6 +1290,76 @@ class _BottomActionBar extends StatelessWidget {
         border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       child: content,
+    );
+  }
+}
+
+class _AssignedQuoteWaitTile extends StatelessWidget {
+  const _AssignedQuoteWaitTile({
+    required this.phase,
+    required this.w,
+    required this.h,
+  });
+
+  final JobAssignmentPhase? phase;
+  final double w;
+  final double h;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, detail) = switch (phase) {
+      JobAssignmentPhase.awaitingAdminReview => (
+          'Quote under review',
+          'MyShop is reviewing the artisan’s quote.',
+        ),
+      JobAssignmentPhase.awaitingClientAccept => (
+          'Quote received',
+          'Refreshing the quote so you can review it.',
+        ),
+      _ => (
+          'Artisan is preparing your quote',
+          'You will be notified as soon as it is ready.',
+        ),
+    };
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.041,
+        vertical: h * 0.012,
+      ),
+      decoration: BoxDecoration(
+        color: MyShopColors.infoLight,
+        borderRadius: BorderRadius.circular(w * 0.021),
+        border: Border.all(color: MyShopColors.info.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.hourglass_top_rounded, color: MyShopColors.info),
+          SizedBox(width: w * 0.026),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: w * 0.036,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    fontSize: w * 0.029,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1822,18 +1912,22 @@ class _ViewSelectedBidButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bidsAsync = ref.watch(bidsForJobProvider(jobId));
+    final bids = bidsAsync.asData?.value ?? const <ArtisanBid>[];
+    ArtisanBid? selected;
+    for (final bid in bids) {
+      if (bid.artisanId == selectedArtisanId) {
+        selected = bid;
+        break;
+      }
+    }
+    final canOpen = selected != null;
 
     return GestureDetector(
-      onTap: () {
-        final bids = bidsAsync.asData?.value ?? const [];
-        final selected = bids.firstWhere(
-          (b) => b.artisanId == selectedArtisanId,
-          orElse: () => bids.isNotEmpty
-              ? bids.first
-              : throw StateError('No bids available'),
-        );
-        context.push(AppRoutes.jobBidsPath(jobId, selected.bidId));
-      },
+      onTap: canOpen
+          ? () {
+              context.push(AppRoutes.jobBidsPath(jobId, selected!.bidId));
+            }
+          : null,
       child: Container(
         height: h * 0.062,
         padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -1865,7 +1959,7 @@ class _ViewSelectedBidButton extends ConsumerWidget {
                   ),
                   SizedBox(height: h * 0.002),
                   Text(
-                    'View Selected Bid',
+                    canOpen ? 'View Selected Quote' : 'Loading selected quote…',
                     style: TextStyle(
                       fontSize: w * 0.038,
                       fontWeight: FontWeight.w700,

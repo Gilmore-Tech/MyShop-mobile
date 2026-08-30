@@ -7,7 +7,7 @@ import '../../../core/di/providers.dart';
 
 // ── Model ────────────────────────────────────────────────────────────────────
 
-enum NotifType { ride, job, payment, promo, safety, system }
+enum NotifType { ride, job, payment, promo, safety, announcement, system }
 
 class Notif {
   const Notif({
@@ -115,6 +115,7 @@ Map<String, dynamic> _notificationPayload(Object? raw) {
 NotifType _parseNotifType(String? type) {
   final normalized = type?.trim().toLowerCase().replaceAll('.', '_');
   if (normalized == null || normalized.isEmpty) return NotifType.system;
+  if (normalized == 'announcement') return NotifType.announcement;
   if (normalized.startsWith('ride')) return NotifType.ride;
   if (normalized.startsWith('job') ||
       normalized.startsWith('bid') ||

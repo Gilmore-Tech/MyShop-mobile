@@ -3,12 +3,28 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/local_notification_service.dart';
 import '../providers/notifications_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 class NotificationsListScreen extends ConsumerWidget {
   const NotificationsListScreen({super.key});
+
+  void _openNotification(
+    BuildContext context,
+    WidgetRef ref,
+    Notif notification,
+  ) {
+    ref.read(notifsProvider.notifier).markRead(notification.id);
+    final eventType = NotificationPayload.normaliseType(notification.eventType);
+    if (eventType != NotificationPayload.typeAnnouncement) return;
+    context.go(
+      clientAnnouncementRoute(
+        notification.payload[NotificationPayload.keyDestination],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,7 +82,8 @@ class NotificationsListScreen extends ConsumerWidget {
           ? _EmptyState(w: w, h: h)
           : _NotifList(
               notifs: notifs,
-              onTap: (id) => ref.read(notifsProvider.notifier).markRead(id),
+              onTap: (notification) =>
+                  _openNotification(context, ref, notification),
               w: w,
               h: h,
             ),
@@ -78,7 +95,7 @@ class NotificationsListScreen extends ConsumerWidget {
 
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
-  final void Function(String) onTap;
+  final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifList({
@@ -137,7 +154,7 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
-  final void Function(String) onTap;
+  final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifTile({
@@ -152,7 +169,7 @@ class _NotifTile extends StatelessWidget {
     final (iconData, iconColor, iconBg) = _iconFor(notif.type);
 
     return InkWell(
-      onTap: () => onTap(notif.id),
+      onTap: () => onTap(notif),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding:
@@ -243,6 +260,11 @@ class _NotifTile extends StatelessWidget {
             Icons.security_rounded,
             MyShopColors.error,
             MyShopColors.errorLight
+          ),
+        NotifType.announcement => (
+            Icons.campaign_rounded,
+            MyShopColors.primaryGold,
+            MyShopColors.primaryGoldLight
           ),
         NotifType.system => (
             Icons.notifications_rounded,

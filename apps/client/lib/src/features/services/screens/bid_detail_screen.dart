@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_models/shared_models.dart' show ChatBookingType;
+import 'package:shared_models/shared_models.dart'
+    show ChatBookingType, JobAssignmentPhase;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -128,8 +129,9 @@ class _BidDetailBody extends ConsumerWidget {
     // making sense for non-winning bids — the client has already chosen,
     // or the job is done / cancelled. The `confirmed` path below still
     // takes over for the winning bid, which is what clients expect.
-    final jobLocked =
-        jobStatus != null && _isJobLocked(jobStatus) && !confirmed;
+    final jobLocked = job != null &&
+        isBidSelectionLockedForJob(job: job, bid: bid) &&
+        !confirmed;
 
     return Column(
       children: [
@@ -208,6 +210,7 @@ class _BidDetailBody extends ConsumerWidget {
           awaiting: awaiting,
           jobLocked: jobLocked,
           jobStatus: jobStatus,
+          assignmentPhase: job?.assignment?.phase,
           w: w,
           h: h,
         ),
@@ -223,7 +226,6 @@ class _BidDetailBody extends ConsumerWidget {
 /// an already-assigned job.
 bool _isJobLocked(JobStatus status) {
   switch (status) {
-    case JobStatus.adminAssigned:
     case JobStatus.confirmed:
     case JobStatus.enRoute:
     case JobStatus.arrived:
@@ -236,10 +238,34 @@ bool _isJobLocked(JobStatus status) {
     case JobStatus.open:
     case JobStatus.queued:
     case JobStatus.pendingAdmin:
+    case JobStatus.adminAssigned:
       // No artisan yet — the bid window expired with zero bids and the
       // job is sitting in the admin queue waiting for re-routing.
       return false;
   }
+}
+
+/// Whether this specific quote is selectable for the job's current phase.
+/// Directed quotes stay selectable in `awaiting_client_accept`, while quotes
+/// from any other artisan remain locked.
+bool isBidSelectionLockedForJob({
+  required JobDetail job,
+  required BidDetail bid,
+}) {
+  if (job.status != JobStatus.adminAssigned) {
+    return _isJobLocked(job.status);
+  }
+  final phase = job.assignment?.phase;
+  if (phase == JobAssignmentPhase.awaitingQuote ||
+      phase == JobAssignmentPhase.awaitingAdminReview) {
+    return true;
+  }
+  final assignedArtisanId = job.selectedArtisanId;
+  // Fail closed when an older/partial response does not identify the artisan;
+  // accepting an unrelated quote would defeat the directed assignment.
+  return assignedArtisanId == null ||
+      assignedArtisanId.isEmpty ||
+      assignedArtisanId != bid.artisan.artisanId;
 }
 
 // ── App Bar ────────────────────────────────────────────────────────────────────
@@ -1356,6 +1382,7 @@ class _BottomActionBar extends ConsumerWidget {
   final bool awaiting;
   final bool jobLocked;
   final JobStatus? jobStatus;
+  final JobAssignmentPhase? assignmentPhase;
   final double w;
   final double h;
   const _BottomActionBar({
@@ -1366,6 +1393,7 @@ class _BottomActionBar extends ConsumerWidget {
     required this.awaiting,
     required this.jobLocked,
     required this.jobStatus,
+    required this.assignmentPhase,
     required this.w,
     required this.h,
   });
@@ -1387,7 +1415,12 @@ class _BottomActionBar extends ConsumerWidget {
     } else if (declined) {
       content = _DeclinedActionContent(w: w, h: h);
     } else if (jobLocked) {
-      content = _JobLockedActionContent(status: jobStatus, w: w, h: h);
+      content = _JobLockedActionContent(
+        status: jobStatus,
+        assignmentPhase: assignmentPhase,
+        w: w,
+        h: h,
+      );
     } else if (awaiting) {
       content = _AwaitingActionContent(
         bid: bid,
@@ -1430,10 +1463,12 @@ class _BottomActionBar extends ConsumerWidget {
 
 class _JobLockedActionContent extends StatelessWidget {
   final JobStatus? status;
+  final JobAssignmentPhase? assignmentPhase;
   final double w;
   final double h;
   const _JobLockedActionContent({
     required this.status,
+    required this.assignmentPhase,
     required this.w,
     required this.h,
   });
@@ -1464,6 +1499,14 @@ class _JobLockedActionContent extends StatelessWidget {
         );
       case JobStatus.confirmed:
       default:
+        if (status == JobStatus.adminAssigned &&
+            assignmentPhase == JobAssignmentPhase.awaitingAdminReview) {
+          return (
+            Icons.fact_check_outlined,
+            MyShopColors.warning,
+            'This quote is being reviewed by MyShop',
+          );
+        }
         return (
           Icons.handshake_outlined,
           MyShopColors.textSecondary,
