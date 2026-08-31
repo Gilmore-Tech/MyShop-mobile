@@ -13,11 +13,14 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/notifications/providers/notifications_provider.dart';
+import '../../features/notifications/services/pending_notification_read_store.dart';
 import '../../features/ride/providers/ride_provider.dart'
     show rideReceiptProvider;
 import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
+import '../providers/auth_session_identity_provider.dart';
 import 'local_notification_service.dart';
 
 const _defaultIncomingCallTimeout = Duration(seconds: 60);
@@ -235,8 +238,8 @@ Future<void> _renderFromRemote(
   final title = message.notification?.title ?? data['title']?.toString() ?? '';
   final body = message.notification?.body ?? data['body']?.toString() ?? '';
 
-  // Pass through every non-title/body data key so the tap handler can
-  // read jobId / rideId / bidId / chatId / notificationId.
+  // Pass through every non-title/body data key so the tap handler can read
+  // the shared correlationId and allowlisted booking/entity identifiers.
   final extras = <String, String>{};
   for (final entry in data.entries) {
     if (entry.key == NotificationPayload.keyType) continue;
@@ -379,7 +382,7 @@ class FcmService {
   bool _initialised = false;
   Future<void>? _initializing;
 
-  void Function(Map<String, dynamic> payload)? onTapMessage;
+  Future<void> Function(Map<String, dynamic> payload)? onTapMessage;
 
   Future<void> init() {
     debugPrint('[FCM] init() called (initialised=$_initialised)');
@@ -401,8 +404,11 @@ class FcmService {
     );
 
     LocalNotificationService.instance.onTap = (payload) {
-      _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      // Inbox acknowledgement can require a network reload; it must never
+      // delay opening the destination the user explicitly tapped.
+      unawaited(_markNotificationRead(payload));
+      final handler = onTapMessage;
+      if (handler != null) unawaited(handler(payload));
     };
 
     // Foreground message — surface a local notification even when the
@@ -417,6 +423,11 @@ class FcmService {
       message,
     ) async {
       debugPrint('[FCM] foreground message received');
+      if (_ref.exists(notifsProvider)) {
+        // FCM is only a wake-up hint. Refetch the persisted in-app rows and
+        // exact unread total instead of deriving badge state from push data.
+        unawaited(_ref.read(notifsProvider.notifier).reload());
+      }
       if (await _handleCallEndedFromRemote(
         message,
         source: 'foreground-fcm',
@@ -454,11 +465,13 @@ class FcmService {
     // Tap on push while app was backgrounded → resumed.
     _openedMessageSub ??= FirebaseMessaging.onMessageOpenedApp.listen((
       message,
-    ) {
+    ) async {
       debugPrint('[FCM] app opened from a background notification');
       final payload = Map<String, dynamic>.from(message.data);
-      _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      // Do not make navigation wait for inbox correlation/PATCH latency.
+      unawaited(_markNotificationRead(payload));
+      final handler = onTapMessage;
+      if (handler != null) await handler(payload);
     });
 
     // Cold-start: app was terminated, launched by a push tap.
@@ -466,11 +479,19 @@ class FcmService {
     if (initialMessage != null) {
       debugPrint('[FCM] initial notification received');
       final payload = Map<String, dynamic>.from(initialMessage.data);
-      _markNotificationRead(payload);
-      // Defer so the router is mounted before we try to navigate.
-      Future<void>.delayed(const Duration(milliseconds: 500), () {
-        onTapMessage?.call(payload);
-      });
+      // Persist the sanitized correlation before deferring navigation. If the
+      // process is interrupted during auth/router restoration, the exact
+      // client role session can retry the acknowledgement on its next load.
+      await _markNotificationRead(payload, consumeIfReady: false);
+      // Defer so the router and authenticated inbox owner are mounted before
+      // navigation and the first acknowledgement attempt.
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 500), () async {
+          final handler = onTapMessage;
+          if (handler != null) await handler(payload);
+          await _consumePendingNotificationReadIfReady();
+        }),
+      );
     }
 
     // Defense in depth: the auth bridge fires syncToken when state hits
@@ -486,19 +507,46 @@ class FcmService {
     debugPrint('[FCM] initialisation complete');
   }
 
-  /// Fires a best-effort `PATCH /notifications/:id/read` when the push
-  /// carries a `notificationId`. Clears the in-app bell in the background
-  /// so a tap also settles the inbox. Swallows errors — the user has
-  /// already acted, we just didn't get to record it.
-  void _markNotificationRead(Map<String, dynamic> payload) {
-    final id = payload[NotificationPayload.keyNotificationId] as String?;
-    if (id == null || id.isEmpty) return;
-    _ref
-        .read(notificationServiceProvider)
-        .markAsRead(id)
-        .catchError((Object e) {
-      debugPrint('[FCM] markAsRead($id) failed: $e');
-    });
+  /// Persists and acknowledges the in-app sibling represented by a tray tap.
+  ///
+  /// A multi-channel send creates a distinct push row, so its
+  /// `notificationId` must never be used to clear the inbox. Only sanitized
+  /// server correlation fields are retained, and the authenticated inbox
+  /// consumer removes the receipt after its matching PATCH succeeds.
+  Future<void> _markNotificationRead(
+    Map<String, dynamic> payload, {
+    bool consumeIfReady = true,
+  }) async {
+    try {
+      final currentIdentity =
+          _ref.read(currentClientAuthSessionIdentityProvider);
+      final identity = currentIdentity ??
+          (await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+              .identity;
+      if (identity == null) return;
+
+      final pending =
+          await _ref.read(pendingClientNotificationReadStoreProvider).save(
+                payload,
+                owner: identity,
+              );
+      if (pending == null) {
+        debugPrint('[FCM] tray payload has no safe client read correlation');
+        return;
+      }
+      if (consumeIfReady) await _consumePendingNotificationReadIfReady();
+    } catch (_) {
+      debugPrint(
+        '[FCM] deferred client in-app read acknowledgement for tray payload '
+        'type=${payload[NotificationPayload.keyType]}',
+      );
+    }
+  }
+
+  Future<void> _consumePendingNotificationReadIfReady() async {
+    final identity = _ref.read(currentClientAuthSessionIdentityProvider);
+    if (identity == null || !_ref.exists(notifsProvider)) return;
+    await _ref.read(consumePendingClientNotificationReadProvider)();
   }
 
   Future<void> syncToken() async {
@@ -1018,14 +1066,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
   // nested under the shell), so the parent stack isn't reconstructed
   // automatically — we have to seed it.
   void pushDeepLink(GoRouter router, String path, {Object? extra}) {
-    router.go(clientDashboardRoute);
-    router.push(path, extra: extra);
+    final stack = clientTrayNavigationStack(path);
+    router.go(stack.first);
+    if (stack.length > 1) router.push(stack.last, extra: extra);
   }
 
   void openTrayDestination(GoRouter router, String path) {
-    final stack = clientTrayNavigationStack(path);
-    router.go(stack.first);
-    if (stack.length > 1) router.push(stack.last);
+    pushDeepLink(router, path);
   }
 
   fcm.onTapMessage = (payload) async {
@@ -1058,7 +1105,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         final callId = payload['callId'] as String?;
         if (callId == null || callId.isEmpty) {
           debugPrint('[FCM-tap] call_incoming missing callId: $payload');
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
           break;
         }
         if (!await waitForAuthenticatedCall(callId, payload)) {
@@ -1089,11 +1136,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (rideId != null) {
           pushDeepLink(router, AppRoutes.rideReceiptPath(rideId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       case NotificationPayload.typeRideCancelled:
-        router.go(AppRoutes.activity);
+        openTrayDestination(router, AppRoutes.activity);
         break;
 
       // ── Job / artisan timeline ────────────────────────────────────────
@@ -1101,7 +1148,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       // En route is the only phase where the live map is the right
@@ -1110,7 +1157,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobTrackingPath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       // Once the artisan has arrived / started / marked complete, the
@@ -1127,7 +1174,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobActivePath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       case NotificationPayload.typeJobCompleted:
@@ -1135,14 +1182,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobCompletePath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       case NotificationPayload.typeJobSupplementRequested:
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobSupplementPath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       // Reminders, staleness pings and no-show / no-bid escalations all
@@ -1157,12 +1204,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       case NotificationPayload.typeJobCancelled:
       case NotificationPayload.typeJobCancelledByArtisan:
-        router.go(AppRoutes.activity);
+        openTrayDestination(router, AppRoutes.activity);
         break;
 
       // ── Cross-cutting ─────────────────────────────────────────────────
@@ -1178,7 +1225,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             (payload[NotificationPayload.keyBookingId] as String?) ??
                 (bookingType == ChatBookingType.ride ? rideId : jobId);
         if (bookingType == null || bookingId == null || bookingId.isEmpty) {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
           break;
         }
         // Hydrate the peer (driver/artisan) details from the booking so
@@ -1210,7 +1257,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         } catch (e) {
           debugPrint('[FCM] hydrate booking for chat failed: $e');
         }
-        router.push(
+        pushDeepLink(
+          router,
           AppRoutes.chat,
           extra: <String, Object?>{
             'bookingType': bookingType,
@@ -1234,7 +1282,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (bookingType == 'ride') {
           final id = bookingId ?? rideId;
           if (id == null) {
-            router.go(AppRoutes.activity);
+            openTrayDestination(router, AppRoutes.activity);
             break;
           }
           // If the completion summary for this ride is still in memory,
@@ -1243,7 +1291,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           // summary before the rider has read it.
           final summary = ref.read(rideReceiptProvider);
           if (summary != null && summary.rideId == id) {
-            router.go(AppRoutes.rideComplete);
+            pushDeepLink(router, AppRoutes.rideComplete);
             break;
           }
           // Cold start / historical ride: the summary state is gone, so the
@@ -1274,7 +1322,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         } else if (bookingType == 'artisan_job' || bookingType == 'job') {
           final id = bookingId ?? jobId;
           if (id == null) {
-            router.go(AppRoutes.activity);
+            openTrayDestination(router, AppRoutes.activity);
             break;
           }
           pushDeepLink(router, AppRoutes.jobCompletePath(id));
@@ -1308,10 +1356,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           // or download the receipt — same final destination as the
           // post-payment dialog and the socket-driven prompt.
           if (ctx.mounted) {
-            router.go(AppRoutes.jobDetailPath(id));
+            pushDeepLink(router, AppRoutes.jobDetailPath(id));
           }
         } else {
-          router.go(AppRoutes.activity);
+          openTrayDestination(router, AppRoutes.activity);
         }
         break;
       // ── Support tickets ───────────────────────────────────────────────
@@ -1319,15 +1367,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeSupportTicketStatusChanged:
         final ticketId = payload[NotificationPayload.keyTicketId] as String?;
         if (ticketId != null && ticketId.isNotEmpty) {
-          router.push(AppRoutes.supportTicketDetailPath(ticketId));
+          pushDeepLink(router, AppRoutes.supportTicketDetailPath(ticketId));
         } else {
-          router.go(AppRoutes.supportTickets);
+          openTrayDestination(router, AppRoutes.supportTickets);
         }
         break;
 
       case NotificationPayload.typePaymentConfirmed:
       default:
-        router.go(AppRoutes.activity);
+        openTrayDestination(router, AppRoutes.activity);
     }
   };
 });

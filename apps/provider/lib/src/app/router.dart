@@ -28,6 +28,7 @@ import '../features/artisan_home/screens/supplement_request_screen.dart';
 import '../features/calls/screens/in_app_call_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
+import '../features/notifications/providers/notifications_provider.dart';
 import '../features/notifications/screens/notifications_list_screen.dart';
 import '../features/safety/screens/emergency_screen.dart';
 import '../features/artisan_home/screens/artisan_home_screen.dart';
@@ -1393,12 +1394,14 @@ class _DriverShellState extends ConsumerState<_DriverShell>
 
   String? _lastVerificationRefreshLocation;
   bool _verificationRefreshQueued = false;
+  bool _pendingNotificationReadQueued = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scheduleVerificationRefresh(force: true);
+    _schedulePendingNotificationReadConsumption();
   }
 
   @override
@@ -1411,7 +1414,26 @@ class _DriverShellState extends ConsumerState<_DriverShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _scheduleVerificationRefresh(force: true);
+      unawaited(ref.read(providerNotifsProvider.notifier).reload());
+      _schedulePendingNotificationReadConsumption();
     }
+  }
+
+  void _schedulePendingNotificationReadConsumption() {
+    if (_pendingNotificationReadQueued) return;
+    _pendingNotificationReadQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _pendingNotificationReadQueued = false;
+        return;
+      }
+      unawaited(
+        ref
+            .read(consumePendingProviderNotificationReadProvider)()
+            .catchError((Object _, StackTrace __) {})
+            .whenComplete(() => _pendingNotificationReadQueued = false),
+      );
+    });
   }
 
   int _currentIndex(String location) {
@@ -1471,6 +1493,11 @@ class _DriverShellState extends ConsumerState<_DriverShell>
 
   @override
   Widget build(BuildContext context) {
+    // Keep one notification snapshot alive while the authenticated shell is
+    // mounted. Header bells then share the same unread total across tab
+    // switches instead of each tab disposing and refetching its own state.
+    ref.watch(providerNotifsProvider);
+
     // Activate the Socket.IO connection manager — connects/disconnects
     // automatically when the provider toggles online/offline.
     ref.watch(socketConnectionProvider);

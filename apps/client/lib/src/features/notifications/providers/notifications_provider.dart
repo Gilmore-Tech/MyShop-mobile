@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/auth_session_identity_provider.dart';
+import '../services/pending_notification_read_store.dart';
 
 // ── Model ────────────────────────────────────────────────────────────────────────────────
 
@@ -212,6 +215,106 @@ List<Notif> clientNotificationItemsFromResponse(
       .toList(growable: false);
 }
 
+/// Returns the exact unread total when supported by the backend, with a
+/// list-derived fallback for older deployments during a rolling release.
+int clientNotificationUnreadCountFromResponse(
+  Map<String, dynamic> response, {
+  required List<Notif> items,
+}) {
+  final meta = response['meta'];
+  final rawUnreadTotal = meta is Map ? meta['unreadTotal'] : null;
+  final unreadTotal = switch (rawUnreadTotal) {
+    int value => value,
+    num value => value.toInt(),
+    String value => int.tryParse(value),
+    _ => null,
+  };
+  if (unreadTotal != null && unreadTotal >= 0) return unreadTotal;
+  return items.where((notification) => !notification.isRead).length;
+}
+
+const _notificationTypeAliases = <String, String>{
+  'job_bid_selected': 'bid_accepted',
+  'job_bid_rejected': 'bid_rejected',
+  'job_supplement_approved': 'supplement_approved',
+  'job_supplement_rejected': 'supplement_rejected',
+  'ride_cancelled': 'ride_cancelled',
+  'ride_settled': 'ride_settled',
+  'payment_received': 'payment_received',
+  'chat_message': 'new_message',
+  'support_ticket_message': 'support_ticket_message',
+  'support_ticket_status_changed': 'support_ticket_status_changed',
+};
+
+String _canonicalNotificationType(Object? value) {
+  final normalized = _notificationText(value)
+          ?.toLowerCase()
+          .replaceAll('.', '_')
+          .replaceAll('-', '_') ??
+      '';
+  return _notificationTypeAliases[normalized] ?? normalized;
+}
+
+/// Finds the persisted in-app sibling represented by a system-tray payload.
+///
+/// A push `notificationId` belongs to the push row, not its inbox sibling, so
+/// it is deliberately ignored. A server-authored correlation id is preferred;
+/// legacy payloads fall back to campaign id or normalised type plus one
+/// allowlisted entity id. Remote routes never participate in matching.
+Notif? clientNotificationForTrayPayload(
+  List<Notif> notifications,
+  Map<String, dynamic> trayPayload,
+) {
+  final correlationId =
+      validatedClientNotificationCorrelationId(trayPayload['correlationId']);
+  if (correlationId != null) {
+    for (final notification in notifications) {
+      if (validatedClientNotificationCorrelationId(
+            notification.payload['correlationId'],
+          ) ==
+          correlationId) {
+        return notification;
+      }
+    }
+  }
+
+  final campaignId =
+      validatedClientNotificationCorrelationId(trayPayload['campaignId']);
+  if (campaignId != null) {
+    for (final notification in notifications) {
+      if (validatedClientNotificationCorrelationId(
+            notification.payload['campaignId'],
+          ) ==
+          campaignId) {
+        return notification;
+      }
+    }
+  }
+
+  final trayType = _canonicalNotificationType(
+    trayPayload['type'] ?? trayPayload['eventType'],
+  );
+  if (trayType.isEmpty) return null;
+
+  for (final entityKey in clientNotificationCorrelationEntityKeys) {
+    final trayEntityId =
+        validatedClientNotificationCorrelationId(trayPayload[entityKey]);
+    if (trayEntityId == null) continue;
+    for (final notification in notifications) {
+      if (_canonicalNotificationType(notification.eventType) != trayType) {
+        continue;
+      }
+      if (validatedClientNotificationCorrelationId(
+            notification.payload[entityKey],
+          ) ==
+          trayEntityId) {
+        return notification;
+      }
+    }
+  }
+  return null;
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────────────────────
 // EDD: GET /v1/notifications?page=1&limit=30
 //      PATCH /v1/notifications/:id/read
@@ -222,13 +325,36 @@ class NotifsNotifier extends StateNotifier<AsyncValue<List<Notif>>> {
   }
 
   final NotificationService _notificationService;
+  final Set<String> _optimisticallyReadIds = <String>{};
+  Future<void>? _loadOperation;
+  int _unreadCount = 0;
 
-  Future<void> _loadFromApi() async {
+  int get unreadCount => _unreadCount;
+
+  Future<void> _loadFromApi() {
+    final activeLoad = _loadOperation;
+    if (activeLoad != null) return activeLoad;
+
+    late final Future<void> operation;
+    operation = _performLoadFromApi().whenComplete(() {
+      if (identical(_loadOperation, operation)) _loadOperation = null;
+    });
+    _loadOperation = operation;
+    return operation;
+  }
+
+  Future<void> _performLoadFromApi() async {
     try {
       final data =
           await _notificationService.getNotifications(page: 1, limit: 30);
       if (!mounted) return;
-      state = AsyncData(clientNotificationItemsFromResponse(data));
+      final items = clientNotificationItemsFromResponse(data);
+      _optimisticallyReadIds.clear();
+      _unreadCount = clientNotificationUnreadCountFromResponse(
+        data,
+        items: items,
+      );
+      state = AsyncData(items);
     } catch (error, stackTrace) {
       // Keep already-rendered data during a failed manual refresh. Initial
       // failures get an explicit retry state instead of masquerading as an
@@ -247,18 +373,92 @@ class NotifsNotifier extends StateNotifier<AsyncValue<List<Notif>>> {
   void markRead(String id) {
     final notifications = state.asData?.value;
     if (notifications == null) return;
+    final notificationIndex = notifications.indexWhere((item) => item.id == id);
+    if (notificationIndex < 0) return;
+    final notification = notifications[notificationIndex];
+    if (notification.isRead && !_optimisticallyReadIds.contains(id)) return;
+    if (!notification.isRead) _applyRead(id);
+    unawaited(_acknowledgeRead(id));
+  }
+
+  Future<void> _acknowledgeRead(String id) async {
+    try {
+      await _notificationService.markAsRead(id);
+      _optimisticallyReadIds.remove(id);
+    } catch (_) {
+      // Keep the optimistic marker so a later durable tray retry cannot treat
+      // this local-only read as proof of a server acknowledgement.
+    }
+  }
+
+  /// Reads only a safely-correlated in-app row and waits for server proof.
+  /// Null leaves the durable cold-start receipt intact for a later retry.
+  Future<String?> markReadForTrayPayload(Map<String, dynamic> payload) async {
+    final notifications = state.asData?.value;
+    if (notifications == null) return null;
+    final notification = clientNotificationForTrayPayload(
+      notifications,
+      payload,
+    );
+    if (notification == null) return null;
+    final hasUnacknowledgedOptimisticRead =
+        _optimisticallyReadIds.contains(notification.id);
+    if (notification.isRead && !hasUnacknowledgedOptimisticRead) {
+      return notification.id;
+    }
+
+    if (!notification.isRead) _applyRead(notification.id);
+    try {
+      await _notificationService.markAsRead(notification.id);
+      _optimisticallyReadIds.remove(notification.id);
+      return notification.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _applyRead(String id) {
+    final notifications = state.asData?.value;
+    if (notifications == null) return false;
+    final notificationIndex = notifications.indexWhere((item) => item.id == id);
+    if (notificationIndex < 0 || notifications[notificationIndex].isRead) {
+      return false;
+    }
+    final firstOptimisticRead = _optimisticallyReadIds.add(id);
+    if (firstOptimisticRead && _unreadCount > 0) _unreadCount -= 1;
     state = AsyncData(
       notifications.map((n) => n.id == id ? n.copyWithRead() : n).toList(),
     );
-    _notificationService.markAsRead(id).catchError((_) {});
+    return true;
   }
 
-  void markAllRead() {
+  Future<void> markAllRead() async {
     final notifications = state.asData?.value;
     if (notifications == null) return;
-    state = AsyncData(notifications.map((n) => n.copyWithRead()).toList());
-    for (final n in notifications) {
-      _notificationService.markAsRead(n.id).catchError((_) {});
+    final unreadItems =
+        notifications.where((notification) => !notification.isRead).toList();
+    _optimisticallyReadIds
+        .addAll(unreadItems.map((notification) => notification.id));
+    _unreadCount = 0;
+    state = AsyncData(
+      notifications.map((notification) => notification.copyWithRead()).toList(),
+    );
+
+    try {
+      await _notificationService.markAllAsRead();
+      _optimisticallyReadIds.clear();
+    } catch (_) {
+      // Rolling-deployment compatibility: settle the loaded rows through the
+      // legacy endpoint, then reload the exact count for anything beyond page
+      // one once the backend becomes reachable.
+      await Future.wait(
+        unreadItems.map(
+          (notification) => _notificationService
+              .markAsRead(notification.id)
+              .catchError((_) {}),
+        ),
+      );
+      await reload();
     }
   }
 }
@@ -266,6 +466,42 @@ class NotifsNotifier extends StateNotifier<AsyncValue<List<Notif>>> {
 final notifsProvider =
     StateNotifierProvider.autoDispose<NotifsNotifier, AsyncValue<List<Notif>>>(
         (ref) {
+  // Recreate the inbox for every exact Client role session so no cached rows
+  // or badge count can cross accounts on a shared handset.
+  ref.watch(currentClientAuthSessionIdentityProvider);
   final notificationService = ref.watch(notificationServiceProvider);
   return NotifsNotifier(notificationService);
+});
+
+/// Exact badge source shared by Home, Profile, and the authenticated shell.
+final clientUnreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
+  // Recompute after every list/loading/error transition, then read the exact
+  // metadata-backed count held by the notifier.
+  ref.watch(notifsProvider);
+  return ref.read(notifsProvider.notifier).unreadCount;
+});
+
+/// Completes a sanitized cold-start tray read only after the authenticated
+/// Client inbox has loaded. Failures retain the receipt for the next resume.
+final consumePendingClientNotificationReadProvider =
+    Provider<Future<void> Function()>((ref) {
+  return () async {
+    try {
+      final identity = ref.read(currentClientAuthSessionIdentityProvider);
+      if (identity == null || !ref.exists(notifsProvider)) return;
+      final store = ref.read(pendingClientNotificationReadStoreProvider);
+      final pending = await store.loadFor(identity);
+      if (pending == null) return;
+
+      final notifier = ref.read(notifsProvider.notifier);
+      await notifier.reload();
+      final matchedId = await notifier.markReadForTrayPayload(pending.payload);
+      if (matchedId != null) {
+        await store.clearIfReceipt(pending.receiptId);
+      }
+    } catch (_) {
+      // Auth, preferences, and network startup can race on a cold launch. The
+      // sanitized receipt remains available for the next authenticated resume.
+    }
+  };
 });

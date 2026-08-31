@@ -21,6 +21,8 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
+import '../../features/notifications/providers/notifications_provider.dart';
+import '../../features/notifications/services/pending_notification_read_store.dart';
 import '../../features/profile/providers/verification_provider.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
@@ -1213,7 +1215,7 @@ class FcmService {
     // Ensure tapping a local notification also routes via the same
     // handler the router will set.
     LocalNotificationService.instance.onTap = (payload) {
-      _markNotificationRead(payload);
+      unawaited(_markNotificationRead(payload));
       final handler = onTapMessage;
       if (handler != null) unawaited(handler(payload));
     };
@@ -1295,6 +1297,11 @@ class FcmService {
 
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (_ref.exists(providerNotifsProvider)) {
+        // The push is only a wake-up hint. Refetch the persisted in-app rows
+        // and authoritative unread total instead of trusting push-channel ids.
+        unawaited(_ref.read(providerNotifsProvider.notifier).reload());
+      }
       if (isEarningsSettlementNotification(type)) {
         // Start the authoritative refresh before rendering the notification.
         // A visible earnings screen keeps its historical totals but fences
@@ -1405,7 +1412,7 @@ class FcmService {
         'keys=${message.data.keys.toList()}',
       );
       final payload = Map<String, dynamic>.from(message.data);
-      _markNotificationRead(payload);
+      unawaited(_markNotificationRead(payload));
       final handler = onTapMessage;
       if (handler != null) unawaited(handler(payload));
     });
@@ -1430,12 +1437,16 @@ class FcmService {
         'keys=${initialMessage.data.keys.toList()}',
       );
       final payload = Map<String, dynamic>.from(initialMessage.data);
-      _markNotificationRead(payload);
       // Defer until the router is ready to avoid navigating before the
-      // first frame.
+      // first frame. Correlate the in-app read only after navigation has
+      // mounted an authenticated shell/inbox listener; otherwise an
+      // auto-disposed cold-start notifier could disappear mid-fetch.
       Future<void>.delayed(const Duration(milliseconds: 500), () {
         final handler = onTapMessage;
-        if (handler != null) unawaited(handler(payload));
+        unawaited(() async {
+          if (handler != null) await handler(payload);
+          await _markNotificationRead(payload);
+        }());
       });
     }
 
@@ -1450,18 +1461,43 @@ class FcmService {
     debugPrint('[FCM] initialisation complete');
   }
 
-  /// Fires a best-effort `PATCH /notifications/:id/read` when the push
-  /// carries a `notificationId`. Clears the in-app bell in the background
-  /// so a tap also settles the inbox. Swallows errors — the user has
-  /// already acted, we just didn't get to record it.
-  void _markNotificationRead(Map<String, dynamic> payload) {
-    final id = payload[NotificationPayload.keyNotificationId] as String?;
-    if (id == null || id.isEmpty) return;
-    _ref.read(apiNotificationServiceProvider).markAsRead(id).catchError((
-      Object e,
-    ) {
-      debugPrint('[FCM] markAsRead($id) failed: $e');
-    });
+  /// Marks the persisted in-app sibling represented by a tray payload read.
+  ///
+  /// Multi-channel sends create a different row per delivery channel, so the
+  /// push payload's `notificationId` identifies the push row and cannot clear
+  /// the inbox badge. Correlation is deliberately restricted to campaign ids
+  /// or allowlisted entity ids plus a known event type. The notifier performs
+  /// the PATCH only after it has found that safe in-app match.
+  Future<void> _markNotificationRead(Map<String, dynamic> payload) async {
+    try {
+      final currentIdentity = _ref.read(currentAuthSessionIdentityProvider);
+      final identity = currentIdentity ??
+          (await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+              .identity;
+      if (identity == null) return;
+
+      final store = _ref.read(pendingProviderNotificationReadStoreProvider);
+      final pending = await store.save(payload, owner: identity);
+      if (pending == null) {
+        debugPrint('[FCM] tray payload has no safe read correlation');
+        return;
+      }
+
+      // A cold-start callback can precede authenticated shell/provider
+      // creation. The sanitized receipt is already durable; let the shell
+      // consume it once it owns the auto-dispose inbox instead of creating a
+      // transient notifier here and risking a use-after-dispose completion.
+      if (currentIdentity == null || !_ref.exists(providerNotifsProvider)) {
+        return;
+      }
+
+      await _ref.read(consumePendingProviderNotificationReadProvider)();
+    } catch (_) {
+      debugPrint(
+        '[FCM] deferred in-app read acknowledgement for tray payload '
+        'type=${payload[NotificationPayload.keyType]}',
+      );
+    }
   }
 
   /// Fetch the FCM token and POST it to the backend so we can receive

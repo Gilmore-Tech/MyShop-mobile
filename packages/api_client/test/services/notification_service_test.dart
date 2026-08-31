@@ -73,6 +73,13 @@ void main() {
     });
   });
 
+  test('marks all role-scoped in-app notifications read', () async {
+    await service.markAllAsRead();
+
+    expect(capturedRequest.method, 'PATCH');
+    expect(capturedRequest.path, '/notifications/read-all');
+  });
+
   test('registers the ActivityKit push-to-start token', () async {
     await service.registerLiveActivityDevice(
       pushToStartToken: 'push-to-start-token',

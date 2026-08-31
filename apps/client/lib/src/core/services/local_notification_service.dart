@@ -201,6 +201,247 @@ List<String> clientTrayNavigationStack(String destinationRoute) {
   return [clientDashboardRoute, destinationRoute];
 }
 
+/// The only operations an inbox row may expose to the Client UI.
+///
+/// [rating] stays distinct because it opens the app's existing trusted rating
+/// context rather than accepting a remotely supplied route or modal contract.
+enum ClientInboxActionKind { route, rating }
+
+@immutable
+class ClientInboxAction {
+  const ClientInboxAction({
+    required this.kind,
+    required this.label,
+    required this.route,
+    this.extra,
+  });
+
+  final ClientInboxActionKind kind;
+  final String label;
+  final String route;
+  final Map<String, Object?>? extra;
+}
+
+final RegExp _clientInboxUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
+
+String? _clientInboxEntityId(
+  Map<String, dynamic> payload,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = payload[key]?.toString().trim();
+    if (value != null && _clientInboxUuidPattern.hasMatch(value)) return value;
+  }
+  return null;
+}
+
+ClientInboxAction _clientInboxRoute(String label, String route) =>
+    ClientInboxAction(
+      kind: ClientInboxActionKind.route,
+      label: label,
+      route: route,
+    );
+
+/// Resolves one optional, locally allowlisted CTA for a Client inbox row.
+///
+/// Remote route fields are deliberately ignored. Dynamic paths are returned
+/// only after their ids pass UUID validation; unknown events remain
+/// informational and therefore return null.
+ClientInboxAction? clientInboxActionFor({
+  required String eventType,
+  Map<String, dynamic> payload = const {},
+}) {
+  final type = NotificationPayload.normaliseType(
+    eventType.trim().toLowerCase(),
+  ).replaceAll('-', '_');
+
+  if (type == NotificationPayload.typeAnnouncement) {
+    final route = clientAnnouncementRoute(
+      payload[NotificationPayload.keyDestination],
+    );
+    return switch (route) {
+      '/activity' => _clientInboxRoute('View activity', route),
+      '/profile/support' => _clientInboxRoute('Get support', route),
+      '/home' => _clientInboxRoute('View promotions', route),
+      _ => null,
+    };
+  }
+
+  if (type == NotificationPayload.typeSupportTicketMessage ||
+      type == NotificationPayload.typeSupportTicketStatusChanged) {
+    final ticketId = _clientInboxEntityId(
+      payload,
+      const [NotificationPayload.keyTicketId, 'ticket_id'],
+    );
+    return ticketId == null
+        ? _clientInboxRoute('View support', '/profile/support/tickets')
+        : _clientInboxRoute(
+            type == NotificationPayload.typeSupportTicketMessage
+                ? 'View & reply'
+                : 'View ticket',
+            '/profile/support/tickets/$ticketId',
+          );
+  }
+
+  if (type == NotificationPayload.typeRatingPrompt) {
+    final bookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (bookingType != 'ride' &&
+        bookingType != 'job' &&
+        bookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _clientInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (bookingType == 'ride') NotificationPayload.keyRideId,
+        if (bookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    if (bookingId == null) return null;
+    return ClientInboxAction(
+      kind: ClientInboxActionKind.rating,
+      label: 'Rate now',
+      route: bookingType == 'ride'
+          ? '/ride/$bookingId/receipt'
+          : '/services/job/$bookingId/complete',
+    );
+  }
+
+  if (type == NotificationPayload.typeNewMessage || type == 'chat_message') {
+    final rawBookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (rawBookingType != 'ride' &&
+        rawBookingType != 'job' &&
+        rawBookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _clientInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (rawBookingType == 'ride') NotificationPayload.keyRideId,
+        if (rawBookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    if (bookingId == null) return null;
+    return ClientInboxAction(
+      kind: ClientInboxActionKind.route,
+      label: 'View message',
+      route: '/chat',
+      extra: <String, Object?>{
+        'bookingType': rawBookingType == 'ride' ? 'ride' : 'artisan_job',
+        'bookingId': bookingId,
+      },
+    );
+  }
+
+  if (const {
+    NotificationPayload.typePaymentConfirmed,
+    'payment_dispute_resolved',
+    'payment_dispute_refund_approved',
+    'payment_refund_processed',
+    'payment_refund_delayed',
+    'payment_insufficient_balance',
+  }.contains(type)) {
+    return _clientInboxRoute('View payment', '/activity');
+  }
+
+  final rideId = _clientInboxEntityId(
+    payload,
+    const [
+      NotificationPayload.keyRideId,
+      'ride_id',
+      NotificationPayload.keyBookingId,
+      'booking_id',
+    ],
+  );
+  if (const {
+    NotificationPayload.typeRideDriverAssigned,
+    NotificationPayload.typeRideDriverEnRoute,
+    NotificationPayload.typeRideDriverArrived,
+    NotificationPayload.typeRideInProgress,
+    NotificationPayload.typeRideCancelled,
+    'ride_provider_location_unavailable',
+    'ride_provider_location_degraded_escalated',
+  }.contains(type)) {
+    return rideId == null
+        ? null
+        : _clientInboxRoute('View ride', '/activity/ride/$rideId');
+  }
+  if (type == NotificationPayload.typeRideCompleted || type == 'ride_settled') {
+    return rideId == null
+        ? null
+        : _clientInboxRoute('View receipt', '/ride/$rideId/receipt');
+  }
+
+  final jobId = _clientInboxEntityId(
+    payload,
+    const [
+      NotificationPayload.keyJobId,
+      'job_id',
+      NotificationPayload.keyBookingId,
+      'booking_id',
+    ],
+  );
+  if (type == NotificationPayload.typeJobSupplementRequested) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute(
+            'Review supplement',
+            '/services/job/$jobId/supplement',
+          );
+  }
+  if (const {
+    NotificationPayload.typeJobArtisanEnRoute,
+    NotificationPayload.typeJobArtisanArrived,
+    NotificationPayload.typeJobInProgress,
+    NotificationPayload.typeJobMarkedComplete,
+    NotificationPayload.typeJobConfirmCompletionRequested,
+  }.contains(type)) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('Open job', '/services/job/$jobId/active');
+  }
+  if (type == NotificationPayload.typeJobCompleted ||
+      type == NotificationPayload.typeJobForceCompleted) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('View job', '/activity/job/$jobId');
+  }
+  if (const {
+    NotificationPayload.typeJobBidSubmitted,
+    NotificationPayload.typeJobReminder2h,
+    NotificationPayload.typeJobCheckin8h,
+    NotificationPayload.typeJobStale24h,
+    NotificationPayload.typeJobStale48h,
+    NotificationPayload.typeJobNoBidsEscalated,
+    NotificationPayload.typeJobArtisanNoShow,
+    NotificationPayload.typeJobCancelled,
+    NotificationPayload.typeJobCancelledByArtisan,
+    'job_directed_quote_awaiting_accept',
+    'job_directed_assignment_requeued',
+    'job_provider_location_unavailable',
+    'job_provider_location_degraded_escalated',
+  }.contains(type)) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('View job', '/services/job/$jobId');
+  }
+
+  return null;
+}
+
 /// Thin wrapper around `flutter_local_notifications`. Responsibilities:
 ///   • Register notification channels once on init.
 ///   • Render FCM pushes that arrive while the app is backgrounded or

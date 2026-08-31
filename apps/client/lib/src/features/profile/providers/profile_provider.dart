@@ -104,12 +104,8 @@ class AccountScreenNotifier
     if (authState is AuthAuthenticated) {
       final profile = AccountProfile.fromUserProfile(authState.profile);
 
-      // Watch the live notifications list and derive the unread count —
-      // this provider rebuilds automatically when a push arrives or the
-      // user marks one read on the notifications screen, so the badge
-      // stays in sync without a separate /notifications/unread call.
-      final notifs = ref.watch(notifsProvider).asData?.value ?? const <Notif>[];
-      final unread = notifs.where((n) => !n.isRead).length;
+      // Use the exact server total rather than only the first loaded page.
+      final unread = ref.watch(clientUnreadNotificationCountProvider);
 
       return AccountScreenData(
         profile: profile,

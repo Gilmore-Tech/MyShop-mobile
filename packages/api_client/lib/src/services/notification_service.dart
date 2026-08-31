@@ -56,6 +56,16 @@ class NotificationService {
     }
   }
 
+  /// PATCH /notifications/read-all — mark every unread in-app notification
+  /// for the authenticated role as read.
+  Future<void> markAllAsRead() async {
+    try {
+      await _dio.patch('/notifications/read-all');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /notifications/register-device — Store the FCM token for the
   /// authenticated (user, role) identity so the backend can route push
   /// notifications correctly when the app is backgrounded or terminated.
