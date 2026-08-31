@@ -186,6 +186,22 @@ class NotificationPayload {
   /// Ticket status flipped server-side (resolved by agent, etc.).
   static const typeSupportTicketStatusChanged = 'support_ticket_status_changed';
 
+  // ── Inbox-only provider state alerts ───────────────────────────────────
+  // These events are persisted in the in-app feed. They are not all FCM
+  // data types, but keeping their canonical names here lets the inbox derive
+  // safe local actions without trusting a server-supplied route.
+  static const typeProviderLocationDegraded = 'provider_location_degraded';
+  static const typeProviderLocationDegradedEscalated =
+      'provider_location_degraded_escalated';
+  static const typeAccountSuspendedLowRating = 'account_suspended_low_rating';
+  static const typeAccountRatingWarning = 'account_rating_warning';
+  static const typeProviderCancellationBlockStarted =
+      'provider_cancellation_block_started';
+  static const typePaymentDisputeRaised = 'payment_dispute_raised';
+  static const typePaymentClawbackPending = 'payment_clawback_pending';
+  static const typePaymentDisputeResolvedInProviderFavour =
+      'payment_dispute_resolved_in_your_favour';
+
   /// Payload key for support deeplinks.
   static const keyTicketId = 'ticketId';
   static const keyMessageId = 'messageId';
@@ -291,6 +307,247 @@ String? providerLifecycleNotificationRoute(String rawType) {
       '/account/vehicle',
     _ => null,
   };
+}
+
+/// The small set of operations an inbox notification is allowed to start.
+///
+/// A notification payload is historical, user-controlled network input by the
+/// time it reaches this screen. Keeping the operation semantic (rather than
+/// accepting a remote path) lets the UI re-fetch authoritative booking state
+/// before opening anything that can mutate marketplace state.
+enum ProviderInboxActionKind { route, manualJob, activeJob, rating }
+
+@immutable
+class ProviderInboxAction {
+  const ProviderInboxAction({
+    required this.kind,
+    required this.label,
+    this.route,
+    this.entityId,
+    this.bookingType,
+  });
+
+  final ProviderInboxActionKind kind;
+  final String label;
+  final String? route;
+  final String? entityId;
+  final String? bookingType;
+}
+
+final RegExp _providerInboxUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
+
+String? _providerInboxEntityId(
+  Map<String, dynamic> payload,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = payload[key]?.toString().trim();
+    if (value != null && _providerInboxUuidPattern.hasMatch(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+String _canonicalProviderInboxType(String rawType) {
+  final normalized = NotificationPayload.normaliseType(
+    rawType.trim().toLowerCase(),
+  );
+  // The notification table retains the backend eventType while FCM translates
+  // a few of those values before mobile delivery. Accept both names so tray
+  // and inbox behavior cannot drift for the same event.
+  return switch (normalized) {
+    'job_bid_selected' ||
+    'job_bid_accepted' =>
+      NotificationPayload.typeBidAccepted,
+    'job_bid_rejected' => NotificationPayload.typeBidRejected,
+    'job_supplement_approved' => NotificationPayload.typeSupplementApproved,
+    'job_supplement_rejected' => NotificationPayload.typeSupplementRejected,
+    'chat_message' => NotificationPayload.typeNewMessage,
+    _ => normalized,
+  };
+}
+
+ProviderInboxAction _providerInboxRoute(String label, String route) =>
+    ProviderInboxAction(
+      kind: ProviderInboxActionKind.route,
+      label: label,
+      route: route,
+    );
+
+/// Resolves the optional CTA for one provider inbox row.
+///
+/// Security invariants:
+/// - `payload.route` is deliberately ignored.
+/// - dynamic ids must be UUIDs before an action is returned.
+/// - expiring ride/job offers never become historical inbox actions.
+/// - unknown event types are informational and return null.
+ProviderInboxAction? providerInboxActionFor({
+  required String eventType,
+  Map<String, dynamic> payload = const {},
+}) {
+  final type = _canonicalProviderInboxType(eventType);
+
+  if (type == NotificationPayload.typeAnnouncement) {
+    final destination = payload[NotificationPayload.keyDestination]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    return switch (destination) {
+      'activity' => _providerInboxRoute('View activity', '/trips'),
+      'support' => _providerInboxRoute('Get support', '/account/support'),
+      'promotions' => _providerInboxRoute('View earnings', '/earnings'),
+      // The inbox is already open. App-store campaigns remain informational
+      // until a separately validated store URL is part of the mobile contract.
+      'notifications' || 'app_store' => null,
+      _ => null,
+    };
+  }
+
+  if (type == NotificationPayload.typeVerificationRejected ||
+      type == NotificationPayload.typeVerificationDocumentRejected) {
+    return _providerInboxRoute(
+      'Re-upload document',
+      '/account/documents',
+    );
+  }
+
+  if (type == NotificationPayload.typeVerificationDocumentReviewed) {
+    final status = payload['status']?.toString().trim().toLowerCase();
+    if (status == 'rejected' || payload['resubmissionRequired'] == true) {
+      return _providerInboxRoute(
+        'Re-upload document',
+        '/account/documents',
+      );
+    }
+    return null;
+  }
+
+  if (type == NotificationPayload.typeProviderDocumentExpired ||
+      type == NotificationPayload.typeProviderDocumentReplacementGraceExpired) {
+    return _providerInboxRoute('Replace document', '/account/documents');
+  }
+
+  if (type == NotificationPayload.typeProviderDocumentExpiryNotice ||
+      type == NotificationPayload.typeProviderDocumentExpiry72h ||
+      type == NotificationPayload.typeProviderDocumentExpiry24h ||
+      type == NotificationPayload.typeProviderDocumentExpiry2h) {
+    return _providerInboxRoute('Renew document', '/account/documents');
+  }
+
+  if (type == NotificationPayload.typeRideCategoryRejected) {
+    return _providerInboxRoute('Review vehicle', '/account/vehicle');
+  }
+
+  if (type == NotificationPayload.typeProviderLocationDegraded ||
+      type == NotificationPayload.typeProviderLocationDegradedEscalated) {
+    return _providerInboxRoute('Fix location', '/home');
+  }
+
+  if (type == NotificationPayload.typeAccountSuspendedLowRating ||
+      type == NotificationPayload.typeProviderCancellationBlockStarted) {
+    return _providerInboxRoute('Contact support', '/account/support');
+  }
+  if (type == NotificationPayload.typeAccountRatingWarning) {
+    return _providerInboxRoute('View performance', '/earnings');
+  }
+
+  if (type == NotificationPayload.typePaymentDisputeRaised ||
+      type == NotificationPayload.typePaymentClawbackPending ||
+      type == NotificationPayload.typePaymentDisputeResolvedInProviderFavour) {
+    return _providerInboxRoute('View balance', '/earnings');
+  }
+
+  final jobId = _providerInboxEntityId(
+    payload,
+    const [NotificationPayload.keyJobId, 'job_id'],
+  );
+  if (type == NotificationPayload.typeJobManuallyAssigned ||
+      type == NotificationPayload.typeJobNoBidsEscalated) {
+    return jobId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.manualJob,
+            label: 'Review & bid',
+            entityId: jobId,
+          );
+  }
+
+  if (type == NotificationPayload.typeBidAccepted ||
+      type == NotificationPayload.typeSupplementApproved ||
+      type == NotificationPayload.typeSupplementRejected ||
+      type == NotificationPayload.typeJobReminder24h ||
+      type == NotificationPayload.typeJobReminder2h ||
+      type == NotificationPayload.typeJobCheckin8h ||
+      type == NotificationPayload.typeJobStale24h ||
+      type == NotificationPayload.typeJobStale48h ||
+      type == NotificationPayload.typeJobWelfareCheck) {
+    return jobId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.activeJob,
+            label: 'Open job',
+            entityId: jobId,
+          );
+  }
+
+  if (type == NotificationPayload.typeSupportTicketMessage ||
+      type == NotificationPayload.typeSupportTicketStatusChanged) {
+    final ticketId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyTicketId, 'ticket_id'],
+    );
+    return ticketId == null
+        ? null
+        : _providerInboxRoute(
+            type == NotificationPayload.typeSupportTicketMessage
+                ? 'View & reply'
+                : 'View ticket',
+            '/account/support/tickets/$ticketId',
+          );
+  }
+
+  if (type == NotificationPayload.typeRatingPrompt) {
+    final bookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (bookingType != 'ride' &&
+        bookingType != 'job' &&
+        bookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _providerInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (bookingType == 'ride') NotificationPayload.keyRideId,
+        if (bookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    return bookingId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.rating,
+            label: 'Rate now',
+            entityId: bookingId,
+            bookingType: bookingType,
+          );
+  }
+
+  if (type == NotificationPayload.typeRideSettled ||
+      type == NotificationPayload.typePaymentReceived ||
+      type == NotificationPayload.typeEarningsUpdated ||
+      type == NotificationPayload.typeJobPaymentReleasing ||
+      type == NotificationPayload.typeJobConfirmedComplete) {
+    return _providerInboxRoute('View earnings', '/earnings');
+  }
+
+  return null;
 }
 
 /// Wraps `flutter_local_notifications` for the provider app. Responsibilities:

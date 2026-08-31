@@ -3,12 +3,30 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/di/providers.dart';
 import '../../../core/services/local_notification_service.dart';
+import '../../artisan_home/providers/active_job_provider.dart';
+import '../../artisan_home/widgets/rate_client_sheet.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../driver_home/widgets/rate_passenger_sheet.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../providers/notifications_provider.dart';
+
+/// Only these authoritative states belong in [activeJobProvider]. Calling
+/// `setJob` also marks the provider Busy, so a historical notification for a
+/// completed/cancelled/pending job must never seed that slot.
+bool providerInboxJobStatusCanOpenActive(JobStatus status) => switch (status) {
+      JobStatus.confirmed ||
+      JobStatus.artisanEnRoute ||
+      JobStatus.arrived ||
+      JobStatus.inProgress ||
+      JobStatus.artisanMarkedComplete =>
+        true,
+      _ => false,
+    };
 
 /// Notification inbox — backend-backed list of ride/job/payment/safety/system
 /// notifications. Mirrors the client inbox, but with provider-specific push
@@ -54,39 +72,140 @@ class _ProviderNotificationsScreenState
     context.go('/home');
   }
 
-  void _openNotification(
+  Future<void> _openNotification(
     BuildContext context,
     Notif notification,
-  ) {
+    ProviderInboxAction? action,
+  ) async {
     ref.read(providerNotifsProvider.notifier).markRead(notification.id);
+    if (action == null) return;
 
-    final eventType = NotificationPayload.normaliseType(notification.eventType);
-    if (eventType == NotificationPayload.typeAnnouncement) {
-      final route = providerAnnouncementRoute(
-        notification.payload[NotificationPayload.keyDestination],
+    switch (action.kind) {
+      case ProviderInboxActionKind.route:
+        final route = action.route;
+        if (route == null || route == '/notifications') return;
+        if (route == '/account/documents') {
+          ref.invalidate(verificationStatusProvider);
+          // The document destination loads the authoritative review snapshot.
+          // Refresh the authenticated profile in parallel so other provider
+          // surfaces do not retain an older verification status.
+          unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
+        }
+        unawaited(context.push<void>(route));
+        return;
+
+      case ProviderInboxActionKind.manualJob:
+        await _hydrateAndOpenJob(
+          context,
+          action,
+          openAsManualRequest: true,
+        );
+        return;
+
+      case ProviderInboxActionKind.activeJob:
+        await _hydrateAndOpenJob(
+          context,
+          action,
+          openAsManualRequest: false,
+        );
+        return;
+
+      case ProviderInboxActionKind.rating:
+        await _openRatingAction(context, action);
+        return;
+    }
+  }
+
+  Future<void> _hydrateAndOpenJob(
+    BuildContext context,
+    ProviderInboxAction action, {
+    required bool openAsManualRequest,
+  }) async {
+    final jobId = action.entityId;
+    if (jobId == null) return;
+
+    try {
+      final raw = await ref.read(jobServiceProvider).getJob(jobId);
+      final job = Job.fromJson(raw);
+      if (!context.mounted) return;
+      if (openAsManualRequest) {
+        unawaited(context.push<void>('/job-request', extra: job));
+      } else {
+        if (!providerInboxJobStatusCanOpenActive(job.status)) {
+          final message = switch (job.status) {
+            JobStatus.completed =>
+              'This job is already completed. You can review it in My Jobs.',
+            JobStatus.cancelled =>
+              'This job was cancelled. You can review it in My Jobs.',
+            _ =>
+              'This job is no longer active. Check My Jobs for its latest status.',
+          };
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(message)));
+          unawaited(context.push<void>('/trips'));
+          return;
+        }
+        ref.read(activeJobProvider.notifier).setJob(job);
+        unawaited(context.push<void>('/active-job'));
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      final message = openAsManualRequest
+          ? 'This job could not be opened. Refresh and try again.'
+          : 'This job could not be opened. Check My Jobs for its latest status.';
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+      if (!openAsManualRequest) {
+        unawaited(context.push<void>('/trips'));
+      }
+    }
+  }
+
+  Future<void> _openRatingAction(
+    BuildContext context,
+    ProviderInboxAction action,
+  ) async {
+    final bookingId = action.entityId;
+    if (bookingId == null) return;
+
+    if (action.bookingType == 'ride') {
+      var passengerFirstName = 'Passenger';
+      try {
+        final raw = await ref.read(rideServiceProvider).getRide(bookingId);
+        final name = Ride.fromJson(raw).clientName?.trim();
+        if (name != null && name.isNotEmpty) {
+          passengerFirstName = name.split(RegExp(r'\s+')).first;
+        }
+      } catch (error) {
+        debugPrint('[Notifications] rating ride hydration failed: $error');
+      }
+      if (!context.mounted) return;
+      await showRatePassengerSheet(
+        context,
+        rideId: bookingId,
+        passengerFirstName: passengerFirstName,
       );
-      // Do not stack a second copy of the inbox for an announcement whose
-      // destination is Notifications. Other in-app taps push so Back returns
-      // to this inbox and then to the user's original screen.
-      if (route != '/notifications') context.push(route);
       return;
     }
 
-    // Never navigate to a route supplied by the notification payload. Only
-    // known event types can resolve to a local corrective destination.
-    final route = providerLifecycleNotificationRoute(notification.eventType);
-    if (route == null) return;
-
-    if (route == '/account/documents') {
-      ref.invalidate(verificationStatusProvider);
-      // Refresh the authenticated profile snapshot as well. Navigation should
-      // not wait on this best-effort request; the destination already fetches
-      // the authoritative verification response on entry.
-      unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
+    var clientFirstName = 'Client';
+    try {
+      final raw = await ref.read(jobServiceProvider).getJob(bookingId);
+      final name = Job.fromJson(raw).clientName?.trim();
+      if (name != null && name.isNotEmpty) {
+        clientFirstName = name.split(RegExp(r'\s+')).first;
+      }
+    } catch (error) {
+      debugPrint('[Notifications] rating job hydration failed: $error');
     }
-    // Lifecycle destinations come only from the local allowlist above. Push
-    // them so opening an inbox item never destroys the user's prior stack.
-    context.push(route);
+    if (!context.mounted) return;
+    await showRateClientSheet(
+      context,
+      jobId: bookingId,
+      clientFirstName: clientFirstName,
+    );
   }
 
   @override
@@ -96,7 +215,9 @@ class _ProviderNotificationsScreenState
     final h = size.height;
     final notificationState = ref.watch(providerNotifsProvider);
     final notifs = notificationState.items;
-    final unread = notifs.where((n) => !n.isRead).length;
+    // The first page can contain only a subset of unread rows. Use the exact
+    // server total so the header and mark-all action agree with the bell.
+    final unread = notificationState.unreadCount;
 
     return PopScope(
       canPop: context.canPop(),
@@ -173,8 +294,9 @@ class _ProviderNotificationsScreenState
                       ? _EmptyState(w: w, h: h)
                       : _NotifList(
                           notifs: notifs,
-                          onTap: (notification) =>
-                              _openNotification(context, notification),
+                          onTap: (notification, action) => unawaited(
+                            _openNotification(context, notification, action),
+                          ),
                           w: w,
                           h: h,
                         ),
@@ -188,7 +310,7 @@ class _ProviderNotificationsScreenState
 
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
-  final void Function(Notif) onTap;
+  final void Function(Notif, ProviderInboxAction?) onTap;
   final double w, h;
 
   const _NotifList({
@@ -210,11 +332,29 @@ class _NotifList extends StatelessWidget {
       children: [
         if (today.isNotEmpty) ...[
           _GroupLabel(label: 'TODAY', w: w),
-          ...today.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...today.map((n) => _NotifTile(
+                notif: n,
+                action: providerInboxActionFor(
+                  eventType: n.eventType,
+                  payload: n.payload,
+                ),
+                onTap: onTap,
+                w: w,
+                h: h,
+              )),
         ],
         if (earlier.isNotEmpty) ...[
           _GroupLabel(label: 'EARLIER', w: w),
-          ...earlier.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...earlier.map((n) => _NotifTile(
+                notif: n,
+                action: providerInboxActionFor(
+                  eventType: n.eventType,
+                  payload: n.payload,
+                ),
+                onTap: onTap,
+                w: w,
+                h: h,
+              )),
         ],
       ],
     );
@@ -245,11 +385,13 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
-  final void Function(Notif) onTap;
+  final ProviderInboxAction? action;
+  final void Function(Notif, ProviderInboxAction?) onTap;
   final double w, h;
 
   const _NotifTile({
     required this.notif,
+    required this.action,
     required this.onTap,
     required this.w,
     required this.h,
@@ -260,7 +402,7 @@ class _NotifTile extends StatelessWidget {
     final (iconData, iconColor, iconBg) = _iconFor(notif.type);
 
     return InkWell(
-      onTap: () => onTap(notif),
+      onTap: () => onTap(notif, action),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding:
@@ -302,6 +444,32 @@ class _NotifTile extends StatelessWidget {
                           color: MyShopColors.textSecondary,
                           fontSize: w * 0.032,
                           height: 1.4)),
+                  if (action case final action?) ...[
+                    SizedBox(height: h * 0.008),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        key: ValueKey(
+                            'provider-notification-action-${notif.id}'),
+                        onPressed: () => onTap(notif, action),
+                        style: TextButton.styleFrom(
+                          foregroundColor: MyShopColors.primaryGold,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: w * 0.020,
+                            vertical: h * 0.004,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          textStyle: TextStyle(
+                            fontSize: w * 0.031,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: Text(action.label),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

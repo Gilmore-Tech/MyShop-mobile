@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/providers/availability_controller.dart';
@@ -184,10 +183,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
               region: categories != null && categories.isNotEmpty
                   ? categories
                   : 'Ghana',
-              hasUnreadNotifications: false,
               avatarUrl: profilePhoto.url,
               localAvatarFile: profilePhoto.localFile,
-              onNotificationsTap: () => context.push('/notifications'),
               onAvatarTap: () {},
             ),
 

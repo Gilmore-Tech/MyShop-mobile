@@ -43,16 +43,15 @@ class _NotificationsListScreenState
   void _openNotification(
     BuildContext context,
     Notif notification,
+    ClientInboxAction? action,
   ) {
     ref.read(notifsProvider.notifier).markRead(notification.id);
-    final eventType = NotificationPayload.normaliseType(notification.eventType);
-    if (eventType != NotificationPayload.typeAnnouncement) return;
-    final destination = clientAnnouncementRoute(
-      notification.payload[NotificationPayload.keyDestination],
-    );
+    if (action == null) return;
     // This tap originated inside the app, so preserve the inbox beneath the
-    // destination. A destination of "notifications" already means this page.
-    if (destination != '/notifications') context.push(destination);
+    // destination. Every destination was produced by the local resolver.
+    if (action.route != '/notifications') {
+      unawaited(context.push<void>(action.route, extra: action.extra));
+    }
   }
 
   @override
@@ -61,8 +60,7 @@ class _NotificationsListScreenState
     final w = size.width;
     final h = size.height;
     final notificationsState = ref.watch(notifsProvider);
-    final notifs = notificationsState.asData?.value ?? const <Notif>[];
-    final unread = notifs.where((n) => !n.isRead).length;
+    final unread = ref.read(notifsProvider.notifier).unreadCount;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -141,8 +139,8 @@ class _NotificationsListScreenState
               : _NotifList(
                   notifs: notifications,
                   now: _now,
-                  onTap: (notification) =>
-                      _openNotification(context, notification),
+                  onTap: (notification, action) =>
+                      _openNotification(context, notification, action),
                   w: w,
                   h: h,
                 ),
@@ -157,7 +155,7 @@ class _NotificationsListScreenState
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
   final DateTime now;
-  final void Function(Notif) onTap;
+  final void Function(Notif, ClientInboxAction?) onTap;
   final double w, h;
 
   const _NotifList({
@@ -186,6 +184,10 @@ class _NotifList extends StatelessWidget {
           ...today.map(
             (n) => _NotifTile(
               notif: n,
+              action: clientInboxActionFor(
+                eventType: n.eventType,
+                payload: n.payload,
+              ),
               now: now,
               onTap: onTap,
               w: w,
@@ -198,6 +200,10 @@ class _NotifList extends StatelessWidget {
           ...earlier.map(
             (n) => _NotifTile(
               notif: n,
+              action: clientInboxActionFor(
+                eventType: n.eventType,
+                payload: n.payload,
+              ),
               now: now,
               onTap: onTap,
               w: w,
@@ -234,12 +240,14 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
+  final ClientInboxAction? action;
   final DateTime now;
-  final void Function(Notif) onTap;
+  final void Function(Notif, ClientInboxAction?) onTap;
   final double w, h;
 
   const _NotifTile({
     required this.notif,
+    required this.action,
     required this.now,
     required this.onTap,
     required this.w,
@@ -253,7 +261,7 @@ class _NotifTile extends StatelessWidget {
     final absoluteTime = clientNotificationLocalDateTime(notif);
 
     return InkWell(
-      onTap: () => onTap(notif),
+      onTap: () => onTap(notif, action),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding:
@@ -307,6 +315,31 @@ class _NotifTile extends StatelessWidget {
                       style: TextStyle(
                         color: MyShopColors.textSecondary.withAlpha(180),
                         fontSize: w * 0.027,
+                      ),
+                    ),
+                  ],
+                  if (action case final action?) ...[
+                    SizedBox(height: h * 0.008),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        key: ValueKey('client-notification-action-${notif.id}'),
+                        onPressed: () => onTap(notif, action),
+                        style: TextButton.styleFrom(
+                          foregroundColor: MyShopColors.primaryGold,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: w * 0.020,
+                            vertical: h * 0.004,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          textStyle: TextStyle(
+                            fontSize: w * 0.031,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: Text(action.label),
                       ),
                     ),
                   ],

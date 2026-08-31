@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/ride/providers/ride_provider.dart';
+import '../features/notifications/providers/notifications_provider.dart';
 import 'router.dart';
 import 'widgets/app_bottom_nav.dart';
 
@@ -15,13 +18,61 @@ import 'widgets/app_bottom_nav.dart';
 /// hydrates `bookingPhase`/`matchedDriver` after fetching the rider's
 /// in-flight ride from REST; this widget listens for that hydration and
 /// navigates to `/ride/tracking` so the rider lands back on the live map.
-class MainShell extends ConsumerWidget {
+class MainShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainShell({super.key, required this.navigationShell});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell>
+    with WidgetsBindingObserver {
+  bool _pendingNotificationReadQueued = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _schedulePendingNotificationReadConsumption();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(ref.read(notifsProvider.notifier).reload());
+    _schedulePendingNotificationReadConsumption();
+  }
+
+  void _schedulePendingNotificationReadConsumption() {
+    if (_pendingNotificationReadQueued) return;
+    _pendingNotificationReadQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _pendingNotificationReadQueued = false;
+        return;
+      }
+      unawaited(
+        ref
+            .read(consumePendingClientNotificationReadProvider)()
+            .whenComplete(() => _pendingNotificationReadQueued = false),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep one exact notification snapshot alive for the authenticated Client
+    // shell so Home/Profile bells share state across tab changes.
+    ref.watch(notifsProvider);
+
     // Resume mid-trip rides on cold start. Fires when the recovery bridge
     // pushes `bookingPhase = accepted` after finding an in-flight ride for
     // the rider. Skipped if the user is already on the tracking branch
@@ -42,13 +93,13 @@ class MainShell extends ConsumerWidget {
     });
 
     return Scaffold(
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.values[navigationShell.currentIndex],
-        onTap: (tab) => navigationShell.goBranch(
+        activeTab: AppTab.values[widget.navigationShell.currentIndex],
+        onTap: (tab) => widget.navigationShell.goBranch(
           tab.index,
           // Re-tapping the active tab pops back to the branch root.
-          initialLocation: tab.index == navigationShell.currentIndex,
+          initialLocation: tab.index == widget.navigationShell.currentIndex,
         ),
       ),
     );

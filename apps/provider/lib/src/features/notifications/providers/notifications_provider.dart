@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
+import '../../auth/providers/auth_controller.dart';
+import '../services/pending_notification_read_store.dart';
 
 // ── Model ────────────────────────────────────────────────────────────────────
 
@@ -249,6 +252,113 @@ List<Notif> providerNotificationItemsFromResponse(
       .toList(growable: false);
 }
 
+/// Returns the server-authoritative unread total when the API exposes it.
+///
+/// Older backend releases do not include `meta.unreadTotal`, so the provider
+/// app remains backwards-compatible by deriving the count from the loaded
+/// in-app rows. Once the new metadata is available this also counts unread
+/// notifications beyond the first page.
+int providerNotificationUnreadCountFromResponse(
+  Map<String, dynamic> response, {
+  required List<Notif> items,
+}) {
+  final meta = response['meta'];
+  final rawUnreadTotal = meta is Map ? meta['unreadTotal'] : null;
+  final unreadTotal = switch (rawUnreadTotal) {
+    int value => value,
+    num value => value.toInt(),
+    String value => int.tryParse(value),
+    _ => null,
+  };
+  if (unreadTotal != null && unreadTotal >= 0) return unreadTotal;
+  return items.where((notification) => !notification.isRead).length;
+}
+
+const _notificationTypeAliases = <String, String>{
+  'job_bid_selected': 'bid_accepted',
+  'job_bid_rejected': 'bid_rejected',
+  'job_supplement_approved': 'supplement_approved',
+  'job_supplement_rejected': 'supplement_rejected',
+  'ride_cancelled': 'ride_cancelled',
+  'ride_settled': 'ride_settled',
+  'payment_received': 'payment_received',
+  'earnings_updated': 'earnings_updated',
+  'rating_prompt': 'rating_prompt',
+  'chat_message': 'new_message',
+  'support_ticket_message': 'support_ticket_message',
+  'support_ticket_status_changed': 'support_ticket_status_changed',
+};
+
+String _canonicalNotificationType(Object? value) {
+  final normalized = _notificationText(value)
+          ?.toLowerCase()
+          .replaceAll('.', '_')
+          .replaceAll('-', '_') ??
+      '';
+  return _notificationTypeAliases[normalized] ?? normalized;
+}
+
+/// Finds the persisted in-app sibling represented by a system-tray payload.
+///
+/// A push channel row has a different `notificationId` from its in-app
+/// sibling, so that id must never be used to clear the bell. Announcements are
+/// correlated by their server-authored campaign id. Other notifications must
+/// match both a locally-normalised event type and one allowlisted entity id;
+/// remote route values are deliberately ignored.
+Notif? providerNotificationForTrayPayload(
+  List<Notif> notifications,
+  Map<String, dynamic> trayPayload,
+) {
+  final correlationId =
+      validatedProviderNotificationCorrelationId(trayPayload['correlationId']);
+  if (correlationId != null) {
+    for (final notification in notifications) {
+      if (validatedProviderNotificationCorrelationId(
+            notification.payload['correlationId'],
+          ) ==
+          correlationId) {
+        return notification;
+      }
+    }
+  }
+
+  final campaignId =
+      validatedProviderNotificationCorrelationId(trayPayload['campaignId']);
+  if (campaignId != null) {
+    for (final notification in notifications) {
+      if (validatedProviderNotificationCorrelationId(
+            notification.payload['campaignId'],
+          ) ==
+          campaignId) {
+        return notification;
+      }
+    }
+  }
+
+  final trayType = _canonicalNotificationType(
+    trayPayload['type'] ?? trayPayload['eventType'],
+  );
+  if (trayType.isEmpty) return null;
+
+  for (final entityKey in providerNotificationCorrelationEntityKeys) {
+    final trayEntityId =
+        validatedProviderNotificationCorrelationId(trayPayload[entityKey]);
+    if (trayEntityId == null) continue;
+    for (final notification in notifications) {
+      if (_canonicalNotificationType(notification.eventType) != trayType) {
+        continue;
+      }
+      if (validatedProviderNotificationCorrelationId(
+            notification.payload[entityKey],
+          ) ==
+          trayEntityId) {
+        return notification;
+      }
+    }
+  }
+  return null;
+}
+
 // ── Provider ─────────────────────────────────────────────────────────────────
 // EDD: GET /v1/notifications?page=1&limit=30
 //      PATCH /v1/notifications/:id/read
@@ -257,16 +367,19 @@ List<Notif> providerNotificationItemsFromResponse(
 class ProviderNotifsState {
   const ProviderNotifsState({
     this.items = const [],
+    this.unreadCount = 0,
     this.isLoading = false,
     this.hasLoadError = false,
   });
 
   const ProviderNotifsState.initial()
       : items = const [],
+        unreadCount = 0,
         isLoading = true,
         hasLoadError = false;
 
   final List<Notif> items;
+  final int unreadCount;
   final bool isLoading;
   final bool hasLoadError;
 }
@@ -278,18 +391,39 @@ class NotifsNotifier extends StateNotifier<ProviderNotifsState> {
   }
 
   final NotificationService _notificationService;
+  final Set<String> _optimisticallyReadIds = <String>{};
+  Future<void>? _loadOperation;
 
-  Future<void> _loadFromApi() async {
+  Future<void> _loadFromApi() {
+    final activeLoad = _loadOperation;
+    if (activeLoad != null) return activeLoad;
+
+    late final Future<void> operation;
+    operation = _performLoadFromApi().whenComplete(() {
+      if (identical(_loadOperation, operation)) _loadOperation = null;
+    });
+    _loadOperation = operation;
+    return operation;
+  }
+
+  Future<void> _performLoadFromApi() async {
     state = ProviderNotifsState(
       items: state.items,
+      unreadCount: state.unreadCount,
       isLoading: true,
     );
     try {
       final data =
           await _notificationService.getNotifications(page: 1, limit: 30);
       if (!mounted) return;
+      final items = providerNotificationItemsFromResponse(data);
+      _optimisticallyReadIds.clear();
       state = ProviderNotifsState(
-        items: providerNotificationItemsFromResponse(data),
+        items: items,
+        unreadCount: providerNotificationUnreadCountFromResponse(
+          data,
+          items: items,
+        ),
       );
     } catch (_) {
       if (!mounted) return;
@@ -297,6 +431,7 @@ class NotifsNotifier extends StateNotifier<ProviderNotifsState> {
       // refreshes and let the screen offer an explicit retry.
       state = ProviderNotifsState(
         items: state.items,
+        unreadCount: state.unreadCount,
         hasLoadError: true,
       );
     }
@@ -304,24 +439,106 @@ class NotifsNotifier extends StateNotifier<ProviderNotifsState> {
 
   Future<void> reload() => _loadFromApi();
 
-  void markRead(String id) {
-    state = ProviderNotifsState(
-      items: state.items.map((n) => n.id == id ? n.copyWithRead() : n).toList(),
-      isLoading: state.isLoading,
-      hasLoadError: state.hasLoadError,
+  /// Reads only a safely-correlated in-app notification and waits for the
+  /// server acknowledgement. A null result leaves the durable pending receipt
+  /// intact so it can be retried after auth/network recovery.
+  Future<String?> markReadForTrayPayload(Map<String, dynamic> payload) async {
+    final notification = providerNotificationForTrayPayload(
+      state.items,
+      payload,
     );
-    _notificationService.markAsRead(id).catchError((_) {});
+    if (notification == null) return null;
+    final hasUnacknowledgedOptimisticRead =
+        _optimisticallyReadIds.contains(notification.id);
+    if (notification.isRead && !hasUnacknowledgedOptimisticRead) {
+      return notification.id;
+    }
+
+    if (!notification.isRead) _applyRead(notification.id);
+    try {
+      await _notificationService.markAsRead(notification.id);
+      _optimisticallyReadIds.remove(notification.id);
+      return notification.id;
+    } catch (_) {
+      // Keep the optimistic marker. A failed reload preserves the local read
+      // item, and this marker ensures the next durable-receipt attempt retries
+      // the PATCH instead of mistaking that local state for server proof.
+      return null;
+    }
   }
 
-  void markAllRead() {
-    final items = state.items.map((n) => n.copyWithRead()).toList();
+  void markRead(String id) {
+    final notificationIndex = state.items.indexWhere((item) => item.id == id);
+    final notification =
+        notificationIndex < 0 ? null : state.items[notificationIndex];
+    if (notification?.isRead == true && !_optimisticallyReadIds.contains(id)) {
+      return;
+    }
+    if (notification?.isRead != true) _applyRead(id);
+    unawaited(_acknowledgeRead(id));
+  }
+
+  Future<void> _acknowledgeRead(String id) async {
+    try {
+      await _notificationService.markAsRead(id);
+      _optimisticallyReadIds.remove(id);
+    } catch (_) {
+      // Preserve the marker so a later tray/inbox retry cannot confuse the
+      // optimistic local row with an acknowledged server read.
+    }
+  }
+
+  bool _applyRead(String id) {
+    final notificationIndex = state.items.indexWhere((item) => item.id == id);
+    final notification =
+        notificationIndex < 0 ? null : state.items[notificationIndex];
+    if (notification?.isRead == true ||
+        (notification == null && _optimisticallyReadIds.contains(id))) {
+      return false;
+    }
+    final firstOptimisticRead = _optimisticallyReadIds.add(id);
+    final shouldDecrement = firstOptimisticRead &&
+        (notification == null || !notification.isRead) &&
+        state.unreadCount > 0;
     state = ProviderNotifsState(
-      items: items,
+      items: state.items.map((n) => n.id == id ? n.copyWithRead() : n).toList(),
+      unreadCount: shouldDecrement ? state.unreadCount - 1 : state.unreadCount,
       isLoading: state.isLoading,
       hasLoadError: state.hasLoadError,
     );
-    for (final n in items) {
-      _notificationService.markAsRead(n.id).catchError((_) {});
+    return true;
+  }
+
+  Future<void> markAllRead() async {
+    final unreadItems =
+        state.items.where((notification) => !notification.isRead).toList();
+    final items = state.items.map((n) => n.copyWithRead()).toList();
+    _optimisticallyReadIds
+        .addAll(unreadItems.map((notification) => notification.id));
+    state = ProviderNotifsState(
+      items: items,
+      unreadCount: 0,
+      isLoading: state.isLoading,
+      hasLoadError: state.hasLoadError,
+    );
+
+    try {
+      await _notificationService.markAllAsRead();
+      _optimisticallyReadIds.removeAll(
+        unreadItems.map((notification) => notification.id),
+      );
+    } catch (_) {
+      // Compatibility with an older backend during rolling deployment: mark
+      // the loaded rows through the legacy endpoint, then refetch the exact
+      // total so unread rows beyond page one remain honest.
+      await Future.wait(
+        unreadItems.map(
+          (notification) => _notificationService
+              .markAsRead(notification.id)
+              .catchError((_) {}),
+        ),
+      );
+      await reload();
     }
   }
 }
@@ -329,6 +546,46 @@ class NotifsNotifier extends StateNotifier<ProviderNotifsState> {
 final providerNotifsProvider =
     StateNotifierProvider.autoDispose<NotifsNotifier, ProviderNotifsState>(
         (ref) {
+  // Recreate the cache for every exact role session. A dual-role provider or
+  // next account on the same handset must never inherit another inbox/badge.
+  ref.watch(currentAuthSessionIdentityProvider);
   final notificationService = ref.watch(apiNotificationServiceProvider);
   return NotifsNotifier(notificationService);
+});
+
+/// Shared badge source for the driver, artisan and earnings headers.
+///
+/// The provider shell keeps [providerNotifsProvider] alive for the authenticated
+/// session, so every bell observes one consistent unread total as users switch
+/// tabs and mark inbox rows read.
+final providerUnreadNotificationCountProvider = Provider.autoDispose<int>(
+  (ref) => ref.watch(
+    providerNotifsProvider.select((state) => state.unreadCount),
+  ),
+);
+
+/// Completes a sanitized cold-start tray read only after the exact authenticated
+/// role cache has loaded. Successful server acknowledgement atomically clears
+/// the persisted receipt; failures remain retryable on the next shell resume.
+final consumePendingProviderNotificationReadProvider =
+    Provider<Future<void> Function()>((ref) {
+  return () async {
+    try {
+      final identity = ref.read(currentAuthSessionIdentityProvider);
+      if (identity == null || !ref.exists(providerNotifsProvider)) return;
+      final store = ref.read(pendingProviderNotificationReadStoreProvider);
+      final pending = await store.loadFor(identity);
+      if (pending == null) return;
+
+      final notifier = ref.read(providerNotifsProvider.notifier);
+      await notifier.reload();
+      final matchedId = await notifier.markReadForTrayPayload(pending.payload);
+      if (matchedId != null) {
+        await store.clearIfReceipt(pending.receiptId);
+      }
+    } catch (_) {
+      // Authentication, storage and network startup can race on a cold launch.
+      // The sanitized receipt remains available for the next shell resume.
+    }
+  };
 });

@@ -100,6 +100,73 @@ Future<void> _openTrayInbox(WidgetTester tester, GoRouter router) async {
 }
 
 void main() {
+  const jobId = '11111111-1111-4111-8111-111111111111';
+  const rideId = '22222222-2222-4222-8222-222222222222';
+
+  test('inbox action resolver allows known events and validated ids only', () {
+    final supplement = clientInboxActionFor(
+      eventType: 'job.supplement_requested',
+      payload: const {
+        NotificationPayload.keyJobId: jobId,
+        'route': '/unsafe/admin',
+      },
+    );
+    expect(supplement?.label, 'Review supplement');
+    expect(supplement?.route, '/services/job/$jobId/supplement');
+
+    final rating = clientInboxActionFor(
+      eventType: 'rating.prompt',
+      payload: const {
+        NotificationPayload.keyBookingType: 'ride',
+        NotificationPayload.keyBookingId: rideId,
+      },
+    );
+    expect(rating?.kind, ClientInboxActionKind.rating);
+    expect(rating?.route, '/ride/$rideId/receipt');
+
+    final message = clientInboxActionFor(
+      eventType: 'chat.message',
+      payload: const {
+        NotificationPayload.keyBookingType: 'job',
+        NotificationPayload.keyBookingId: jobId,
+      },
+    );
+    expect(message?.label, 'View message');
+    expect(message?.route, '/chat');
+    expect(
+      message?.extra,
+      const {'bookingType': 'artisan_job', 'bookingId': jobId},
+    );
+
+    expect(
+      clientInboxActionFor(
+        eventType: 'ride.driver_arrived',
+        payload: const {
+          NotificationPayload.keyRideId: '../admin',
+          'route': '/unsafe/admin',
+        },
+      ),
+      isNull,
+    );
+    expect(
+      clientInboxActionFor(
+        eventType: 'new_message',
+        payload: const {
+          NotificationPayload.keyBookingType: 'ride',
+          NotificationPayload.keyBookingId: 'not-a-booking-id',
+        },
+      ),
+      isNull,
+    );
+    expect(
+      clientInboxActionFor(
+        eventType: 'unknown.event',
+        payload: const {'route': '/profile/payments'},
+      ),
+      isNull,
+    );
+  });
+
   testWidgets('shows loading instead of the empty state during initial fetch',
       (tester) async {
     _usePhoneViewport(tester);
@@ -184,5 +251,31 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.text('Profile origin'), findsOneWidget);
+  });
+
+  testWidgets('visible CTA and row tap resolve to the same safe destination',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _testRouter(initialLocation: '/profile');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+
+    router.push('/notifications');
+    await tester.pumpAndSettle();
+    expect(find.text('Get support'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey('client-notification-action-announcement_1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Support destination'), findsOneWidget);
+
+    router.pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Support update'));
+    await tester.pumpAndSettle();
+    expect(find.text('Support destination'), findsOneWidget);
   });
 }

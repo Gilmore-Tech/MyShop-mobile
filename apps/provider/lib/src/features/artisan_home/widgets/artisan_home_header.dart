@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/widgets/provider_status_dot.dart';
+import '../../notifications/widgets/provider_notification_bell.dart';
 
 /// Top header for the Artisan Home screen.
 ///
@@ -13,19 +14,15 @@ class ArtisanHomeHeader extends StatelessWidget {
     super.key,
     required this.businessName,
     required this.region,
-    this.hasUnreadNotifications = false,
     this.avatarUrl,
     this.localAvatarFile,
-    this.onNotificationsTap,
     this.onAvatarTap,
   });
 
   final String businessName;
   final String region;
-  final bool hasUnreadNotifications;
   final String? avatarUrl;
   final File? localAvatarFile;
-  final VoidCallback? onNotificationsTap;
   final VoidCallback? onAvatarTap;
 
   @override
@@ -79,47 +76,7 @@ class ArtisanHomeHeader extends StatelessWidget {
             ),
           ),
 
-          // Notification bell with red dot
-          GestureDetector(
-            onTap: onNotificationsTap,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                shape: BoxShape.circle,
-                border: Border.all(color: MyShopColors.divider),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  const Icon(
-                    Icons.notifications_none,
-                    size: 22,
-                    color: MyShopColors.textPrimary,
-                  ),
-                  if (hasUnreadNotifications)
-                    Positioned(
-                      top: 8,
-                      right: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: MyShopColors.error,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: MyShopColors.surfaceWhite,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          const ProviderNotificationBell(contained: true),
           const SizedBox(width: MyShopSpacing.sm),
 
           // Avatar with online dot
