@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myshop_client/src/core/di/providers.dart';
+import 'package:myshop_client/src/core/services/fcm_service.dart';
 import 'package:myshop_client/src/core/services/local_notification_service.dart';
 import 'package:myshop_client/src/features/notifications/screens/notifications_list_screen.dart';
 
@@ -92,11 +93,11 @@ void _usePhoneViewport(WidgetTester tester) {
 }
 
 Future<void> _openTrayInbox(WidgetTester tester, GoRouter router) async {
-  final stack = clientTrayNavigationStack('/notifications');
-  router.go(stack.first);
+  // Exercise the production sequence. There is deliberately no artificial
+  // frame inserted between go(home) and the tray destination.
+  final navigation = openClientTrayDestination(router, '/notifications');
   await tester.pumpAndSettle();
-  router.push(stack.last);
-  await tester.pumpAndSettle();
+  await navigation;
 }
 
 void main() {
@@ -233,6 +234,29 @@ void main() {
     expect(find.text('Client dashboard'), findsOneWidget);
   });
 
+  testWidgets('non-inbox tray destination Back returns to the dashboard',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _testRouter(initialLocation: '/profile');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+
+    // Exercise the production same-turn go-then-push coordinator without the
+    // inbox source marker. This proves the dashboard is the real route beneath
+    // an ordinary tray destination, not merely an inbox-specific fallback.
+    final navigation = openClientTrayDestination(router, '/profile/support');
+    await tester.pumpAndSettle();
+    await navigation;
+    await tester.pumpAndSettle();
+    expect(find.text('Support destination'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client dashboard'), findsOneWidget);
+    expect(find.text('Profile origin'), findsNothing);
+  });
+
   testWidgets('root tray inbox system Back falls back to client dashboard',
       (tester) async {
     _usePhoneViewport(tester);
@@ -248,6 +272,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Client dashboard'), findsOneWidget);
+  });
+
+  testWidgets('tray marker ignores an unrelated restored back stack',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _testRouter(initialLocation: '/profile');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+
+    // A platform resume can restore an old route before delivering the tray
+    // callback. The explicit marker must return Home, never that stale route.
+    unawaited(router.push('/notifications?source=tray'));
+    await tester.pumpAndSettle();
+    expect(router.canPop(), isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client dashboard'), findsOneWidget);
+    expect(find.text('Profile origin'), findsNothing);
   });
 
   testWidgets('in-app inbox app-bar Back preserves its profile origin',
@@ -306,7 +350,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Support destination'), findsOneWidget);
 
-    router.pop();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('Profile origin'), findsOneWidget);
+
+    unawaited(router.push('/notifications'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Support update'));
     await tester.pumpAndSettle();

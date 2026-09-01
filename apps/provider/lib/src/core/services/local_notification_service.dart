@@ -266,16 +266,40 @@ String providerAnnouncementRoute(Object? rawDestination) {
   };
 }
 
-/// Opens an allowlisted notification destination over a deterministic provider
-/// dashboard base. System-tray taps do not have a meaningful Flutter route
-/// beneath them, so seeding `/home` first makes AppBar and OS Back consistent.
-void openProviderSystemTrayDestination({
-  required String destination,
-  required void Function(String route) go,
-  required void Function(String route) push,
-}) {
-  go('/home');
-  if (destination != '/home') push(destination);
+const _providerTraySourceParameter = 'source';
+const _providerTraySourceValue = 'tray';
+const providerDashboardRoute = '/home';
+
+/// Tags the inbox route with its navigation origin. The inbox uses this
+/// marker to make Back deterministic even if iOS/Android reports the same
+/// physical tray tap through more than one plugin callback.
+String providerSystemTrayDestinationRoute(String destination) {
+  final uri = Uri.tryParse(destination);
+  if (uri == null || uri.path != '/notifications') return destination;
+  return uri.replace(
+    queryParameters: {
+      ...uri.queryParameters,
+      _providerTraySourceParameter: _providerTraySourceValue,
+    },
+  ).toString();
+}
+
+bool providerNotificationOpenedFromSystemTray(Uri uri) =>
+    uri.path == '/notifications' &&
+    uri.queryParameters[_providerTraySourceParameter] ==
+        _providerTraySourceValue;
+
+/// A tray tap is a fresh navigation intent. The runtime applies this stack in
+/// two phases so GoRouter has rebuilt the dashboard before the destination is
+/// pushed above it.
+List<String> providerSystemTrayNavigationStack(String destination) {
+  if (destination == providerDashboardRoute) {
+    return const [providerDashboardRoute];
+  }
+  return [
+    providerDashboardRoute,
+    providerSystemTrayDestinationRoute(destination),
+  ];
 }
 
 /// Returns the only corrective destination accepted for provider-document
@@ -322,7 +346,13 @@ String? providerLifecycleNotificationRoute(String rawType) {
 /// time it reaches this screen. Keeping the operation semantic (rather than
 /// accepting a remote path) lets the UI re-fetch authoritative booking state
 /// before opening anything that can mutate marketplace state.
-enum ProviderInboxActionKind { route, manualJob, activeJob, rating }
+enum ProviderInboxActionKind {
+  route,
+  locationSettings,
+  manualJob,
+  activeJob,
+  rating,
+}
 
 @immutable
 class ProviderInboxAction {
@@ -463,7 +493,10 @@ ProviderInboxAction? providerInboxActionFor({
 
   if (type == NotificationPayload.typeProviderLocationDegraded ||
       type == NotificationPayload.typeProviderLocationDegradedEscalated) {
-    return _providerInboxRoute('Fix location', '/home');
+    return const ProviderInboxAction(
+      kind: ProviderInboxActionKind.locationSettings,
+      label: 'Fix location',
+    );
   }
 
   if (type == NotificationPayload.typeAccountSuspendedLowRating ||

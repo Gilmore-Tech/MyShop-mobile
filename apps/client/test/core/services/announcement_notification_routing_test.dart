@@ -20,7 +20,7 @@ void main() {
   test('tray destinations are stacked above the client dashboard', () {
     expect(
       clientTrayNavigationStack('/notifications'),
-      [clientDashboardRoute, '/notifications'],
+      [clientDashboardRoute, '/notifications?source=tray'],
     );
     expect(
       clientTrayNavigationStack('/profile/support'),
@@ -29,6 +29,23 @@ void main() {
     expect(
       clientTrayNavigationStack(clientDashboardRoute),
       [clientDashboardRoute],
+    );
+  });
+
+  test('only the inbox receives an explicit tray-origin marker', () {
+    expect(
+      clientNotificationOpenedFromTray(
+        Uri.parse('/notifications?source=tray'),
+      ),
+      isTrue,
+    );
+    expect(
+      clientNotificationOpenedFromTray(Uri.parse('/notifications')),
+      isFalse,
+    );
+    expect(
+      clientTrayDestinationRoute('/profile/support'),
+      '/profile/support',
     );
   });
 }

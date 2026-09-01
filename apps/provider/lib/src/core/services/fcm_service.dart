@@ -7,6 +7,7 @@ import 'package:api_client/api_client.dart'
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -2558,6 +2559,60 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
   }, fireImmediately: true);
 });
 
+/// Seeds the provider dashboard, waits until it is the router's actual
+/// configuration, then places the tray destination above it. `go()` changes
+/// route information before the Navigator pages rebuild; a same-turn `push()`
+/// can otherwise use the stale shell stack and leave Back broken.
+@visibleForTesting
+Future<void> openProviderTrayDestination(
+  GoRouter router,
+  String destination, {
+  Object? extra,
+}) async {
+  final stack = providerSystemTrayNavigationStack(destination);
+  router.go(stack.first);
+  if (stack.length == 1) return;
+
+  final baseReady = await _waitForProviderTrayBase(router, stack.first);
+  if (!baseReady) {
+    debugPrint(
+      '[FCM-tap] tray navigation base was redirected away from '
+      '${stack.first}; destination deferred',
+    );
+    return;
+  }
+  unawaited(router.push<void>(stack.last, extra: extra));
+}
+
+Future<bool> _waitForProviderTrayBase(
+  GoRouter router,
+  String expectedPath,
+) async {
+  bool isReady() =>
+      router.routerDelegate.currentConfiguration.uri.path == expectedPath;
+  if (isReady()) return true;
+
+  final ready = Completer<bool>();
+  late VoidCallback listener;
+  Timer? timeout;
+  listener = () {
+    if (isReady() && !ready.isCompleted) ready.complete(true);
+  };
+  router.routerDelegate.addListener(listener);
+  timeout = Timer(const Duration(seconds: 10), () {
+    if (!ready.isCompleted) ready.complete(false);
+  });
+  // Close the race between the first check and listener registration.
+  listener();
+
+  try {
+    return await ready.future;
+  } finally {
+    timeout.cancel();
+    router.routerDelegate.removeListener(listener);
+  }
+}
+
 /// Wires FCM notification taps into GoRouter navigation.
 ///
 /// Routing table:
@@ -2672,16 +2727,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         .toUpperCase();
     final router = ref.read(goRouterProvider);
 
-    void openSystemTrayDestination(
+    Future<void> openSystemTrayDestination(
       String destination, {
       Object? extra,
-    }) {
-      openProviderSystemTrayDestination(
-        destination: destination,
-        go: router.go,
-        push: (route) => unawaited(router.push(route, extra: extra)),
-      );
-    }
+    }) =>
+        openProviderTrayDestination(
+          router,
+          destination,
+          extra: extra,
+        );
 
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
@@ -2734,7 +2788,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           ref.read(authControllerProvider.notifier).refreshProfile(),
         );
       }
-      openSystemTrayDestination(lifecycleRoute);
+      await openSystemTrayDestination(lifecycleRoute);
       releaseUntransferredRideClaim();
       return;
     }
@@ -2763,14 +2817,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
       if (jobId == null) {
         debugPrint('[FCM-tap] active-job tap: no jobId in payload');
-        openSystemTrayDestination('/active-job');
+        await openSystemTrayDestination('/active-job');
         return;
       }
       final cached = ref.read(activeJobProvider).job;
       if (cached?.id == jobId) {
         // Slot already holds this job (foreground socket path or a
         // prior tap kept it warm) — straight to the screen.
-        openSystemTrayDestination('/active-job');
+        await openSystemTrayDestination('/active-job');
         return;
       }
       // Land on /home during the fetch so the user isn't staring at
@@ -2790,7 +2844,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // Preserve /home beneath this informational destination. A tray tap
         // has no meaningful prior Flutter route, so Back must not return to a
         // stale screen that happened to be visible before backgrounding.
-        unawaited(router.push('/active-job'));
+        await openSystemTrayDestination('/active-job');
       } catch (e) {
         if (!notificationHydrationSessionIsCurrent(
           expectedSession: expectedSession,
@@ -2801,7 +2855,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         debugPrint('[FCM-tap] active-job hydrate failed for $jobId: $e');
         // Drop on My Jobs so the affected job is at least visible in
         // the list. Better than dumping the user on a blank screen.
-        openSystemTrayDestination('/trips');
+        await openSystemTrayDestination('/trips');
       }
     }
 
@@ -2953,8 +3007,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         longitude: 0,
         expiresAt: deadline?.toIso8601String(),
       );
-      router.go('/home');
-      router.push(
+      await openSystemTrayDestination(
         '/job-request',
         extra: JobRequestRouteExtra(
           job: stub,
@@ -3236,7 +3289,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
     switch (type) {
       case NotificationPayload.typeAnnouncement:
-        openSystemTrayDestination(
+        await openSystemTrayDestination(
           providerAnnouncementRoute(
             payload[NotificationPayload.keyDestination],
           ),
@@ -3370,7 +3423,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // Client confirmed the work and the payout has been released —
       // earnings is where the artisan wants to land.
       case NotificationPayload.typeJobConfirmedComplete:
-        openSystemTrayDestination('/earnings');
+        await openSystemTrayDestination('/earnings');
         break;
 
       // Cancellations (client- or platform-initiated) — drop the user
@@ -3379,7 +3432,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // home tab that gives no context.
       case NotificationPayload.typeJobCancelled:
       case NotificationPayload.typeJobCancelledByClient:
-        openSystemTrayDestination('/trips');
+        await openSystemTrayDestination('/trips');
         break;
 
       case NotificationPayload.typeRideCancelled:
@@ -3396,7 +3449,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         final cleared =
             ref.read(activeRideProvider.notifier).clearRideIfMatches(rideId);
-        openSystemTrayDestination(cleared ? '/home' : '/trips');
+        await openSystemTrayDestination(cleared ? '/home' : '/trips');
         break;
 
       // Reminders, staleness pings and welfare checks all relate to the
@@ -3426,7 +3479,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         try {
           final data = await ref.read(jobServiceProvider).getJob(jobId);
           final job = Job.fromJson(data);
-          openSystemTrayDestination('/job-request', extra: job);
+          await openSystemTrayDestination('/job-request', extra: job);
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');
@@ -3458,7 +3511,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             break;
           }
           final job = Job.fromJson(data);
-          openSystemTrayDestination('/job-request', extra: job);
+          await openSystemTrayDestination('/job-request', extra: job);
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');
@@ -3479,7 +3532,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             (payload[NotificationPayload.keyBookingId] as String?) ??
                 (bookingType == ChatBookingType.ride ? rideId : jobId);
         if (bookingType == null || bookingId == null || bookingId.isEmpty) {
-          openSystemTrayDestination('/messages');
+          await openSystemTrayDestination('/messages');
           break;
         }
         // Hydrate the peer (client) details from the booking so the chat
@@ -3508,7 +3561,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         } catch (e) {
           debugPrint('[FCM] hydrate booking for chat failed: $e');
         }
-        openSystemTrayDestination(
+        await openSystemTrayDestination(
           '/chat',
           extra: <String, Object?>{
             'bookingType': bookingType,
@@ -3595,18 +3648,20 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeSupportTicketStatusChanged:
         final ticketId = payload[NotificationPayload.keyTicketId] as String?;
         if (ticketId != null && ticketId.isNotEmpty) {
-          openSystemTrayDestination('/account/support/tickets/$ticketId');
+          await openSystemTrayDestination(
+            '/account/support/tickets/$ticketId',
+          );
         } else {
-          openSystemTrayDestination('/account/support/tickets');
+          await openSystemTrayDestination('/account/support/tickets');
         }
         break;
 
       case NotificationPayload.typeProviderResponseBlockWarning:
-        openSystemTrayDestination('/home');
+        await openSystemTrayDestination('/home');
         break;
 
       case NotificationPayload.typeProviderResponseBlockStarted:
-        openSystemTrayDestination('/account/support');
+        await openSystemTrayDestination('/account/support');
         break;
 
       case NotificationPayload.typeBidRejected:

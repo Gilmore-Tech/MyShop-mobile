@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -17,6 +18,22 @@ import '../../auth/providers/auth_controller.dart';
 import '../../driver_home/widgets/rate_passenger_sheet.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../providers/notifications_provider.dart';
+
+typedef ProviderLocationRecoveryLauncher = Future<bool> Function();
+
+/// Location-degradation alerts need to perform a real corrective action, not
+/// push the already-mounted `/home` shell route underneath the inbox. Pushing
+/// that shell route can duplicate GoRouter page keys and leave Back trapped on
+/// the notification screen.
+final providerLocationRecoveryLauncherProvider =
+    Provider<ProviderLocationRecoveryLauncher>((_) {
+  return () async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return Geolocator.openLocationSettings();
+    }
+    return Geolocator.openAppSettings();
+  };
+});
 
 /// Only these authoritative states belong in [activeJobProvider]. Calling
 /// `setJob` also marks the provider Busy, so a historical notification for a
@@ -65,7 +82,17 @@ class _ProviderNotificationsScreenState
     super.dispose();
   }
 
-  void _goBack(BuildContext context) {
+  void _goBack(
+    BuildContext context, {
+    required bool openedFromSystemTray,
+  }) {
+    // A tray entry never inherits the route the app happened to have open in
+    // the background. Force the provider dashboard even if duplicate native
+    // callbacks stacked two copies of the same inbox route.
+    if (openedFromSystemTray) {
+      context.go('/home');
+      return;
+    }
     if (context.canPop()) {
       context.pop();
       return;
@@ -97,6 +124,10 @@ class _ProviderNotificationsScreenState
         unawaited(context.push<void>(route));
         return;
 
+      case ProviderInboxActionKind.locationSettings:
+        await _openLocationRecoverySettings(context);
+        return;
+
       case ProviderInboxActionKind.manualJob:
         await _hydrateAndOpenJob(
           context,
@@ -119,6 +150,25 @@ class _ProviderNotificationsScreenState
         await _openRatingAction(context, action);
         return;
     }
+  }
+
+  Future<void> _openLocationRecoverySettings(BuildContext context) async {
+    try {
+      final opened = await ref.read(providerLocationRecoveryLauncherProvider)();
+      if (opened || !context.mounted) return;
+    } catch (error) {
+      debugPrint('[Notifications] opening location settings failed: $error');
+      if (!context.mounted) return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open Location Settings. Open it from your phone settings.',
+          ),
+        ),
+      );
   }
 
   Future<void> _hydrateAndOpenJob(
@@ -309,11 +359,22 @@ class _ProviderNotificationsScreenState
     // The first page can contain only a subset of unread rows. Use the exact
     // server total so the header and mark-all action agree with the bell.
     final unread = notificationState.unreadCount;
+    final openedFromSystemTray = providerNotificationOpenedFromSystemTray(
+      GoRouterState.of(context).uri,
+    );
 
     return PopScope(
-      canPop: context.canPop(),
+      // Let ordinary in-app navigation pop to the exact prior screen. Tray
+      // routes own Back so a duplicate platform callback cannot reveal a
+      // second inbox page or a stale background route.
+      canPop: !openedFromSystemTray && context.canPop(),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _goBack(context);
+        if (!didPop) {
+          _goBack(
+            context,
+            openedFromSystemTray: openedFromSystemTray,
+          );
+        }
       },
       child: Scaffold(
         backgroundColor: MyShopColors.offWhite,
@@ -321,7 +382,10 @@ class _ProviderNotificationsScreenState
           backgroundColor: MyShopColors.surfaceWhite,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-            onPressed: () => _goBack(context),
+            onPressed: () => _goBack(
+              context,
+              openedFromSystemTray: openedFromSystemTray,
+            ),
           ),
           title: Row(
             children: [

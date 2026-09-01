@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:myshop_provider/src/core/di/providers.dart';
+import 'package:myshop_provider/src/core/services/fcm_service.dart';
 import 'package:myshop_provider/src/core/services/local_notification_service.dart';
 import 'package:myshop_provider/src/core/services/job_offer_receipt_service.dart';
 import 'package:myshop_provider/src/features/auth/providers/auth_controller.dart';
@@ -113,10 +114,48 @@ GoRouter _router({required String initialLocation}) => GoRouter(
       ],
     );
 
+GoRouter _shellRouter({required String initialLocation}) => GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        ShellRoute(
+          builder: (context, state, child) => Scaffold(
+            body: child,
+            bottomNavigationBar: const Text('Provider tabs'),
+          ),
+          routes: [
+            GoRoute(
+              path: '/home',
+              builder: (context, state) => Scaffold(
+                body: Column(
+                  children: [
+                    const Text('Role dashboard'),
+                    TextButton(
+                      onPressed: () => context.push('/notifications'),
+                      child: const Text('Open notifications'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            GoRoute(
+              path: '/earnings',
+              builder: (context, state) =>
+                  const Scaffold(body: Text('Earnings destination')),
+            ),
+          ],
+        ),
+        GoRoute(
+          path: '/notifications',
+          builder: (context, state) => const ProviderNotificationsScreen(),
+        ),
+      ],
+    );
+
 Widget _app(
   GoRouter router,
   NotificationService service, {
   JobService? jobService,
+  ProviderLocationRecoveryLauncher? locationRecoveryLauncher,
 }) =>
     ProviderScope(
       overrides: [
@@ -124,6 +163,10 @@ Widget _app(
         currentAuthSessionIdentityProvider.overrideWith((_) => _authSession),
         if (jobService != null)
           jobServiceProvider.overrideWithValue(jobService),
+        if (locationRecoveryLauncher != null)
+          providerLocationRecoveryLauncherProvider.overrideWithValue(
+            locationRecoveryLauncher,
+          ),
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -210,12 +253,14 @@ void main() {
 
     await tester.pumpWidget(_app(router, service));
     await tester.pumpAndSettle();
-    openProviderSystemTrayDestination(
-      destination: providerAnnouncementRoute('notifications'),
-      go: router.go,
-      push: (route) => unawaited(router.push(route)),
+    // Exercise the production same-turn sequence: no artificial frame is
+    // inserted between go(home) and requesting the tray destination.
+    final navigation = openProviderTrayDestination(
+      router,
+      providerAnnouncementRoute('notifications'),
     );
     await tester.pumpAndSettle();
+    await navigation;
     expect(find.text('Notifications'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.arrow_back));
@@ -250,18 +295,108 @@ void main() {
 
     await tester.pumpWidget(_app(router, service));
     await tester.pumpAndSettle();
-    openProviderSystemTrayDestination(
-      destination: '/earnings',
-      go: router.go,
-      push: (route) => unawaited(router.push(route)),
-    );
+    final navigation = openProviderTrayDestination(router, '/earnings');
     await tester.pumpAndSettle();
+    await navigation;
     expect(find.text('Earnings destination'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
     expect(find.text('Role dashboard'), findsOneWidget);
+  });
+
+  testWidgets(
+      'location action opens settings and leaves in-app Back usable through the real shell',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {
+              'data': [
+                {
+                  'id': 'location_degraded_1',
+                  'channel': 'in_app',
+                  'eventType': 'provider.location_degraded',
+                  'title': 'Location unavailable',
+                  'body': 'Restore location to receive requests.',
+                  'createdAt': '2026-08-30T20:00:00Z',
+                },
+              ],
+            });
+    when(() => service.markAsRead('location_degraded_1'))
+        .thenAnswer((_) async {});
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+    var launches = 0;
+
+    await tester.pumpWidget(
+      _app(
+        router,
+        service,
+        locationRecoveryLauncher: () async {
+          launches += 1;
+          return true;
+        },
+      ),
+    );
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fix location'), findsOneWidget);
+
+    await tester.tap(find.text('Fix location'));
+    await tester.pumpAndSettle();
+
+    expect(launches, 1);
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Role dashboard'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+  });
+
+  testWidgets('tray inbox has one pop back to home through the real shell',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {'data': <Object>[]});
+    final router = _shellRouter(initialLocation: '/earnings');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(router, service));
+    final navigation = openProviderTrayDestination(router, '/notifications');
+    await tester.pumpAndSettle();
+    await navigation;
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Role dashboard'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+  });
+
+  testWidgets('tray Back clears duplicate platform callback routes',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {'data': <Object>[]});
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(router, service));
+    unawaited(router.push('/notifications?source=tray'));
+    await tester.pumpAndSettle();
+    unawaited(router.push('/notifications?source=tray'));
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Role dashboard'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
   });
 
   testWidgets('in-app announcement item pushes and Back returns to the inbox',

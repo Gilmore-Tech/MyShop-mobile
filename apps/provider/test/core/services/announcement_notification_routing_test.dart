@@ -18,14 +18,29 @@ void main() {
   });
 
   test('tray destination seeds home before pushing the allowlisted route', () {
-    final operations = <String>[];
-
-    openProviderSystemTrayDestination(
-      destination: providerAnnouncementRoute('promotions'),
-      go: (route) => operations.add('go:$route'),
-      push: (route) => operations.add('push:$route'),
+    expect(
+      providerSystemTrayNavigationStack(
+        providerAnnouncementRoute('promotions'),
+      ),
+      ['/home', '/earnings'],
     );
+    expect(providerSystemTrayNavigationStack('/home'), ['/home']);
+  });
 
-    expect(operations, ['go:/home', 'push:/earnings']);
+  test('tray inbox destination carries an explicit navigation origin', () {
+    expect(
+      providerSystemTrayNavigationStack('/notifications'),
+      ['/home', '/notifications?source=tray'],
+    );
+    expect(
+      providerNotificationOpenedFromSystemTray(
+        Uri.parse('/notifications?source=tray'),
+      ),
+      isTrue,
+    );
+    expect(
+      providerNotificationOpenedFromSystemTray(Uri.parse('/notifications')),
+      isFalse,
+    );
   });
 }
