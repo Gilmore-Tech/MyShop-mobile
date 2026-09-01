@@ -6,12 +6,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'app_call_service.dart';
 import 'app_call_socket_service.dart';
 
-enum AppCallRtcConnectionState {
-  connecting,
-  connected,
-  disconnected,
-  failed,
-}
+enum AppCallRtcConnectionState { connecting, connected, disconnected, failed }
 
 typedef AppCallSignalHandler = Future<void> Function(AppCallSignal signal);
 typedef AppCallSignalErrorHandler = void Function(
@@ -77,15 +72,14 @@ final class AppCallSignalSerialQueue {
 }
 
 class AppCallRtcService {
-  AppCallRtcService({
-    required AppCallSocketService socket,
-  }) : _socket = socket;
+  AppCallRtcService({required AppCallSocketService socket}) : _socket = socket;
 
   final AppCallSocketService _socket;
   final StreamController<AppCallRtcConnectionState> _connectionController =
       StreamController<AppCallRtcConnectionState>.broadcast();
-  late final AppCallSignalSerialQueue _signalQueue =
-      AppCallSignalSerialQueue(onError: _handleSignalError);
+  late final AppCallSignalSerialQueue _signalQueue = AppCallSignalSerialQueue(
+    onError: _handleSignalError,
+  );
 
   RTCPeerConnection? _peer;
   MediaStream? _localStream;
@@ -103,6 +97,8 @@ class AppCallRtcService {
   Map<String, dynamic>? _lastOffer;
   Map<String, dynamic>? _lastAnswer;
   Future<void> _offerTail = Future<void>.value();
+  final Stopwatch _startupClock = Stopwatch();
+  bool _firstRemoteSignalLogged = false;
   AppCallRtcConnectionState _connectionState =
       AppCallRtcConnectionState.disconnected;
 
@@ -126,6 +122,10 @@ class AppCallRtcService {
     _started = true;
     _callId = session.callId;
     _isCaller = isCaller;
+    _startupClock
+      ..reset()
+      ..start();
+    _firstRemoteSignalLogged = false;
     _publishConnectionState(AppCallRtcConnectionState.connecting);
     _log(
       'start role=${isCaller ? 'caller' : 'callee'} '
@@ -154,6 +154,7 @@ class AppCallRtcService {
       },
       'video': false,
     });
+    _log('microphone ready elapsedMs=${_startupClock.elapsedMilliseconds}');
 
     final iceServers = session.iceServers;
     final peer = await createPeerConnection({
@@ -171,6 +172,7 @@ class AppCallRtcService {
       await peer.addTrack(track, _localStream!);
     }
     _peer = peer;
+    _log('peer ready elapsedMs=${_startupClock.elapsedMilliseconds}');
 
     // Any offer/answer/ICE received while microphone permission or native peer
     // setup was in progress is now applied in arrival order.
@@ -200,8 +202,9 @@ class AppCallRtcService {
     };
     peer.onTrack = (event) {
       var audioTrackCount = 0;
-      for (final track
-          in event.streams.expand((stream) => stream.getAudioTracks())) {
+      for (final track in event.streams.expand(
+        (stream) => stream.getAudioTracks(),
+      )) {
         track.enabled = true;
         audioTrackCount += 1;
       }
@@ -274,10 +277,7 @@ class AppCallRtcService {
     if (_disposed) return;
     await peer.setLocalDescription(offer);
     if (_disposed) return;
-    final data = <String, dynamic>{
-      'sdp': offer.sdp,
-      'sdpType': offer.type,
-    };
+    final data = <String, dynamic>{'sdp': offer.sdp, 'sdpType': offer.type};
     _lastOffer = data;
     _sendSignal(type: 'offer', data: data);
     _localDescriptionSignaled = true;
@@ -287,6 +287,13 @@ class AppCallRtcService {
   Future<void> _handleSignal(AppCallSignal signal) async {
     final peer = _peer;
     if (_disposed || peer == null) return;
+    if (!_firstRemoteSignalLogged) {
+      _firstRemoteSignalLogged = true;
+      _log(
+        'first remote signal type=${signal.type} '
+        'elapsedMs=${_startupClock.elapsedMilliseconds}',
+      );
+    }
     switch (signal.type) {
       case 'offer':
         final sdp = signal.data['sdp'] as String?;
@@ -345,9 +352,7 @@ class AppCallRtcService {
     }
   }
 
-  Future<void> _bufferOrAddRemoteIceCandidate(
-    RTCIceCandidate candidate,
-  ) async {
+  Future<void> _bufferOrAddRemoteIceCandidate(RTCIceCandidate candidate) async {
     final key = _candidateKey(candidate);
     if (!_seenRemoteIceCandidateKeys.add(key)) return;
     final pending = _PendingIceCandidate(candidate: candidate, key: key);
@@ -364,9 +369,7 @@ class AppCallRtcService {
 
   Future<void> _flushPendingRemoteIceCandidates() async {
     if (!_hasRemoteDescription || _pendingRemoteIceCandidates.isEmpty) return;
-    final pending = List<_PendingIceCandidate>.of(
-      _pendingRemoteIceCandidates,
-    );
+    final pending = List<_PendingIceCandidate>.of(_pendingRemoteIceCandidates);
     _pendingRemoteIceCandidates.clear();
     _log('flushing remote ICE count=${pending.length}');
     for (final candidate in pending) {
@@ -400,10 +403,7 @@ class AppCallRtcService {
     }
   }
 
-  void _sendSignal({
-    required String type,
-    required Map<String, dynamic> data,
-  }) {
+  void _sendSignal({required String type, required Map<String, dynamic> data}) {
     final callId = _callId;
     if (_disposed || callId == null) return;
     _log('signal tx type=$type');
@@ -449,12 +449,22 @@ class AppCallRtcService {
     _pendingRemoteIceCandidates.clear();
     _seenRemoteIceCandidateKeys.clear();
     _sentLocalCandidateCount = 0;
+    _startupClock.stop();
+    _firstRemoteSignalLogged = false;
     await _connectionController.close();
   }
 
   void _publishConnectionState(AppCallRtcConnectionState state) {
     if (_disposed || state == _connectionState) return;
     _connectionState = state;
+    if (state == AppCallRtcConnectionState.connected ||
+        state == AppCallRtcConnectionState.failed) {
+      _log(
+        'terminal connection state=${state.name} '
+        'elapsedMs=${_startupClock.elapsedMilliseconds}',
+      );
+      _startupClock.stop();
+    }
     if (!_connectionController.isClosed) {
       _connectionController.add(state);
     }
@@ -516,10 +526,7 @@ String _candidateSummary(String candidate) {
 }
 
 final class _PendingIceCandidate {
-  const _PendingIceCandidate({
-    required this.candidate,
-    required this.key,
-  });
+  const _PendingIceCandidate({required this.candidate, required this.key});
 
   final RTCIceCandidate candidate;
   final String key;

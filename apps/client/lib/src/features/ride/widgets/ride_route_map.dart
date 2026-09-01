@@ -63,8 +63,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// position+rotation and (after first fix) the follow-camera.
   LiveDriverPosition? _lastDriverPos;
 
-  /// Captured once — pickup/destination don't change during a single ride.
-  late final RideSearchState _searchState;
+  /// Current authoritative route endpoints. Destination changes replace this
+  /// state live; the previous captured-once behavior left the rider map aimed
+  /// at the old drop-off after a successful reprice.
+  late RideSearchState _searchState;
 
   /// Debug bus driving the on-screen diagnostic strip — toggled on every
   /// pipeline state change. Stripped from release via `kDebugMode`.
@@ -84,7 +86,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   LatLng? _lastRoutedFrom;
   RideTrackingPhase? _lastRoutedPhase;
   DateTime? _lastRouteFetchAt;
-  bool _routeFetchInFlight = false;
+  int _routeGeneration = 0;
+  int? _routeFetchGeneration;
 
   /// Throttle constants — route refreshes still hit a paid backend Google
   /// Routes call, so avoid refreshing on every GPS bump. 100 m of driver drift
@@ -130,8 +133,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // waypoint — force-refresh the route so the line doesn't keep
     // pointing at pickup after the trip starts.
     if (oldWidget.phase != widget.phase) {
+      _invalidateRoute();
       final pos = _lastDriverPos;
-      if (pos != null) _syncRoute(pos);
+      if (pos != null) unawaited(_syncRoute(pos));
     }
   }
 
@@ -156,6 +160,31 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     }
   }
 
+  void _onRouteEndpointsChanged(RideSearchState next) {
+    final oldPickup = _searchState.pickup;
+    final oldDestination = _searchState.destination;
+    final changed = oldPickup?.lat != next.pickup?.lat ||
+        oldPickup?.lng != next.pickup?.lng ||
+        oldDestination?.lat != next.destination?.lat ||
+        oldDestination?.lng != next.destination?.lng;
+    _searchState = next;
+    if (!changed || !mounted) return;
+
+    setState(_invalidateRoute);
+    _initialBoundsFit = false;
+    final driver = _lastDriverPos;
+    if (driver != null) unawaited(_syncRoute(driver));
+    unawaited(_fitInitialBounds());
+  }
+
+  void _invalidateRoute() {
+    _routeGeneration += 1;
+    _lastRoutedFrom = null;
+    _lastRoutedPhase = null;
+    _lastRouteFetchAt = null;
+    _routePolyline = const [];
+  }
+
   /// Fetch a driving route from the driver's current position to the
   /// phase-appropriate waypoint (pickup while en-route/arrived, dropoff while
   /// in-progress) through the authenticated backend route proxy and store the
@@ -165,6 +194,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// skips if the driver hasn't moved 100 m since the last fetch AND
   /// less than 30 s has passed AND the phase target hasn't flipped.
   Future<void> _syncRoute(LiveDriverPosition pos) async {
+    final generation = _routeGeneration;
     final target = _targetForPhase();
     if (target == null) return;
     final origin = LatLng(pos.latitude, pos.longitude);
@@ -181,16 +211,20 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
         return;
       }
     }
-    if (_routeFetchInFlight) return;
+    if (_routeFetchGeneration == generation) return;
 
-    _routeFetchInFlight = true;
+    _routeFetchGeneration = generation;
     _lastRouteFetchAt = DateTime.now();
     try {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: target,
           );
-      if (!mounted || route.polyline.length < 2) return;
+      if (!mounted ||
+          generation != _routeGeneration ||
+          route.polyline.length < 2) {
+        return;
+      }
       if (route.isFallback) {
         debugPrint(
           '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
@@ -211,7 +245,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     } catch (e) {
       debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
     } finally {
-      _routeFetchInFlight = false;
+      if (_routeFetchGeneration == generation) {
+        _routeFetchGeneration = null;
+      }
     }
   }
 
@@ -396,6 +432,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<RideSearchState>(
+      rideSearchProvider,
+      (_, next) => _onRouteEndpointsChanged(next),
+    );
     // Re-sync on every driver-position tick. ref.listen survives rebuilds.
     ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
       _onDriverPosition(next);

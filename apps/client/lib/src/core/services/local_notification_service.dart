@@ -50,6 +50,9 @@ class NotificationPayload {
   /// Ride was cancelled by the driver or the system.
   static const typeRideCancelled = 'ride_cancelled';
 
+  /// Rider-confirmed destination and route revision changed.
+  static const typeRideDestinationChanged = 'ride_destination_changed';
+
   // ── Job / artisan timeline (client-targeted) ─────────────────────────────
   /// A new bid was submitted on the rider's open job.
   /// Backend emits `job.bid_received`.
@@ -399,6 +402,7 @@ ClientInboxAction? clientInboxActionFor({
     NotificationPayload.typeRideDriverEnRoute,
     NotificationPayload.typeRideDriverArrived,
     NotificationPayload.typeRideInProgress,
+    NotificationPayload.typeRideDestinationChanged,
     NotificationPayload.typeRideCancelled,
     'ride_provider_location_unavailable',
     'ride_provider_location_degraded_escalated',

@@ -4,7 +4,7 @@ import 'dart:developer' as developer;
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart'
-    show RideToll, kFreeWaitAtPickupSeconds;
+    show RideRouteUpdate, RideToll, kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -257,6 +257,41 @@ class MatchedDriver {
   String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get activeFareDisplay => _fmt(activeFarePesewas);
+
+  MatchedDriver copyWith({
+    double? distanceKm,
+    int? confirmedFarePesewas,
+    int? promoDiscountPesewas,
+    RideToll? toll,
+    bool replaceRouteDiscounts = false,
+  }) {
+    return MatchedDriver(
+      name: name,
+      vehicle: vehicle,
+      plateNumber: plateNumber,
+      rating: rating,
+      minutesAway: minutesAway,
+      driversAvailable: driversAvailable,
+      tripCount: tripCount,
+      isVerified: isVerified,
+      isPoliceChecked: isPoliceChecked,
+      phone: phone,
+      vehicleTier: vehicleTier,
+      baseFarePesewas: baseFarePesewas,
+      distanceFarePesewas: distanceFarePesewas,
+      distanceKm: distanceKm ?? this.distanceKm,
+      bookingFeePesewas: bookingFeePesewas,
+      promoDiscountPesewas: replaceRouteDiscounts
+          ? (promoDiscountPesewas ?? 0)
+          : this.promoDiscountPesewas,
+      loyaltyDiscountPesewas: loyaltyDiscountPesewas,
+      toll: replaceRouteDiscounts ? toll : (toll ?? this.toll),
+      vehicleShortName: vehicleShortName,
+      confirmedFarePesewas: confirmedFarePesewas ?? this.confirmedFarePesewas,
+      paymentMethod: paymentMethod,
+      photoUrl: photoUrl,
+    );
+  }
 }
 
 class RideFareFields {
@@ -1052,6 +1087,56 @@ final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
 /// The ID of the active ride returned by POST /rides.
 final activeRideIdProvider = StateProvider<String?>((_) => null);
 
+/// Latest complete destination/route projection applied for the active ride.
+/// The revision fence is shared by REST confirmation, Socket.IO and push
+/// recovery so an older event can never roll the map back.
+final activeRideRouteUpdateProvider =
+    StateProvider<RideRouteUpdate?>((_) => null);
+
+bool applyActiveRideRouteUpdate(
+  RideStateReader read,
+  RideRouteUpdate update,
+) {
+  if (read(activeRideIdProvider) != update.rideId ||
+      !update.hasRouteProjection) {
+    return false;
+  }
+  final current = read(activeRideRouteUpdateProvider);
+  if (current != null &&
+      current.rideId == update.rideId &&
+      update.routeRevision <= current.routeRevision) {
+    return false;
+  }
+
+  final destination = update.destination!;
+  read(rideSearchProvider.notifier).setLocation(
+    RideSearchField.destination,
+    RideLocation(
+      name: destination.address,
+      address: destination.address,
+      lat: destination.lat,
+      lng: destination.lng,
+    ),
+  );
+  read(rideSearchProvider.notifier).markSubmitted();
+
+  final matched = read(matchedDriverProvider);
+  if (matched != null) {
+    final distanceMeters = update.projectedDistanceMeters;
+    read(matchedDriverProvider.notifier).state = matched.copyWith(
+      confirmedFarePesewas:
+          update.clientPayableEstimatePesewas ?? update.estimatedFarePesewas,
+      distanceKm:
+          distanceMeters == null ? null : distanceMeters.toDouble() / 1000,
+      promoDiscountPesewas: update.promo?.discountPesewas,
+      toll: update.toll,
+      replaceRouteDiscounts: true,
+    );
+  }
+  read(activeRideRouteUpdateProvider.notifier).state = update;
+  return true;
+}
+
 /// Countdown timer (seconds remaining during search phase). Sized to cover
 /// the backend's full BR-39 matching budget: five minutes in which a new
 /// delivery attempt may start, the final timely recipient's fresh 30-second
@@ -1556,6 +1641,7 @@ typedef RideStateReader = T Function<T>(ProviderListenable<T>);
 /// circular import between the active-ride and edit-trip provider modules.
 void clearRideRequestDraft(RideStateReader read) {
   read(rideSearchProvider.notifier).reset();
+  read(activeRideRouteUpdateProvider.notifier).state = null;
   read(selectedVehicleProvider.notifier).state = '';
   final epoch = read(rideRequestDraftResetEpochProvider);
   read(rideRequestDraftResetEpochProvider.notifier).state = epoch + 1;
@@ -1652,6 +1738,18 @@ Future<void> _hydrateFromRest(
         name: 'RideProvider',
       );
       return;
+    }
+    try {
+      applyActiveRideRouteUpdate(
+        read,
+        RideRouteUpdate.fromRideJson(json),
+      );
+    } on FormatException catch (error) {
+      developer.log(
+        'Ride route projection unavailable: $error',
+        name: 'RideProvider',
+        level: 800,
+      );
     }
     final status = json['status'] as String? ?? '';
     final cancelledBy = json['cancelledBy'] as String?;
@@ -1890,6 +1988,7 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
     return false;
   }
   ref.read(activeRideIdProvider.notifier).state = null;
+  ref.read(activeRideRouteUpdateProvider.notifier).state = null;
   ref.read(matchedDriverProvider.notifier).state = null;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
   ref.read(driversNotifiedProvider.notifier).state = 0;

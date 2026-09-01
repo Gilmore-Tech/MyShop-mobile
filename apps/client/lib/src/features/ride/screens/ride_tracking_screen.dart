@@ -229,6 +229,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     // could leave a stale phase / marker if the user navigated back
     // to the tracking surface before the next ride loaded.
     ref.read(activeRideIdProvider.notifier).state = null;
+    ref.read(activeRideRouteUpdateProvider.notifier).state = null;
     ref.read(matchedDriverProvider.notifier).state = null;
     ref.read(bookingPhaseProvider.notifier).reset();
     ref.read(rideTrackingPhaseProvider.notifier).state =
@@ -299,6 +300,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
             SnackBar(content: Text(reason)),
           );
           ref.read(activeRideIdProvider.notifier).state = null;
+          ref.read(activeRideRouteUpdateProvider.notifier).state = null;
           ref.read(matchedDriverProvider.notifier).state = null;
           ref.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute; // reset for next ride

@@ -85,6 +85,11 @@ bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
 final rideRequestDeadlineByIdProvider =
     StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
 
+/// Latest destination change the driver has not dismissed. The payload is
+/// server-authored and revision-fenced by [ActiveRideNotifier].
+final driverDestinationChangeNoticeProvider =
+    StateProvider<RideRouteUpdate?>((_) => null);
+
 /// Active-ride snapshot plus the in-flight flag used to disable buttons
 /// while the backend round-trip is pending.
 class ActiveRideState {
@@ -742,15 +747,87 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve
     // whatever we already have locally so a snapshot doesn't blow away
     // stops that arrived via `ride:route_updated` REST refetch.
-    final preserved =
+    var preserved =
         snapshot.stops.isEmpty && current != null && current.stops.isNotEmpty
             ? snapshot.copyWith(stops: current.stops)
             : snapshot;
+    if (current != null && snapshot.routeRevision < current.routeRevision) {
+      // Status/location snapshots from an older app/server projection may
+      // arrive after the destination event. Preserve the newer route while
+      // still applying the lifecycle status carried by this snapshot.
+      preserved = preserved.copyWith(
+        dropoffAddress: current.dropoffAddress,
+        dropoffLat: current.dropoffLat,
+        dropoffLng: current.dropoffLng,
+        estimatedFarePesewas: current.estimatedFarePesewas,
+        clientPayableEstimatePesewas: current.clientPayableEstimatePesewas,
+        promoDiscountPesewas: current.promoDiscountPesewas,
+        promoApplied: current.promoApplied,
+        toll: current.toll,
+        replaceRouteAdjustments: true,
+        estimatedDistanceKm: current.estimatedDistanceKm,
+        estimatedDurationMins: current.estimatedDurationMins,
+        routeRevision: current.routeRevision,
+      );
+    }
     state = state.copyWith(ride: preserved);
     if (preserved.status == RideStatus.completed ||
         preserved.status == RideStatus.cancelled) {
       _resumeOnline();
     }
+  }
+
+  /// Applies a destination-specific REST snapshot and emits the driver banner.
+  /// Returns false for a different ride or a duplicate/stale revision.
+  bool applyDestinationChanged(
+    Ride snapshot, {
+    RideDestinationPoint? previousDestination,
+    DateTime? changedAt,
+  }) {
+    final current = state.ride;
+    if (current == null ||
+        current.id != snapshot.id ||
+        snapshot.routeRevision < current.routeRevision) {
+      return false;
+    }
+    final existingNotice = _ref.read(driverDestinationChangeNoticeProvider);
+    if (snapshot.routeRevision == current.routeRevision &&
+        existingNotice?.rideId == snapshot.id &&
+        existingNotice?.routeRevision == snapshot.routeRevision) {
+      return false;
+    }
+    final previous = previousDestination ??
+        RideDestinationPoint(
+          address: current.dropoffAddress,
+          lat: current.dropoffLat,
+          lng: current.dropoffLng,
+        );
+    if (snapshot.routeRevision > current.routeRevision) {
+      applySnapshot(snapshot);
+    }
+    _ref.read(driverDestinationChangeNoticeProvider.notifier).state =
+        RideRouteUpdate(
+      rideId: snapshot.id,
+      routeRevision: snapshot.routeRevision,
+      previousDestination: previous,
+      destination: RideDestinationPoint(
+        address: snapshot.dropoffAddress,
+        lat: snapshot.dropoffLat,
+        lng: snapshot.dropoffLng,
+      ),
+      estimatedFarePesewas: snapshot.estimatedFarePesewas,
+      clientPayableEstimatePesewas: snapshot.clientPayableEstimatePesewas,
+      projectedDistanceMeters: (snapshot.estimatedDistanceKm * 1000).round(),
+      projectedDurationSeconds: snapshot.estimatedDurationMins * 60,
+      promo: snapshot.promoDiscountPesewas == null
+          ? null
+          : RideDestinationPromo(
+              discountPesewas: snapshot.promoDiscountPesewas!,
+            ),
+      toll: snapshot.toll,
+      changedAt: changedAt,
+    );
+    return true;
   }
 
   /// Apply a slim remote cancellation event when the full `ride:state`
@@ -792,7 +869,11 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       final current = state.ride;
       if (current == null || current.id != tracked.id) return;
       if (snapshot.status == RideStatus.requested) return;
-      applySnapshot(snapshot);
+      if (snapshot.routeRevision > current.routeRevision) {
+        applyDestinationChanged(snapshot);
+      } else {
+        applySnapshot(snapshot);
+      }
     } on ApiException catch (error) {
       developer.log(
         'active ride reconcile failed: ${error.errorCode} — ${error.message}',
@@ -841,6 +922,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// ride completes, is cancelled, or the user backs out of the flow.
   void clearRide() {
     state = const ActiveRideState();
+    _ref.read(driverDestinationChangeNoticeProvider.notifier).state = null;
     _resumeOnline();
   }
 

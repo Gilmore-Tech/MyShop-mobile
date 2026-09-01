@@ -7,6 +7,7 @@ import '../../../core/di/providers.dart';
 import 'ride_provider.dart'
     show
         activeRideIdProvider,
+        activeRideRouteUpdateProvider,
         clearRideRequestDraft,
         matchedDriverProvider,
         rideRequestDraftResetEpochProvider;
@@ -76,6 +77,10 @@ class FareRecalculation {
   final double extraKm;
   final double surgeMultiplier;
   final bool surgeActive;
+  final int? projectedDurationMins;
+  final double? projectedDistanceKm;
+  final models.RideDestinationPromo? promo;
+  final models.RideToll? toll;
 
   const FareRecalculation({
     required this.originalFarePesewas,
@@ -84,7 +89,28 @@ class FareRecalculation {
     required this.extraKm,
     required this.surgeMultiplier,
     required this.surgeActive,
+    this.projectedDurationMins,
+    this.projectedDistanceKm,
+    this.promo,
+    this.toll,
   });
+
+  factory FareRecalculation.fromDestinationPreview(
+    models.RideDestinationChangePreview preview,
+  ) {
+    return FareRecalculation(
+      originalFarePesewas: preview.oldFarePesewas,
+      newFarePesewas: preview.newFarePesewas,
+      extraMinutes: 0,
+      extraKm: 0,
+      surgeMultiplier: 1,
+      surgeActive: false,
+      projectedDurationMins: preview.projectedDurationMins,
+      projectedDistanceKm: preview.projectedDistanceKm,
+      promo: preview.promo,
+      toll: preview.toll,
+    );
+  }
 
   int get differencePesewas => newFarePesewas - originalFarePesewas;
   bool get isSurgeIncrease => differencePesewas > 0;
@@ -101,6 +127,9 @@ class FareRecalculation {
 
   String get surgeLabel =>
       'Surge Active ${surgeMultiplier.toStringAsFixed(1)}x';
+
+  int get displayedDurationMins => projectedDurationMins ?? extraMinutes;
+  double get displayedDistanceKm => projectedDistanceKm ?? extraKm;
 }
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -318,15 +347,18 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
   }
 }
 
-/// Fare recalculation surfaced on the review screen. Today the backend's
-/// `ride:route_updated` event carries `newFarePesewas`; once the client
-/// listens for it the hook here will swap to a [StateProvider] driven by
-/// that event. Until then, [matchedDriverProvider] gives us the original
-/// confirmed fare and we leave the projected new fare equal to it (so
-/// "Difference: 0" reads as honest until the backend recalculates).
+/// Current authoritative fare shown before the rider requests a destination
+/// preview. Prefer the latest REST/socket route projection, with the matched
+/// driver snapshot retained as a compatibility fallback for older servers.
+/// The projected fare itself is never calculated here; it only comes from the
+/// server-authored [RideDestinationChangePreview].
 final fareRecalculationProvider = Provider<FareRecalculation>((ref) {
   final matched = ref.watch(matchedDriverProvider);
-  final original = matched?.confirmedFarePesewas ?? 0;
+  final route = ref.watch(activeRideRouteUpdateProvider);
+  final original = route?.clientPayableEstimatePesewas ??
+      route?.estimatedFarePesewas ??
+      matched?.confirmedFarePesewas ??
+      0;
   return FareRecalculation(
     originalFarePesewas: original,
     newFarePesewas: original,

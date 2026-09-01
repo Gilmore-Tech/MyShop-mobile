@@ -7,7 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_models/shared_models.dart' show ChatBookingType;
+import 'package:shared_models/shared_models.dart' show ChatBookingType, Ride;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -16,7 +16,7 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/notifications/services/pending_notification_read_store.dart';
 import '../../features/ride/providers/ride_provider.dart'
-    show rideReceiptProvider;
+    show activeRideIdProvider, hydrateActiveRideFromRest, rideReceiptProvider;
 import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
@@ -1185,6 +1185,36 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeRideDriverArrived:
       case NotificationPayload.typeRideInProgress:
         await pushDeepLink(router, AppRoutes.rideTracking);
+        break;
+      case NotificationPayload.typeRideDestinationChanged:
+        var opensActiveRide =
+            rideId != null && ref.read(activeRideIdProvider) == rideId;
+        if (rideId != null &&
+            !opensActiveRide &&
+            ref.read(activeRideIdProvider) == null) {
+          try {
+            final raw = await ref.read(rideServiceProvider).getRide(rideId);
+            final ride = Ride.fromJson(raw);
+            if (ride.status.isActive) {
+              ref.read(activeRideIdProvider.notifier).state = rideId;
+              opensActiveRide = true;
+            }
+          } catch (error) {
+            debugPrint('[FCM-tap] destination ride lookup failed: $error');
+          }
+        }
+        if (rideId != null && opensActiveRide) {
+          await hydrateActiveRideFromRest(
+            ref.read,
+            ref.read(rideServiceProvider),
+            rideId,
+          );
+          await pushDeepLink(router, AppRoutes.rideTracking);
+        } else if (rideId != null) {
+          await pushDeepLink(router, AppRoutes.activityRidePath(rideId));
+        } else {
+          await openTrayDestination(router, AppRoutes.activity);
+        }
         break;
       case NotificationPayload.typeRideCompleted:
         if (rideId != null) {

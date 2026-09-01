@@ -49,13 +49,11 @@ final jobPollerProvider = Provider<void>((ref) {
   final jobService = ref.read(jobServiceProvider);
   final goOnlineAt = DateTime.now().toUtc();
   Timer? timer;
+  var pollInFlight = false;
+  var active = true;
 
   Future<List<Job>> fetchOpenJobs() async {
-    final raw = await jobService.listJobs(
-      page: 1,
-      limit: 50,
-      status: 'open',
-    );
+    final raw = await jobService.listJobs(page: 1, limit: 50, status: 'open');
     final jobs = <Job>[];
     for (final item in raw) {
       if (item is! Map<String, dynamic>) continue;
@@ -73,8 +71,11 @@ final jobPollerProvider = Provider<void>((ref) {
   }
 
   Future<void> poll() async {
+    if (!active || pollInFlight) return;
+    pollInFlight = true;
     try {
       final jobs = await fetchOpenJobs();
+      if (!active) return;
       final surfaced = ref.read(surfacedJobIdsProvider);
 
       final fresh = <Job>[];
@@ -93,9 +94,9 @@ final jobPollerProvider = Provider<void>((ref) {
       }
 
       if (preExisting.isNotEmpty) {
-        ref.read(surfacedJobIdsProvider.notifier).update(
-              (s) => {...s, ...preExisting.map((j) => j.id)},
-            );
+        ref
+            .read(surfacedJobIdsProvider.notifier)
+            .update((s) => {...s, ...preExisting.map((j) => j.id)});
       }
 
       if (fresh.isEmpty) return;
@@ -104,9 +105,9 @@ final jobPollerProvider = Provider<void>((ref) {
 
       // Mark all as surfaced up front so a poll racing with the socket
       // doesn't double-fire.
-      ref.read(surfacedJobIdsProvider.notifier).update(
-            (s) => {...s, ...fresh.map((j) => j.id)},
-          );
+      ref
+          .read(surfacedJobIdsProvider.notifier)
+          .update((s) => {...s, ...fresh.map((j) => j.id)});
 
       // Trigger the modal for the most recent (first). Rest go straight
       // into the pending queue so they show up in the "New" tab — avoids
@@ -121,6 +122,8 @@ final jobPollerProvider = Provider<void>((ref) {
       }
     } catch (e) {
       debugPrint('[JobPoller] poll failed: $e');
+    } finally {
+      pollInFlight = false;
     }
   }
 
@@ -159,6 +162,7 @@ final jobPollerProvider = Provider<void>((ref) {
   });
 
   ref.onDispose(() {
+    active = false;
     debugPrint('[JobPoller] stopped');
     timer?.cancel();
   });

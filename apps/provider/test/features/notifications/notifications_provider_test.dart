@@ -2,10 +2,23 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:myshop_provider/src/features/notifications/providers/notifications_provider.dart';
+import 'package:myshop_provider/src/core/services/local_notification_service.dart';
 
 class _MockNotificationService extends Mock implements NotificationService {}
 
 void main() {
+  test('destination-change inbox events open the active ride locally', () {
+    final action = providerInboxActionFor(
+      eventType: 'ride.destination_changed',
+      payload: const {
+        'rideId': '11111111-1111-4111-8111-111111111111',
+        'route': '/untrusted/backend/path',
+      },
+    );
+
+    expect(action?.route, '/active-ride');
+  });
+
   test('parses current data/meta notification response and nested payload', () {
     final notifications = providerNotificationItemsFromResponse({
       'data': [

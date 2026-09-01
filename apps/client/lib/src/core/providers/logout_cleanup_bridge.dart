@@ -60,6 +60,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     ref.invalidate(bookingFailureMessageProvider);
     ref.invalidate(matchedDriverProvider);
     ref.invalidate(activeRideIdProvider);
+    ref.invalidate(activeRideRouteUpdateProvider);
     ref.invalidate(searchCountdownProvider);
     ref.invalidate(rideEtaProvider);
     ref.invalidate(tripEtaProvider);

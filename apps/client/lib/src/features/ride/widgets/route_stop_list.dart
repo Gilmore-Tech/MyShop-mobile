@@ -13,7 +13,7 @@ class RouteStopList extends StatelessWidget {
   final void Function(String id) onRemove;
   final void Function(TripStop stop) onEditStop;
   final VoidCallback onAddStop;
-  final bool allowEndpointEditing;
+  final bool allowDestinationEditing;
 
   const RouteStopList({
     super.key,
@@ -22,7 +22,7 @@ class RouteStopList extends StatelessWidget {
     required this.onRemove,
     required this.onEditStop,
     required this.onAddStop,
-    this.allowEndpointEditing = false,
+    this.allowDestinationEditing = false,
   });
 
   @override
@@ -52,7 +52,10 @@ class RouteStopList extends StatelessWidget {
       children: [
         _StopCard(
           stop: pickup,
-          onTap: allowEndpointEditing ? () => onEditStop(pickup) : null,
+          // Mid-ride pickup replacement is not supported by the backend.
+          // Keeping this row read-only avoids a local-only edit that appears
+          // committed but can never change the driver's route.
+          onTap: null,
           showDragHandle: false,
         ),
         SizedBox(height: w * 0.026),
@@ -96,7 +99,7 @@ class RouteStopList extends StatelessWidget {
         SizedBox(height: w * 0.026),
         _StopCard(
           stop: destination,
-          onTap: allowEndpointEditing ? () => onEditStop(destination) : null,
+          onTap: allowDestinationEditing ? () => onEditStop(destination) : null,
           showDragHandle: false,
         ),
       ],

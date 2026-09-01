@@ -4,7 +4,8 @@ import 'dart:developer' as developer;
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_models/shared_models.dart' show RideStop;
+import 'package:shared_models/shared_models.dart'
+    show RideRouteUpdate, RideStop;
 
 import '../../app/router.dart' show AppRoutes, routerProvider;
 import '../../features/auth/providers/auth_controller.dart';
@@ -323,6 +324,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
           break;
         default:
           break;
+      }
+
+      // New snapshots carry the destination route revision. Apply only a
+      // strictly newer projection; legacy snapshots parse as revision zero
+      // and can never roll back a confirmed destination.
+      try {
+        applyActiveRideRouteUpdate(
+          ref.container.read,
+          RideRouteUpdate.fromRideJson(data),
+        );
+      } on FormatException {
+        // Slim/legacy ride:state payloads legitimately omit route endpoints.
       }
 
       // Tracking phase (only when the ride is past `accepted`).
@@ -790,51 +803,123 @@ void _connectAndListen(Ref ref, SocketService socket) {
         applyRideMatchingState(ref.container.read, map);
       });
 
-    // ── Route changes (rider added / cancelled a stop) ──────────────────
-    // Backend emits `ride:route_updated` to the room when stops change.
-    // The event payload doesn't carry the new stops list, so we re-fetch
-    // the full ride and re-seed `tripStopsProvider` — the AddStopScreen
-    // (and any future "stops list" widget) renders from there.
-    socket
-      ..off('ride:route_updated')
-      ..on('ride:route_updated', (data) {
-        final rideId = ref.container.read(activeRideIdProvider);
-        if (rideId == null || rideId.isEmpty) return;
-        ref.container.read(rideServiceProvider).getRide(rideId).then((json) {
-          try {
-            final stops = (json['stops'] as List<dynamic>?)
-                    ?.whereType<Map<String, dynamic>>()
-                    .map(RideStop.fromJson)
-                    .toList() ??
-                const <RideStop>[];
-            ref.container.read(tripStopsProvider.notifier).seed(
-              pickup: (
-                address: json['pickupAddress'] as String?,
-                lat: (json['pickupLat'] as num?)?.toDouble(),
-                lng: (json['pickupLng'] as num?)?.toDouble(),
-              ),
-              destination: (
-                address: json['dropoffAddress'] as String?,
-                lat: (json['dropoffLat'] as num?)?.toDouble(),
-                lng: (json['dropoffLng'] as num?)?.toDouble(),
-              ),
-              existingStops: stops,
-            );
-          } catch (e) {
-            developer.log(
-              'route_updated parse failed: $e',
-              name: 'WS',
-              level: 800,
-            );
-          }
-        }).catchError((Object e) {
+    // ── Route changes (destination replacement / legacy stop updates) ────
+    bool applyRouteProjection(RideRouteUpdate update) {
+      final applied = applyActiveRideRouteUpdate(ref.container.read, update);
+      if (!applied) return false;
+      final destination = update.destination!;
+      ref.container.read(tripStopsProvider.notifier).updateStopAddress(
+            'destination',
+            destination.address,
+            lat: destination.lat,
+            lng: destination.lng,
+          );
+      return true;
+    }
+
+    Future<void> refetchRouteProjection(
+      String rideId, {
+      int? advertisedRevision,
+    }) async {
+      final activeRideId = ref.container.read(activeRideIdProvider);
+      if (activeRideId != rideId) return;
+      final current = ref.container.read(activeRideRouteUpdateProvider);
+      if (advertisedRevision != null &&
+          current?.rideId == rideId &&
+          advertisedRevision <= current!.routeRevision) {
+        return;
+      }
+      try {
+        final json =
+            await ref.container.read(rideServiceProvider).getRide(rideId);
+        if (ref.container.read(activeRideIdProvider) != rideId) return;
+        final update = RideRouteUpdate.fromRideJson(json);
+        if (advertisedRevision != null &&
+            update.routeRevision < advertisedRevision) {
           developer.log(
-            'route_updated refetch failed: $e',
+            'Route refetch lagged event revision $advertisedRevision '
+            '(snapshot=${update.routeRevision})',
             name: 'WS',
             level: 800,
           );
-        });
-      });
+          return;
+        }
+        applyRouteProjection(update);
+
+        final stops = (json['stops'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(RideStop.fromJson)
+                .toList() ??
+            const <RideStop>[];
+        final route = update.destination;
+        if (route != null) {
+          ref.container.read(tripStopsProvider.notifier).seed(
+            pickup: (
+              address: json['pickupAddress'] as String?,
+              lat: (json['pickupLat'] as num?)?.toDouble(),
+              lng: (json['pickupLng'] as num?)?.toDouble(),
+            ),
+            destination: (
+              address: route.address,
+              lat: route.lat,
+              lng: route.lng,
+            ),
+            existingStops: stops,
+          );
+        }
+      } catch (error) {
+        developer.log(
+          'Route projection refetch failed: $error',
+          name: 'WS',
+          level: 800,
+        );
+      }
+    }
+
+    void handleDestinationChanged(dynamic data) {
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+      final rideId = (map['rideId'] ?? map['id'])?.toString();
+      final rawRevision = map['routeRevision'] ?? map['route_revision'];
+      final revision = rawRevision is num
+          ? rawRevision.toInt()
+          : int.tryParse(rawRevision?.toString() ?? '');
+      if (rideId == null || rideId.isEmpty) return;
+      try {
+        final update = RideRouteUpdate.fromJson(map);
+        if (update.hasCompleteRouteProjection && applyRouteProjection(update)) {
+          return;
+        }
+      } on FormatException {
+        // A thin compatibility event intentionally falls through to REST.
+      }
+      unawaited(
+        refetchRouteProjection(
+          rideId,
+          advertisedRevision: revision,
+        ),
+      );
+    }
+
+    void handleLegacyRouteUpdated(dynamic data) {
+      final map = data is Map ? Map<String, dynamic>.from(data) : const {};
+      final rideId = (map['rideId'] ?? map['id'])?.toString() ??
+          ref.container.read(activeRideIdProvider);
+      if (rideId == null || rideId.isEmpty) return;
+      final revision = map['routeRevision'] ?? map['route_revision'];
+      unawaited(
+        refetchRouteProjection(
+          rideId,
+          advertisedRevision: revision is num ? revision.toInt() : null,
+        ),
+      );
+    }
+
+    socket
+      ..off('ride:destination_changed')
+      ..off('ride:route_updated')
+      ..on('ride:destination_changed', handleDestinationChanged)
+      ..on('ride:route_updated', handleLegacyRouteUpdated);
 
     // ── Live driver location ─────────────────────────────────────────────
     // Per-fix marker updates. `ride:state` carries the full snapshot at a

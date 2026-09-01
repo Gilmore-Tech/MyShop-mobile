@@ -33,6 +33,21 @@ class FareRecalculationCard extends StatelessWidget {
                 _FareComparison(fare: fare),
                 const SizedBox(height: 14),
                 _TripDeltas(fare: fare),
+                if (fare.promo?.applies == true) ...[
+                  const SizedBox(height: 12),
+                  _PricingDetailRow(
+                    label: fare.promo?.label ?? 'Promo retained',
+                    value:
+                        '-GH₵ ${(fare.promo!.discountPesewas / 100).toStringAsFixed(2)}',
+                  ),
+                ],
+                if (fare.toll != null) ...[
+                  const SizedBox(height: 8),
+                  _PricingDetailRow(
+                    label: fare.toll!.label,
+                    value: fare.toll!.amountDisplay,
+                  ),
+                ],
               ],
             ),
           ),
@@ -165,12 +180,44 @@ class _TripDeltas extends StatelessWidget {
       children: [
         _DeltaChip(
           icon: Icons.access_time_rounded,
-          label: '+${fare.extraMinutes} mins travel',
+          label: '${fare.displayedDurationMins} mins projected',
         ),
         const SizedBox(width: 8),
         _DeltaChip(
           icon: Icons.location_on_rounded,
-          label: '+${fare.extraKm.toStringAsFixed(1)} km extra',
+          label: '${fare.displayedDistanceKm.toStringAsFixed(1)} km projected',
+        ),
+      ],
+    );
+  }
+}
+
+class _PricingDetailRow extends StatelessWidget {
+  const _PricingDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: MyShopColors.textPrimary,
+          ),
         ),
       ],
     );

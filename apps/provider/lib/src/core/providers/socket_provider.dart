@@ -765,7 +765,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // anyway in case the backend rooms ever cross-talk.
         final active = ref.container.read(activeRideProvider).ride;
         if (active != null && active.id != ride.id) return;
-        ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
+        final notifier = ref.container.read(activeRideProvider.notifier);
+        if (active != null && ride.routeRevision > active.routeRevision) {
+          notifier.applyDestinationChanged(ride);
+        } else {
+          notifier.applySnapshot(ride);
+        }
       } catch (e) {
         debugPrint('[WS] Failed to apply ride:state snapshot: $e');
       }
@@ -808,33 +813,101 @@ void _connectAndListen(Ref ref, SocketService socket) {
         (data) => applyRideCancellation(data, requireStatus: true),
       );
 
-    // Backend fires `ride:route_updated` when the rider adds or declines
-    // a stop. The event itself only carries a thin `{rideId, …}` shape,
-    // not the new stops list, so we re-fetch the full ride via REST and
-    // hand it to applySnapshot — which now preserves the stops list
-    // through subsequent stops-less `ride:state` snapshots.
-    void handleRouteUpdated(dynamic data) {
-      String? rideId;
-      if (data is Map<String, dynamic>) {
-        rideId = data['rideId'] as String? ?? data['id'] as String?;
+    // Destination changes carry a monotonic revision, while the legacy
+    // route_updated event remains as a thin compatibility wake-up for stop
+    // changes and older apps. Both refetch the authoritative Ride snapshot.
+    Future<void> refetchRoute(
+      String rideId, {
+      int? advertisedRevision,
+      RideDestinationPoint? previousDestination,
+      DateTime? changedAt,
+      bool destinationSpecific = false,
+    }) async {
+      final current = ref.container.read(activeRideProvider).ride;
+      if (current == null || current.id != rideId) return;
+      if (advertisedRevision != null &&
+          advertisedRevision < current.routeRevision) {
+        return;
       }
-      rideId ??= ref.container.read(activeRideProvider).ride?.id;
-      if (rideId == null) return;
-      final svc = ref.container.read(rideServiceProvider);
-      svc.getRide(rideId).then((json) {
-        try {
-          final ride = Ride.fromJson(json);
-          ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
-        } catch (e) {
-          debugPrint('[WS] route_updated parse failed: $e');
+      try {
+        final json =
+            await ref.container.read(rideServiceProvider).getRide(rideId);
+        final fresh = Ride.fromJson(json);
+        final latest = ref.container.read(activeRideProvider).ride;
+        if (latest == null || latest.id != rideId) return;
+        if (advertisedRevision != null &&
+            fresh.routeRevision < advertisedRevision) {
+          debugPrint(
+            '[WS] route refetch lagged destination revision '
+            '$advertisedRevision (snapshot=${fresh.routeRevision})',
+          );
+          return;
         }
-      }).catchError((Object e) {
-        debugPrint('[WS] route_updated refetch failed: $e');
-      });
+        final revisionAdvanced = fresh.routeRevision > latest.routeRevision;
+        if (destinationSpecific || revisionAdvanced) {
+          final changed = ref.container
+              .read(activeRideProvider.notifier)
+              .applyDestinationChanged(
+                fresh,
+                previousDestination: previousDestination,
+                changedAt: changedAt,
+              );
+          if (changed) return;
+        }
+        // A same-revision legacy event can still add an intermediate stop.
+        // Apply it as a normal ride snapshot rather than falsely presenting a
+        // destination-change banner.
+        ref.container.read(activeRideProvider.notifier).applySnapshot(fresh);
+      } catch (error) {
+        debugPrint('[WS] route update refetch failed: $error');
+      }
+    }
+
+    void handleDestinationChanged(dynamic data) {
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+      final rideId = (map['rideId'] ?? map['id'])?.toString();
+      if (rideId == null || rideId.isEmpty) return;
+      final rawRevision = map['routeRevision'] ?? map['route_revision'];
+      final revision = rawRevision is num
+          ? rawRevision.toInt()
+          : int.tryParse(rawRevision?.toString() ?? '');
+      RideDestinationPoint? previous;
+      DateTime? changedAt;
+      try {
+        final event = RideRouteUpdate.fromJson(map);
+        previous = event.previousDestination;
+        changedAt = event.changedAt;
+      } on FormatException {
+        // Thin destination event: REST supplies the complete route.
+      }
+      unawaited(
+        refetchRoute(
+          rideId,
+          advertisedRevision: revision,
+          previousDestination: previous,
+          changedAt: changedAt,
+          destinationSpecific: true,
+        ),
+      );
+    }
+
+    void handleRouteUpdated(dynamic data) {
+      final map = data is Map ? Map<String, dynamic>.from(data) : const {};
+      final rideId = (map['rideId'] ?? map['id'])?.toString() ??
+          ref.container.read(activeRideProvider).ride?.id;
+      if (rideId == null || rideId.isEmpty) return;
+      final rawRevision = map['routeRevision'] ?? map['route_revision'];
+      final revision = rawRevision is num
+          ? rawRevision.toInt()
+          : int.tryParse(rawRevision?.toString() ?? '');
+      unawaited(refetchRoute(rideId, advertisedRevision: revision));
     }
 
     socket
+      ..off('ride:destination_changed')
       ..off('ride:route_updated')
+      ..on('ride:destination_changed', handleDestinationChanged)
       ..on('ride:route_updated', handleRouteUpdated);
 
     // Listen for job status updates — emitted to the artisan's room when
