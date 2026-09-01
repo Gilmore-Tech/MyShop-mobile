@@ -1410,6 +1410,40 @@ class FcmService {
           _ref.read(authControllerProvider.notifier).refreshProfile(),
         );
       }
+      if (type == NotificationPayload.typeRideDestinationChanged) {
+        final rideId = (message.data[NotificationPayload.keyRideId] ??
+                message.data['ride_id'])
+            ?.toString();
+        final current = _ref.read(activeRideProvider).ride;
+        if (rideId != null && (current == null || current.id == rideId)) {
+          try {
+            final raw = await _ref.read(rideServiceProvider).getRide(rideId);
+            final fresh = Ride.fromJson(raw);
+            if (!fresh.status.isActive) {
+              await _renderFromRemote(message);
+              return;
+            }
+            RideDestinationPoint? previous;
+            try {
+              previous = RideRouteUpdate.fromJson(
+                Map<String, dynamic>.from(message.data),
+              ).previousDestination;
+            } on FormatException {
+              // Thin push payload; current snapshot is the previous route.
+            }
+            final notifier = _ref.read(activeRideProvider.notifier);
+            if (current == null) notifier.applySnapshot(fresh);
+            notifier.applyDestinationChanged(
+              fresh,
+              previousDestination: previous,
+            );
+          } catch (error) {
+            debugPrint('[FCM] destination refresh failed: $error');
+          }
+        }
+        await _renderFromRemote(message);
+        return;
+      }
       if (type == NotificationPayload.typeRideRequest) {
         final received = await acknowledgeRideOfferWithSocket(
           payload: Map<String, dynamic>.from(message.data),
@@ -3424,6 +3458,42 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // earnings is where the artisan wants to land.
       case NotificationPayload.typeJobConfirmedComplete:
         await openSystemTrayDestination('/earnings');
+        break;
+
+      case NotificationPayload.typeRideDestinationChanged:
+        final rideId =
+            (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
+                ?.toString();
+        final current = ref.read(activeRideProvider).ride;
+        if (rideId != null && (current == null || current.id == rideId)) {
+          try {
+            final raw = await ref.read(rideServiceProvider).getRide(rideId);
+            final fresh = Ride.fromJson(raw);
+            if (!fresh.status.isActive) {
+              await openSystemTrayDestination('/trips');
+              break;
+            }
+            RideDestinationPoint? previous;
+            try {
+              previous = RideRouteUpdate.fromJson(payload).previousDestination;
+            } on FormatException {
+              // Thin push payload; use the current route as the old address.
+            }
+            final notifier = ref.read(activeRideProvider.notifier);
+            if (current == null) notifier.applySnapshot(fresh);
+            notifier.applyDestinationChanged(
+              fresh,
+              previousDestination: previous,
+            );
+          } catch (error) {
+            debugPrint('[FCM-tap] destination refresh failed: $error');
+            await openSystemTrayDestination('/trips');
+            break;
+          }
+          await openSystemTrayDestination('/active-ride');
+        } else {
+          await openSystemTrayDestination('/trips');
+        }
         break;
 
       // Cancellations (client- or platform-initiated) — drop the user

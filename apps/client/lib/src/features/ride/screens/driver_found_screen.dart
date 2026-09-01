@@ -115,6 +115,7 @@ class DriverFoundScreen extends ConsumerWidget {
 
     // Never hide an active backend ride after a failed or ambiguous request.
     ref.read(activeRideIdProvider.notifier).state = null;
+    ref.read(activeRideRouteUpdateProvider.notifier).state = null;
     ref.read(matchedDriverProvider.notifier).state = null;
     ref.read(bookingPhaseProvider.notifier).reset();
 

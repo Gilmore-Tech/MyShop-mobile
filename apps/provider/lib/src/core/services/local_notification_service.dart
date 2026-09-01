@@ -105,6 +105,9 @@ class NotificationPayload {
   /// Client confirmed the ride complete — fare settled.
   static const typeRideSettled = 'ride_settled';
 
+  /// Rider confirmed a newly-priced destination for the active ride.
+  static const typeRideDestinationChanged = 'ride_destination_changed';
+
   // ── Cross-cutting ────────────────────────────────────────────────────────
   /// New chat message from the client.
   static const typeNewMessage = 'new_message';
@@ -519,6 +522,16 @@ ProviderInboxAction? providerInboxActionFor({
 
   if (type == NotificationPayload.typePayoutMethodRebindRequired) {
     return _providerInboxRoute('Re-add payout method', '/account/payouts');
+  }
+
+  if (type == NotificationPayload.typeRideDestinationChanged) {
+    final rideId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyRideId, 'ride_id'],
+    );
+    return rideId == null
+        ? null
+        : _providerInboxRoute('View updated ride', '/active-ride');
   }
 
   final jobId = _providerInboxEntityId(

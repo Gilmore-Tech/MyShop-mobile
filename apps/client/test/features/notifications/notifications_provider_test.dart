@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:myshop_client/src/core/di/providers.dart';
 import 'package:myshop_client/src/core/providers/auth_session_identity_provider.dart';
+import 'package:myshop_client/src/core/services/local_notification_service.dart';
 import 'package:myshop_client/src/features/notifications/providers/notifications_provider.dart';
 import 'package:myshop_client/src/features/notifications/services/pending_notification_read_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,19 @@ const _identity = AuthSessionIdentity(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('destination-change inbox events use the local ride-detail route', () {
+    final action = clientInboxActionFor(
+      eventType: 'ride.destination_changed',
+      payload: const {
+        'rideId': '11111111-1111-4111-8111-111111111111',
+        'route': '/untrusted/backend/path',
+      },
+    );
+
+    expect(
+        action?.route, '/activity/ride/11111111-1111-4111-8111-111111111111');
+  });
 
   test('parses current data/meta response and announcement payload', () {
     final notifications = clientNotificationItemsFromResponse({

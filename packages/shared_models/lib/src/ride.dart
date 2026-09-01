@@ -141,6 +141,7 @@ class Ride {
     this.driverName,
     this.driverPhone,
     this.stops = const [],
+    this.routeRevision = 0,
   }) : hasFinancialsFinalContract =
             hasFinancialsFinalContract ?? financialsFinal != null;
 
@@ -354,6 +355,9 @@ class Ride {
               ?.map((s) => RideStop.fromJson(s as Map<String, dynamic>))
               .toList() ??
           const [],
+      routeRevision: _int(
+        json['routeRevision'] ?? json['route_revision'] ?? json['revision'],
+      ),
     );
   }
 
@@ -479,6 +483,11 @@ class Ride {
   final String? driverPhone;
   final List<RideStop> stops;
 
+  /// Monotonic server-authored route version. Legacy payloads omit it and
+  /// therefore remain revision zero. Route-change consumers must never apply
+  /// a snapshot whose revision is lower than the revision already displayed.
+  final int routeRevision;
+
   /// Display fare in GHS format
   String get estimatedFareDisplay => _formatGhs(estimatedFarePesewas);
   String get finalFareDisplay => finalFarePesewas != null
@@ -560,29 +569,48 @@ class Ride {
   bool get hasSurge => surgeMultiplier > 1.0;
   String get surgeDisplay => '${surgeMultiplier.toStringAsFixed(1)}x';
 
-  Ride copyWith({RideStatus? status, List<RideStop>? stops}) {
+  Ride copyWith({
+    RideStatus? status,
+    List<RideStop>? stops,
+    String? dropoffAddress,
+    double? dropoffLat,
+    double? dropoffLng,
+    int? estimatedFarePesewas,
+    int? clientPayableEstimatePesewas,
+    int? promoDiscountPesewas,
+    bool? promoApplied,
+    RideToll? toll,
+    bool replaceRouteAdjustments = false,
+    double? estimatedDistanceKm,
+    int? estimatedDurationMins,
+    int? routeRevision,
+  }) {
     return Ride(
       id: id,
       clientId: clientId,
       driverId: driverId,
       status: status ?? this.status,
       pickupAddress: pickupAddress,
-      dropoffAddress: dropoffAddress,
+      dropoffAddress: dropoffAddress ?? this.dropoffAddress,
       pickupLat: pickupLat,
       pickupLng: pickupLng,
-      dropoffLat: dropoffLat,
-      dropoffLng: dropoffLng,
-      estimatedFarePesewas: estimatedFarePesewas,
+      dropoffLat: dropoffLat ?? this.dropoffLat,
+      dropoffLng: dropoffLng ?? this.dropoffLng,
+      estimatedFarePesewas: estimatedFarePesewas ?? this.estimatedFarePesewas,
       hasEstimatedFareQuote: hasEstimatedFareQuote,
       finalFarePesewas: finalFarePesewas,
       totalPaidPesewas: totalPaidPesewas,
       prePromoFarePesewas: prePromoFarePesewas,
-      promoDiscountPesewas: promoDiscountPesewas,
+      promoDiscountPesewas: replaceRouteAdjustments
+          ? promoDiscountPesewas
+          : this.promoDiscountPesewas,
       loyaltyDiscountPesewas: loyaltyDiscountPesewas,
       platformDiscountPesewas: platformDiscountPesewas,
-      toll: toll,
-      promoApplied: promoApplied,
-      clientPayableEstimatePesewas: clientPayableEstimatePesewas,
+      toll: replaceRouteAdjustments ? toll : this.toll,
+      promoApplied:
+          replaceRouteAdjustments ? (promoApplied ?? false) : this.promoApplied,
+      clientPayableEstimatePesewas:
+          clientPayableEstimatePesewas ?? this.clientPayableEstimatePesewas,
       estimatedProviderEarningsPesewas: estimatedProviderEarningsPesewas,
       collectFromClientPesewas: collectFromClientPesewas,
       commissionPesewas: commissionPesewas,
@@ -593,8 +621,9 @@ class Ride {
       providerEarningsPesewas: providerEarningsPesewas,
       financialsFinal: financialsFinal,
       hasFinancialsFinalContract: hasFinancialsFinalContract,
-      estimatedDistanceKm: estimatedDistanceKm,
-      estimatedDurationMins: estimatedDurationMins,
+      estimatedDistanceKm: estimatedDistanceKm ?? this.estimatedDistanceKm,
+      estimatedDurationMins:
+          estimatedDurationMins ?? this.estimatedDurationMins,
       actualDistanceKm: actualDistanceKm,
       actualDurationMins: actualDurationMins,
       surgeMultiplier: surgeMultiplier,
@@ -614,6 +643,7 @@ class Ride {
       driverName: driverName,
       driverPhone: driverPhone,
       stops: stops ?? this.stops,
+      routeRevision: routeRevision ?? this.routeRevision,
     );
   }
 }
