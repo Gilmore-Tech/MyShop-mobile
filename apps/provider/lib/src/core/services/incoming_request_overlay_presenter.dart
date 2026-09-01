@@ -46,13 +46,16 @@ Future<void> clearIncomingRequestAlert({
   await Future.wait<void>([
     _bestEffortAlertCleanup(
       'ringtone',
-      LocalNotificationService.instance.stopIncomingRingtone,
+      () => LocalNotificationService.instance.stopIncomingRingtone(
+        offerId: offerId,
+      ),
     ),
     _bestEffortAlertCleanup(
       'local notification',
       () => LocalNotificationService.instance.cancelIncomingRequest(
         type: type,
         requestId: requestId,
+        offerId: offerId,
       ),
     ),
     _bestEffortAlertCleanup(

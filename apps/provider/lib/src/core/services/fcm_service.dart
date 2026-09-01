@@ -33,12 +33,33 @@ import 'local_notification_service.dart';
 import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
 import 'incoming_request_overlay_presenter.dart';
+import 'job_offer_receipt_service.dart';
 import 'live_activity_service.dart';
 import 'ride_offer_receipt_service.dart';
 
 const _defaultIncomingCallTimeout = Duration(seconds: 60);
 const _terminalCallTombstoneFallback = Duration(minutes: 2);
 const _terminalCallTombstonePrefix = 'myshop.call_terminal.';
+
+/// Device-token capability, deliberately distinct from the per-offer payload
+/// protocol. Existing 1.4.7 builds already advertise v2 for ride/ActivityKit
+/// receipts; v3 is the first build that can durably ACK exact artisan jobs.
+@visibleForTesting
+const int providerOfferReceiptCapabilityVersion = 3;
+
+@visibleForTesting
+const int legacyProviderOfferReceiptCapabilityVersion = 2;
+
+@visibleForTesting
+bool isOfferReceiptCapabilityValidationError(ApiException error) {
+  if (error.statusCode != 400 && error.statusCode != 422) return false;
+  final diagnostic = <Object?>[
+    error.message,
+    error.errorCode,
+    error.details,
+  ].join(' ').replaceAll('_', '').toLowerCase();
+  return diagnostic.contains('offerreceiptversion');
+}
 
 @visibleForTesting
 bool notificationAuthorizationAllowsOnline(AuthorizationStatus status) {
@@ -53,6 +74,29 @@ bool rideRequestNavigationAlreadyActive({
   required Set<String> navigationInFlightRideIds,
 }) {
   return visibleRideId == rideId || navigationInFlightRideIds.contains(rideId);
+}
+
+@visibleForTesting
+bool notificationHydrationSessionIsCurrent({
+  required Object? expectedSession,
+  required Object? currentSession,
+}) {
+  return expectedSession != null && currentSession == expectedSession;
+}
+
+@visibleForTesting
+bool isActionableJobOfferPayload(
+  String type,
+  Map<String, dynamic> payload,
+) {
+  if (type == NotificationPayload.typeJobRequest) return true;
+  if (type != NotificationPayload.typeJobManuallyAssigned) return false;
+  final mode = (payload['mode'] ?? payload['assignmentMode'])
+      ?.toString()
+      .trim()
+      .toLowerCase();
+  final version = int.tryParse(payload['offerVersion']?.toString() ?? '');
+  return mode == 'request_quote' && version == jobOfferReceiptProtocolVersion;
 }
 
 @visibleForTesting
@@ -542,9 +586,24 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     }
     requestData = received.payload;
   }
+  final actionableJobOffer =
+      isActionableJobOfferPayload(backgroundType ?? '', requestData);
+  if (actionableJobOffer) {
+    final received = await acknowledgeJobOfferFromBackground(requestData);
+    if (received == null) {
+      debugPrint('[FCM-bg] job offer receipt failed; request not surfaced');
+      return;
+    }
+    requestData = received.payload;
+    // Native request surfaces understand the canonical job-request type. The
+    // original server notification remains job_manually_assigned in the inbox;
+    // only this actionable tray copy is normalised for View/Skip/Bid actions.
+    requestData[NotificationPayload.keyType] =
+        NotificationPayload.typeJobRequest;
+  }
   if (Platform.isAndroid &&
       (backgroundType == NotificationPayload.typeRideRequest ||
-          backgroundType == NotificationPayload.typeJobRequest)) {
+          actionableJobOffer)) {
     final shown = await IncomingRequestOverlayPresenter.instance.showFromPush(
       requestData,
       notificationTitle:
@@ -565,7 +624,7 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   // play the MyShop request ringtone. Backend should already send those as
   // Android data-only pushes, but this defensive branch keeps the provider
   // alert usable if any backend path still includes a notification field.
-  if (_shouldSkipLocalBackgroundRender(message)) {
+  if (_shouldSkipLocalBackgroundRender(message) && !actionableJobOffer) {
     debugPrint(
       '[FCM-bg] FCM SDK will auto-display non-request push — '
       'skipping local render',
@@ -621,6 +680,11 @@ Future<bool> _handleOfferRevokedFromRemote(
         offerId != null &&
         offerId.isNotEmpty) {
       await clearStoredRideOffer(offerId);
+    }
+    if (inferredType == NotificationPayload.typeJobRequest &&
+        offerId != null &&
+        offerId.isNotEmpty) {
+      await clearStoredJobOffer(offerId);
     }
     if (inferredType == NotificationPayload.typeRideRequest &&
         isRiderCancellationRevocation(reason)) {
@@ -1047,6 +1111,10 @@ String _fallbackTitle(String type) {
       return 'Job assigned to you';
     case NotificationPayload.typeJobNoBidsEscalated:
       return 'Open job — your bid is welcome';
+    case NotificationPayload.typeProviderResponseBlockWarning:
+      return 'Response warning';
+    case NotificationPayload.typeProviderResponseBlockStarted:
+      return 'New requests paused';
     case NotificationPayload.typeJobReminder24h:
       return 'Job tomorrow';
     case NotificationPayload.typeJobReminder2h:
@@ -1123,6 +1191,10 @@ String _fallbackBody(String type) {
       return 'Tap to review and place your bid.';
     case NotificationPayload.typeJobNoBidsEscalated:
       return 'A nearby job needs an artisan. Tap to bid.';
+    case NotificationPayload.typeProviderResponseBlockWarning:
+      return 'Go offline when unavailable. Repeated declines or missed requests may pause new offers.';
+    case NotificationPayload.typeProviderResponseBlockStarted:
+      return 'Open MyShop to review the temporary pause or contact support.';
     case NotificationPayload.typeJobReminder24h:
       return 'You have a scheduled job tomorrow. Tap to review.';
     case NotificationPayload.typeJobReminder2h:
@@ -1256,9 +1328,29 @@ class FcmService {
               .update((deadlines) => {...deadlines}..remove(rideId));
         }
         if (jobId != null && jobId.isNotEmpty) {
-          _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
-          if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
-            _ref.read(incomingJobRequestProvider.notifier).state = null;
+          final terminalOfferId =
+              message.data[NotificationPayload.keyOfferId]?.toString();
+          final currentOfferId = _ref.read(jobOfferIdByJobProvider)[jobId];
+          if (jobOfferTerminalMatchesCurrent(
+            currentOfferId: currentOfferId,
+            terminalOfferId: terminalOfferId,
+          )) {
+            _ref.read(jobOfferDismissalProvider.notifier).state =
+                JobOfferDismissal(
+              jobId: jobId,
+              reason: message.data['reason']?.toString() ?? 'revoked',
+              offerId: terminalOfferId,
+            );
+            _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+            _ref
+                .read(jobOfferIdByJobProvider.notifier)
+                .update((offers) => {...offers}..remove(jobId));
+            _ref
+                .read(jobOfferDeadlineByJobProvider.notifier)
+                .update((deadlines) => {...deadlines}..remove(jobId));
+            if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
+              _ref.read(incomingJobRequestProvider.notifier).state = null;
+            }
           }
         }
         final reason = message.data['reason']?.toString();
@@ -1351,6 +1443,84 @@ class FcmService {
           _ref.read(navBadgeProvider.notifier).increment('/home');
         } catch (error) {
           debugPrint('[FCM] foreground ride offer parse failed: $error');
+        }
+        return;
+      }
+      if (isActionableJobOfferPayload(
+        type,
+        Map<String, dynamic>.from(message.data),
+      )) {
+        final expectedSession = _ref.read(currentAuthSessionIdentityProvider);
+        if (expectedSession == null) return;
+        final received = await acknowledgeJobOffer(
+          payload: Map<String, dynamic>.from(message.data),
+          jobs: _ref.read(jobServiceProvider),
+        );
+        if (received == null) {
+          debugPrint('[FCM] foreground job offer receipt failed');
+          return;
+        }
+        if (_ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+          debugPrint('[FCM] dropped job offer after account/session change');
+          return;
+        }
+        // Re-read after the receipt await so a concurrent socket copy that
+        // won the race is treated as the single surface owner.
+        final previouslySurfaced =
+            _ref.read(surfacedJobIdsProvider).contains(received.jobId);
+        final previousExact =
+            _ref.read(lastJobOfferIdByJobProvider)[received.jobId];
+        if (received.hasExactReceipt) {
+          _ref.read(jobOfferIdByJobProvider.notifier).update(
+                (offers) => {
+                  ...offers,
+                  received.jobId: received.offerId!,
+                },
+              );
+          _ref.read(lastJobOfferIdByJobProvider.notifier).update(
+                (offers) => {
+                  ...offers,
+                  received.jobId: received.offerId!,
+                },
+              );
+          final deadline = received.decisionExpiresAt;
+          if (deadline != null) {
+            _ref.read(jobOfferDeadlineByJobProvider.notifier).update(
+                  (deadlines) => {
+                    ...deadlines,
+                    received.jobId: deadline,
+                  },
+                );
+          }
+          if (previousExact != received.offerId) {
+            _ref.read(jobOfferDismissalProvider.notifier).state = null;
+          }
+        }
+        final disposition = jobOfferSurfaceDisposition(
+          jobAlreadySurfaced: previouslySurfaced,
+          lastExactOfferId: previousExact,
+          incomingOfferId: received.offerId,
+        );
+        if (disposition == JobOfferSurfaceDisposition.ignoreDuplicate) {
+          return;
+        }
+        try {
+          final job = Job.fromJson(received.payload);
+          if (disposition == JobOfferSurfaceDisposition.enrichExisting) {
+            _ref.read(pendingIncomingJobsProvider.notifier).enqueue(job);
+            return;
+          }
+          _ref
+              .read(surfacedJobIdsProvider.notifier)
+              .update((ids) => {...ids, job.id});
+          _ref.read(pendingIncomingJobsProvider.notifier).enqueue(job);
+          if (_ref.read(visibleJobModalIdProvider) == job.id) return;
+          _ref.read(incomingJobRequestProvider.notifier).state = null;
+          _ref.read(incomingJobRequestProvider.notifier).state = job;
+          _ref.read(navBadgeProvider.notifier).increment('/home');
+        } catch (error) {
+          debugPrint('[FCM] foreground job offer parse failed: $error');
+          await _renderFromRemote(message, dataOverride: received.payload);
         }
         return;
       }
@@ -1702,6 +1872,7 @@ class FcmService {
               fcmToken: token,
               platform: _platform,
               role: role,
+              offerReceiptVersion: providerOfferReceiptCapabilityVersion,
               expectedIdentity: identity,
             );
         await _publishDeviceRegistrationOwner(identity);
@@ -1711,28 +1882,26 @@ class FcmService {
         }
         return true;
       } on ApiException catch (e) {
-        // Mobile-first rollout compatibility: the currently deployed backend
-        // rejects unknown DTO fields. Register without the capability marker
-        // there so this provider build can ship first; after the upgraded
-        // backend is deployed, normal startup/token sync advertises v1.
-        if (e.statusCode == 400 &&
-            e.message.toLowerCase().contains('offerreceiptversion')) {
+        // A max-v2 backend predates exact artisan job receipts. Retain its
+        // ride/ActivityKit capability during rollout, then omit the marker
+        // only for a still older backend that rejects the field entirely.
+        if (isOfferReceiptCapabilityValidationError(e)) {
           try {
             await _ref.read(apiNotificationServiceProvider).registerDevice(
                   fcmToken: token,
                   platform: _platform,
                   role: role,
-                  offerReceiptVersion: 1,
+                  offerReceiptVersion:
+                      legacyProviderOfferReceiptCapabilityVersion,
                   expectedIdentity: identity,
                 );
             await _publishDeviceRegistrationOwner(identity);
             debugPrint(
-              '[FCM] token registered with v1 receipt capability against an older backend; v2 will sync after backend upgrade',
+              '[FCM] token registered with legacy v2 receipt capability; v3 job receipts will sync after backend upgrade',
             );
             return true;
-          } on ApiException catch (v1Error) {
-            if (v1Error.statusCode == 400 &&
-                v1Error.message.toLowerCase().contains('offerreceiptversion')) {
+          } on ApiException catch (v2Error) {
+            if (isOfferReceiptCapabilityValidationError(v2Error)) {
               try {
                 await _ref.read(apiNotificationServiceProvider).registerDevice(
                       fcmToken: token,
@@ -1753,12 +1922,12 @@ class FcmService {
               }
             } else {
               debugPrint(
-                '[FCM] v1 receipt registration fallback failed: $v1Error',
+                '[FCM] v2 receipt registration fallback failed: $v2Error',
               );
             }
           } catch (legacyError) {
             debugPrint(
-              '[FCM] v1 receipt registration fallback failed: $legacyError',
+              '[FCM] v2 receipt registration fallback failed: $legacyError',
             );
           }
         }
@@ -2503,11 +2672,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         .toUpperCase();
     final router = ref.read(goRouterProvider);
 
-    void openSystemTrayDestination(String destination) {
+    void openSystemTrayDestination(
+      String destination, {
+      Object? extra,
+    }) {
       openProviderSystemTrayDestination(
         destination: destination,
         go: router.go,
-        push: (route) => unawaited(router.push(route)),
+        push: (route) => unawaited(router.push(route, extra: extra)),
       );
     }
 
@@ -2584,16 +2756,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // hydrate from GET /jobs/:id ourselves — otherwise the screen
     // renders its "No active job" empty state.
     Future<void> hydrateAndGoToActiveJob(String? jobId) async {
+      final expectedSession = ref.read(currentAuthSessionIdentityProvider);
+      if (expectedSession == null) {
+        router.go('/home');
+        return;
+      }
       if (jobId == null) {
         debugPrint('[FCM-tap] active-job tap: no jobId in payload');
-        router.go('/active-job');
+        openSystemTrayDestination('/active-job');
         return;
       }
       final cached = ref.read(activeJobProvider).job;
       if (cached?.id == jobId) {
         // Slot already holds this job (foreground socket path or a
         // prior tap kept it warm) — straight to the screen.
-        router.go('/active-job');
+        openSystemTrayDestination('/active-job');
         return;
       }
       // Land on /home during the fetch so the user isn't staring at
@@ -2602,14 +2779,29 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       router.go('/home');
       try {
         final data = await ref.read(jobServiceProvider).getJob(jobId);
+        if (!notificationHydrationSessionIsCurrent(
+          expectedSession: expectedSession,
+          currentSession: ref.read(currentAuthSessionIdentityProvider),
+        )) {
+          return;
+        }
         final job = Job.fromJson(data);
         ref.read(activeJobProvider.notifier).setJob(job);
-        router.go('/active-job');
+        // Preserve /home beneath this informational destination. A tray tap
+        // has no meaningful prior Flutter route, so Back must not return to a
+        // stale screen that happened to be visible before backgrounding.
+        unawaited(router.push('/active-job'));
       } catch (e) {
+        if (!notificationHydrationSessionIsCurrent(
+          expectedSession: expectedSession,
+          currentSession: ref.read(currentAuthSessionIdentityProvider),
+        )) {
+          return;
+        }
         debugPrint('[FCM-tap] active-job hydrate failed for $jobId: $e');
         // Drop on My Jobs so the affected job is at least visible in
         // the list. Better than dumping the user on a blank screen.
-        router.go('/trips');
+        openSystemTrayDestination('/trips');
       }
     }
 
@@ -2817,6 +3009,68 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           );
     }
 
+    if (isActionableJobOfferPayload(type ?? '', payload) &&
+        (int.tryParse(payload['offerVersion']?.toString() ?? '') ?? 0) >=
+            jobOfferReceiptProtocolVersion) {
+      if (!await waitForAuthenticatedRequest(payload)) {
+        debugPrint('[FCM-tap] job receipt auth unavailable');
+        releaseUntransferredRideClaim();
+        return;
+      }
+      final expectedJobSession = ref.read(currentAuthSessionIdentityProvider);
+      if (expectedJobSession == null) {
+        releaseUntransferredRideClaim();
+        return;
+      }
+      final received = await acknowledgeJobOffer(
+        payload: payload,
+        jobs: ref.read(jobServiceProvider),
+      );
+      if (received == null || !received.hasExactReceipt) {
+        final jobId = payload[NotificationPayload.keyJobId]?.toString() ??
+            payload['job_id']?.toString();
+        if (jobId != null && jobId.isNotEmpty) {
+          await clearIncomingRequestAlert(
+            type: NotificationPayload.typeJobRequest,
+            requestId: jobId,
+            offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            reason: 'receipt_unavailable',
+          );
+        }
+        router.go('/home');
+        debugPrint('[FCM-tap] job offer no longer receipt-capable');
+        releaseUntransferredRideClaim();
+        return;
+      }
+      if (ref.read(currentAuthSessionIdentityProvider) != expectedJobSession) {
+        releaseUntransferredRideClaim();
+        return;
+      }
+      payload.addAll(received.payload);
+      ref.read(jobOfferIdByJobProvider.notifier).update(
+            (offers) => {...offers, received.jobId: received.offerId!},
+          );
+      ref.read(lastJobOfferIdByJobProvider.notifier).update(
+            (offers) => {...offers, received.jobId: received.offerId!},
+          );
+      final deadline = received.decisionExpiresAt;
+      if (deadline != null) {
+        ref.read(jobOfferDeadlineByJobProvider.notifier).update(
+              (deadlines) => {...deadlines, received.jobId: deadline},
+            );
+      }
+      ref.read(jobOfferDismissalProvider.notifier).state = null;
+      // The user's tray action owns this exact offer before any subsequent
+      // hydration await. Socket/FCM copies must enrich this path, not stack a
+      // second modal over the destination being opened.
+      ref
+          .read(surfacedJobIdsProvider.notifier)
+          .update((ids) => {...ids, received.jobId});
+      if (ref.read(incomingJobRequestProvider)?.id == received.jobId) {
+        ref.read(incomingJobRequestProvider.notifier).state = null;
+      }
+    }
+
     // Local-notification and native overlay actions all converge here. The
     // native bridges persist the action first, so this may run during a cold
     // start after authentication is restored.
@@ -2915,16 +3169,42 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             return;
           }
           try {
-            await ref
-                .read(jobServiceProvider)
-                .declineJobRequest(jobId, reason: 'notification_skip');
-            ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+            final actionOfferId =
+                payload[NotificationPayload.keyOfferId]?.toString();
+            await ref.read(jobServiceProvider).declineJobRequest(
+                  jobId,
+                  offerId: actionOfferId,
+                  reason: 'notification_skip',
+                );
+            await clearStoredJobOffer(actionOfferId);
+            final currentOfferId = ref.read(jobOfferIdByJobProvider)[jobId];
+            final stillOwnsOffer = jobOfferActionStillOwnsCurrent(
+              capturedOfferId: actionOfferId,
+              currentOfferId: currentOfferId,
+              lastExactOfferId: ref.read(lastJobOfferIdByJobProvider)[jobId],
+            );
+            if (!stillOwnsOffer &&
+                (actionOfferId == null || actionOfferId.isEmpty)) {
+              return;
+            }
+            if (stillOwnsOffer) {
+              ref.read(jobOfferIdByJobProvider.notifier).update((offers) {
+                if (actionOfferId != null && offers[jobId] != actionOfferId) {
+                  return offers;
+                }
+                return {...offers}..remove(jobId);
+              });
+              ref
+                  .read(jobOfferDeadlineByJobProvider.notifier)
+                  .update((deadlines) => {...deadlines}..remove(jobId));
+              ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+            }
             await clearIncomingRequestAlert(
               type: NotificationPayload.typeJobRequest,
               requestId: jobId,
-              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+              offerId: actionOfferId,
             );
-            router.go('/home');
+            if (stillOwnsOffer) router.go('/home');
           } catch (error) {
             debugPrint('[Request-action] job skip failed: $error');
             // The action notification is already gone. Hand off to the full
@@ -3090,7 +3370,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // Client confirmed the work and the payout has been released —
       // earnings is where the artisan wants to land.
       case NotificationPayload.typeJobConfirmedComplete:
-        router.go('/earnings');
+        openSystemTrayDestination('/earnings');
         break;
 
       // Cancellations (client- or platform-initiated) — drop the user
@@ -3099,7 +3379,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // home tab that gives no context.
       case NotificationPayload.typeJobCancelled:
       case NotificationPayload.typeJobCancelledByClient:
-        router.go('/trips');
+        openSystemTrayDestination('/trips');
         break;
 
       case NotificationPayload.typeRideCancelled:
@@ -3116,7 +3396,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         final cleared =
             ref.read(activeRideProvider.notifier).clearRideIfMatches(rideId);
-        router.go(cleared ? '/home' : '/trips');
+        openSystemTrayDestination(cleared ? '/home' : '/trips');
         break;
 
       // Reminders, staleness pings and welfare checks all relate to the
@@ -3135,11 +3415,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
 
       // Admin opened a job up because no bids landed in time, or assigned
-      // this artisan manually. Either way we want them to see the job
-      // request screen so they can review and bid. Fetch the job first
-      // so the screen can render context; bounce to /home on failure.
+      // this artisan for a quote. Fetch the job first so the screen can render
+      // context; bounce to /home on failure.
       case NotificationPayload.typeJobNoBidsEscalated:
-      case NotificationPayload.typeJobManuallyAssigned:
         final jobId = payload[NotificationPayload.keyJobId] as String?;
         if (jobId == null) {
           router.go('/home');
@@ -3148,7 +3426,39 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         try {
           final data = await ref.read(jobServiceProvider).getJob(jobId);
           final job = Job.fromJson(data);
-          router.push('/job-request', extra: job);
+          openSystemTrayDestination('/job-request', extra: job);
+        } catch (e) {
+          debugPrint('[FCM] tap fetch failed for job $jobId: $e');
+          router.go('/home');
+        }
+        break;
+
+      case NotificationPayload.typeJobManuallyAssigned:
+        final mode = (payload['mode'] ?? payload['assignmentMode'])
+            ?.toString()
+            .trim()
+            .toLowerCase();
+        if (mode == 'confirm') {
+          await hydrateAndGoToActiveJob(jobIdFromPayload());
+          break;
+        }
+        final jobId = jobIdFromPayload();
+        if (jobId == null) {
+          router.go('/home');
+          break;
+        }
+        final expectedSession = ref.read(currentAuthSessionIdentityProvider);
+        if (expectedSession == null) {
+          router.go('/home');
+          break;
+        }
+        try {
+          final data = await ref.read(jobServiceProvider).getJob(jobId);
+          if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+            break;
+          }
+          final job = Job.fromJson(data);
+          openSystemTrayDestination('/job-request', extra: job);
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');
@@ -3169,7 +3479,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             (payload[NotificationPayload.keyBookingId] as String?) ??
                 (bookingType == ChatBookingType.ride ? rideId : jobId);
         if (bookingType == null || bookingId == null || bookingId.isEmpty) {
-          router.go('/messages');
+          openSystemTrayDestination('/messages');
           break;
         }
         // Hydrate the peer (client) details from the booking so the chat
@@ -3198,7 +3508,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         } catch (e) {
           debugPrint('[FCM] hydrate booking for chat failed: $e');
         }
-        router.push(
+        openSystemTrayDestination(
           '/chat',
           extra: <String, Object?>{
             'bookingType': bookingType,
@@ -3285,10 +3595,18 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeSupportTicketStatusChanged:
         final ticketId = payload[NotificationPayload.keyTicketId] as String?;
         if (ticketId != null && ticketId.isNotEmpty) {
-          router.push('/account/support/tickets/$ticketId');
+          openSystemTrayDestination('/account/support/tickets/$ticketId');
         } else {
-          router.go('/account/support/tickets');
+          openSystemTrayDestination('/account/support/tickets');
         }
+        break;
+
+      case NotificationPayload.typeProviderResponseBlockWarning:
+        openSystemTrayDestination('/home');
+        break;
+
+      case NotificationPayload.typeProviderResponseBlockStarted:
+        openSystemTrayDestination('/account/support');
         break;
 
       case NotificationPayload.typeBidRejected:

@@ -23,11 +23,11 @@ void main() {
     expect(request.expiresAt, isNotNull);
     expect(
       request.expiresAt!.difference(before),
-      greaterThanOrEqualTo(const Duration(seconds: 39)),
+      greaterThanOrEqualTo(const Duration(seconds: 44)),
     );
     expect(
       request.expiresAt!.difference(after),
-      lessThanOrEqualTo(const Duration(seconds: 40)),
+      lessThanOrEqualTo(const Duration(seconds: 45)),
     );
     expect(request.isExpired, isFalse);
   });
@@ -128,6 +128,79 @@ void main() {
     expect(requests.single.id, 'ride-1');
   });
 
+  test('reads an exact job offer id from its legacy nested payload', () {
+    final request = ProviderPendingRequest.fromJson(const {
+      'kind': 'job',
+      'id': 'job-1',
+      'expiresAt': '2099-01-01T00:00:45.000Z',
+      'payload': {
+        'jobId': 'job-1',
+        'offerId': 'job-offer-1',
+        'status': 'open',
+      },
+    });
+
+    expect(request.offerId, 'job-offer-1');
+    expect(request.offerVersion, isNull);
+  });
+
+  test('reads the exact job receipt protocol version from nested payload', () {
+    final request = ProviderPendingRequest.fromJson(const {
+      'kind': 'job',
+      'id': 'job-1',
+      'expiresAt': '2099-01-01T00:00:45.000Z',
+      'payload': {
+        'jobId': 'job-1',
+        'offerId': 'job-offer-1',
+        'offerVersion': '2',
+        'status': 'open',
+      },
+    });
+
+    expect(request.offerVersion, 2);
+  });
+
+  test('parses an exact terminal job-offer resolution', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            statusCode: 200,
+            data: const {
+              'success': true,
+              'data': {
+                'requests': <Object>[],
+                'resolutions': [
+                  {
+                    'kind': 'job',
+                    'offerId': 'job-offer-1',
+                    'jobId': 'job-1',
+                    'state': 'timed_out',
+                    'resolutionReason': 'no_response',
+                    'resolvedAt': '2026-08-31T12:00:45.000Z',
+                  },
+                ],
+              },
+            },
+          ),
+        ),
+      ),
+    );
+
+    final result = await ProviderRequestService(dio).recoverPendingRequests(
+      knownOfferIds: const ['job-offer-1'],
+    );
+
+    expect(result.resolutions, hasLength(1));
+    expect(result.resolutions.single.kind, ProviderRequestKind.job);
+    expect(result.resolutions.single.jobId, 'job-1');
+    expect(result.resolutions.single.rideId, isEmpty);
+    expect(result.resolutions.single.resolutionReason, 'no_response');
+  });
+
   test(
     'rejects an unbounded offer-resolution query before network I/O',
     () async {
@@ -145,11 +218,90 @@ void main() {
 
       await expectLater(
         ProviderRequestService(dio).recoverPendingRequests(
-          knownOfferIds: List<String>.generate(11, (index) => 'offer-$index'),
+          knownOfferIds: List<String>.generate(
+            maxKnownProviderOfferIds + 1,
+            (index) => 'offer-$index',
+          ),
         ),
         throwsArgumentError,
       );
       expect(requests, 0);
     },
   );
+
+  test('parses authoritative response metrics and an active restriction',
+      () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            statusCode: 200,
+            data: const {
+              'success': true,
+              'data': {
+                'periodDays': 7,
+                'eligibleOffers': 10,
+                'acceptedOffers': 6,
+                'declinedOffers': 2,
+                'noResponseOffers': 2,
+                'acceptanceRatePercent': 60,
+                'responseRatePercent': 80,
+                'activeRestriction': {
+                  'policyKind': 'request_response',
+                  'blockedUntil': '2026-08-31T12:15:00.000Z',
+                  'retryAfterSeconds': 900,
+                  'points': 6,
+                  'threshold': 6,
+                },
+              },
+            },
+          ),
+        ),
+      ),
+    );
+
+    final summary =
+        await ProviderRequestService(dio).getRequestResponseSummary();
+
+    expect(summary, isNotNull);
+    expect(summary!.periodDays, 7);
+    expect(summary.eligibleOffers, 10);
+    expect(summary.acceptanceRatePercent, 60);
+    expect(summary.responseRatePercent, 80);
+    expect(summary.activeRestriction?.policyKind, 'request_response');
+    expect(summary.activeRestriction?.points, 6);
+  });
+
+  test('missing summary fields stay neutral instead of inventing a rate', () {
+    final summary = ProviderRequestResponseSummary.fromJson(const {});
+
+    expect(summary.hasSample, isFalse);
+    expect(summary.acceptanceRatePercent, isNull);
+    expect(summary.responseRatePercent, isNull);
+    expect(summary.activeRestriction, isNull);
+  });
+
+  test('summary endpoint returns null against an older 404 backend', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.reject(
+          DioException(
+            requestOptions: options,
+            response: Response<void>(requestOptions: options, statusCode: 404),
+            type: DioExceptionType.badResponse,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      await ProviderRequestService(dio).getRequestResponseSummary(),
+      isNull,
+    );
+  });
 }

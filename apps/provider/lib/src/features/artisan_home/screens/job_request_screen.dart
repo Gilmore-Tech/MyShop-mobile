@@ -17,7 +17,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/job_offer_receipt_service.dart';
 import '../../../core/services/local_notification_service.dart';
+import '../../../core/services/provider_request_policy.dart';
 import '../../../core/widgets/incoming_request_map_preview.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
@@ -64,6 +66,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   bool _hasRedirectedToActiveJob = false;
   bool _didAutoOpenBidSheet = false;
   bool _decliningRequest = false;
+  String? _mountedOfferId;
 
   /// Full-fat job fetched from `GET /jobs/:id` on mount. The artisan jobs
   /// feed (`GET /jobs`) returns slim records that drop client identity
@@ -92,6 +95,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   @override
   void initState() {
     super.initState();
+    _mountedOfferId = ref.read(jobOfferIdByJobProvider)[widget.job.id];
     // Post-frame: modifying a provider synchronously inside initState can
     // fire rebuilds of widgets that are still building. Mirrors the ride
     // request screen's visible-marker handshake.
@@ -194,24 +198,57 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     }
     setState(() => _decliningRequest = true);
     try {
+      final offerId = ref.read(jobOfferIdByJobProvider)[job.id];
       await ref.read(jobServiceProvider).declineJobRequest(
             job.id,
+            offerId: offerId,
             reason: 'provider_declined',
           );
-      ref.read(pendingIncomingJobsProvider.notifier).remove(job.id);
+      await clearStoredJobOffer(offerId);
+      final stillOwnsOffer = jobOfferActionStillOwnsCurrent(
+        capturedOfferId: offerId,
+        currentOfferId: ref.read(jobOfferIdByJobProvider)[job.id],
+        lastExactOfferId: ref.read(lastJobOfferIdByJobProvider)[job.id],
+      );
+      if (!stillOwnsOffer) {
+        if (mounted) setState(() => _decliningRequest = false);
+        return;
+      }
       await clearIncomingRequestAlert(
         type: NotificationPayload.typeJobRequest,
         requestId: job.id,
+        offerId: offerId,
       );
+      if (!jobOfferActionStillOwnsCurrent(
+        capturedOfferId: offerId,
+        currentOfferId: ref.read(jobOfferIdByJobProvider)[job.id],
+        lastExactOfferId: ref.read(lastJobOfferIdByJobProvider)[job.id],
+      )) {
+        if (mounted) setState(() => _decliningRequest = false);
+        return;
+      }
+      ref.read(jobOfferIdByJobProvider.notifier).update((offers) {
+        if (offerId != null && offers[job.id] != offerId) return offers;
+        return {...offers}..remove(job.id);
+      });
+      ref
+          .read(jobOfferDeadlineByJobProvider.notifier)
+          .update((deadlines) => {...deadlines}..remove(job.id));
+      ref.read(pendingIncomingJobsProvider.notifier).remove(job.id);
       if (mounted) context.pop();
     } catch (error) {
       if (!mounted) return;
       setState(() => _decliningRequest = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(job.isAdminAssigned
-              ? 'Could not decline this assignment. Please try again.'
-              : 'Could not decline this request. Please try again.'),
+          content: Text(error is ApiException && isProviderRequestBlock(error)
+              ? providerRequestBlockMessage(
+                  error,
+                  requestLabel: 'job requests',
+                )
+              : job.isAdminAssigned
+                  ? 'Could not decline this assignment. Please try again.'
+                  : 'Could not decline this request. Please try again.'),
         ),
       );
     }
@@ -233,6 +270,33 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<Map<String, String>>(jobOfferIdByJobProvider, (_, offers) {
+      final next = offers[widget.job.id];
+      if (next != null && next.isNotEmpty) _mountedOfferId = next;
+    });
+    ref.listen<JobOfferDismissal?>(jobOfferDismissalProvider, (_, dismissal) {
+      if (dismissal == null || dismissal.jobId != widget.job.id) return;
+      if (dismissal.offerId != null &&
+          _mountedOfferId != null &&
+          dismissal.offerId != _mountedOfferId) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || ref.read(jobOfferDismissalProvider) != dismissal) {
+          return;
+        }
+        if (dismissal.offerId != null &&
+            _mountedOfferId != null &&
+            dismissal.offerId != _mountedOfferId) {
+          return;
+        }
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/home');
+        }
+      });
+    });
     // FCM-tap entry path hands us a stub Job with only an id — show a
     // loading skeleton (or error/retry) until `_hydrateJob` returns
     // real data, otherwise the screen renders "Location pending", an

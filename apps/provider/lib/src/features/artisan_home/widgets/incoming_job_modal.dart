@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +11,10 @@ import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/job_offer_receipt_service.dart';
+import '../../../core/services/provider_request_policy.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/providers/socket_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 
 /// Safety fallback for legacy socket payloads that predate `expiresAt`.
@@ -74,21 +78,50 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
   Timer? _autoDismissTimer;
   Timer? _countdownTicker;
   late Duration _remaining;
+  DateTime? _deadline;
+  String? _mountedOfferId;
+  int _deadlineGeneration = 0;
   bool _skipping = false;
 
   @override
   void initState() {
     super.initState();
-    final deadline = DateTime.tryParse(
+    _mountedOfferId = ref.read(jobOfferIdByJobProvider)[widget.job.id];
+    final authoritative =
+        ref.read(jobOfferDeadlineByJobProvider)[widget.job.id];
+    final parsed = DateTime.tryParse(
       widget.job.assignment?.quoteDeadlineAt ?? widget.job.expiresAt ?? '',
     )?.toUtc();
-    _remaining = deadline == null
-        ? _kIncomingJobFallbackTimeout
-        : deadline.difference(DateTime.now().toUtc());
+    _armDeadline(
+      authoritative ??
+          parsed ??
+          DateTime.now().toUtc().add(_kIncomingJobFallbackTimeout),
+      offerId: _mountedOfferId,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(visibleJobModalIdProvider.notifier).state = widget.job.id;
+      }
+    });
+  }
+
+  void _armDeadline(DateTime deadline, {String? offerId}) {
+    final generation = ++_deadlineGeneration;
+    final armedOfferId = offerId?.trim();
+    _autoDismissTimer?.cancel();
+    _countdownTicker?.cancel();
+    _deadline = deadline.toUtc();
+    _remaining = _deadline!.difference(DateTime.now().toUtc());
     if (_remaining <= Duration.zero) {
       _remaining = Duration.zero;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_expireRequest());
+        unawaited(
+          _expireRequest(
+            generation: generation,
+            offerId: armedOfferId,
+            deadline: deadline.toUtc(),
+          ),
+        );
       });
       return;
     }
@@ -97,29 +130,84 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
     // the same timer — both call sites are no-ops when one is already
     // ringing, which is fine because we never have a job and ride
     // request open at the same time.
-    LocalNotificationService.instance.startIncomingRingtone();
+    LocalNotificationService.instance.startIncomingRingtone(
+      offerId: armedOfferId,
+    );
     // Auto-dismiss at the server-authored deadline so a buried phone never
     // keeps ringing after the backend bid window has closed.
     _autoDismissTimer = Timer(_remaining, () {
-      unawaited(_expireRequest());
+      unawaited(
+        _expireRequest(
+          generation: generation,
+          offerId: armedOfferId,
+          deadline: deadline.toUtc(),
+        ),
+      );
     });
     _countdownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      final next = deadline == null
-          ? _remaining - const Duration(seconds: 1)
-          : deadline.difference(DateTime.now().toUtc());
+      final next = _deadline!.difference(DateTime.now().toUtc());
       setState(() {
         _remaining = next > Duration.zero ? next : Duration.zero;
       });
     });
   }
 
-  Future<void> _expireRequest() async {
+  bool _actionStillOwns(String? offerId) {
+    return jobOfferActionStillOwnsCurrent(
+      capturedOfferId: offerId,
+      currentOfferId: ref.read(jobOfferIdByJobProvider)[widget.job.id],
+      lastExactOfferId: ref.read(lastJobOfferIdByJobProvider)[widget.job.id],
+    );
+  }
+
+  Future<void> _expireRequest({
+    required int generation,
+    required String? offerId,
+    required DateTime deadline,
+  }) async {
+    if (generation != _deadlineGeneration || !_actionStillOwns(offerId)) {
+      return;
+    }
+    final authoritativeDeadline =
+        ref.read(jobOfferDeadlineByJobProvider)[widget.job.id];
+    if (authoritativeDeadline != null &&
+        authoritativeDeadline.toUtc() != deadline.toUtc()) {
+      return;
+    }
+    // Never promote a legacy timer to whichever exact offer happens to be
+    // current now. A sequential exact offer may have replaced the legacy
+    // request since this timer was armed.
+    final exactOfferId = offerId;
+    if (!_actionStillOwns(exactOfferId)) return;
     await clearIncomingRequestAlert(
       type: NotificationPayload.typeJobRequest,
       requestId: widget.job.id,
+      offerId: exactOfferId,
       reason: 'expired',
     );
+    // The server owns no-response classification at the deadline. Local
+    // expiry must not call the explicit decline endpoint or affect ratings.
+    await clearStoredJobOffer(exactOfferId);
+    if (generation != _deadlineGeneration || !_actionStillOwns(exactOfferId)) {
+      return;
+    }
+    ref.read(jobOfferIdByJobProvider.notifier).update((offers) {
+      if (exactOfferId != null && offers[widget.job.id] != exactOfferId) {
+        return offers;
+      }
+      return {...offers}..remove(widget.job.id);
+    });
+    ref
+        .read(jobOfferDeadlineByJobProvider.notifier)
+        .update((deadlines) => {...deadlines}..remove(widget.job.id));
+    ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
+    if (ref.read(visibleJobModalIdProvider) == widget.job.id) {
+      ref.read(visibleJobModalIdProvider.notifier).state = null;
+    }
+    if (ref.read(incomingJobRequestProvider)?.id == widget.job.id) {
+      ref.read(incomingJobRequestProvider.notifier).state = null;
+    }
     if (mounted) {
       await Navigator.of(context).maybePop();
     }
@@ -134,7 +222,14 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
     // after the sheet was gone.
     _autoDismissTimer?.cancel();
     _countdownTicker?.cancel();
-    LocalNotificationService.instance.stopIncomingRingtone();
+    LocalNotificationService.instance.stopIncomingRingtone(
+      offerId: _mountedOfferId,
+    );
+    try {
+      if (ref.read(visibleJobModalIdProvider) == widget.job.id) {
+        ref.read(visibleJobModalIdProvider.notifier).state = null;
+      }
+    } catch (_) {}
     super.dispose();
   }
 
@@ -201,26 +296,50 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
     }
     setState(() => _skipping = true);
     try {
+      final offerId = ref.read(jobOfferIdByJobProvider)[widget.job.id];
       await ref.read(jobServiceProvider).declineJobRequest(
             widget.job.id,
+            offerId: offerId,
             reason: widget.job.isAdminAssigned
                 ? 'provider_declined'
                 : 'provider_skipped',
           );
-      ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
+      await clearStoredJobOffer(offerId);
+      if (!_actionStillOwns(offerId)) {
+        if (mounted) setState(() => _skipping = false);
+        return;
+      }
       await clearIncomingRequestAlert(
         type: NotificationPayload.typeJobRequest,
         requestId: widget.job.id,
+        offerId: offerId,
       );
+      if (!_actionStillOwns(offerId)) {
+        if (mounted) setState(() => _skipping = false);
+        return;
+      }
+      ref.read(jobOfferIdByJobProvider.notifier).update((offers) {
+        if (offerId != null && offers[widget.job.id] != offerId) return offers;
+        return {...offers}..remove(widget.job.id);
+      });
+      ref
+          .read(jobOfferDeadlineByJobProvider.notifier)
+          .update((deadlines) => {...deadlines}..remove(widget.job.id));
+      ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
       if (mounted) Navigator.of(context).pop();
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _skipping = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.job.isAdminAssigned
-              ? 'Could not decline this assignment. Try again.'
-              : 'Could not skip this request. Try again.'),
+          content: Text(error is ApiException && isProviderRequestBlock(error)
+              ? providerRequestBlockMessage(
+                  error,
+                  requestLabel: 'job requests',
+                )
+              : widget.job.isAdminAssigned
+                  ? 'Could not decline this assignment. Try again.'
+                  : 'Could not skip this request. Try again.'),
         ),
       );
     }
@@ -228,6 +347,53 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<Map<String, String>>(jobOfferIdByJobProvider, (_, offers) {
+      final next = offers[widget.job.id];
+      if (next == null || next.isEmpty || next == _mountedOfferId) return;
+      _mountedOfferId = next;
+      final deadline =
+          ref.read(jobOfferDeadlineByJobProvider)[widget.job.id] ?? _deadline;
+      if (mounted && deadline != null) {
+        // Offer identity is part of timer ownership even when a replacement
+        // offer happens to reuse the same absolute deadline.
+        _armDeadline(deadline, offerId: next);
+      }
+    });
+    ref.listen<Map<String, DateTime>>(
+      jobOfferDeadlineByJobProvider,
+      (_, deadlines) {
+        final next = deadlines[widget.job.id];
+        if (next == null || next == _deadline) return;
+        if (!mounted) return;
+        final offerId = ref.read(jobOfferIdByJobProvider)[widget.job.id];
+        if (offerId != null && offerId.isNotEmpty) {
+          _mountedOfferId = offerId;
+        }
+        // Cancel A's timer synchronously. Server rotation commonly delivers B
+        // at A's boundary, so deferring this to the next frame can let A's
+        // callback consume B.
+        _armDeadline(next, offerId: offerId);
+      },
+    );
+    ref.listen<JobOfferDismissal?>(jobOfferDismissalProvider, (_, dismissal) {
+      if (dismissal == null || dismissal.jobId != widget.job.id) return;
+      if (dismissal.offerId != null &&
+          _mountedOfferId != null &&
+          dismissal.offerId != _mountedOfferId) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || ref.read(jobOfferDismissalProvider) != dismissal) {
+          return;
+        }
+        if (dismissal.offerId != null &&
+            _mountedOfferId != null &&
+            dismissal.offerId != _mountedOfferId) {
+          return;
+        }
+        unawaited(Navigator.of(context).maybePop());
+      });
+    });
     final job = widget.job;
     return Container(
       decoration: const BoxDecoration(

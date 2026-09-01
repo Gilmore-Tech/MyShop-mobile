@@ -7,8 +7,11 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/job_offer_receipt_service.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../../artisan_home/providers/active_job_provider.dart';
+import '../../artisan_home/providers/job_poller_provider.dart';
 import '../../artisan_home/widgets/rate_client_sheet.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../driver_home/widgets/rate_passenger_sheet.dart';
@@ -98,6 +101,7 @@ class _ProviderNotificationsScreenState
         await _hydrateAndOpenJob(
           context,
           action,
+          notificationPayload: notification.payload,
           openAsManualRequest: true,
         );
         return;
@@ -106,6 +110,7 @@ class _ProviderNotificationsScreenState
         await _hydrateAndOpenJob(
           context,
           action,
+          notificationPayload: notification.payload,
           openAsManualRequest: false,
         );
         return;
@@ -119,14 +124,87 @@ class _ProviderNotificationsScreenState
   Future<void> _hydrateAndOpenJob(
     BuildContext context,
     ProviderInboxAction action, {
+    required Map<String, dynamic> notificationPayload,
     required bool openAsManualRequest,
   }) async {
     final jobId = action.entityId;
     if (jobId == null) return;
+    final expectedSession = ref.read(currentAuthSessionIdentityProvider);
+    if (expectedSession == null) return;
+    var surfaceWasAlreadyClaimed = false;
+    var claimedSurface = false;
+    String? claimedOfferId;
 
     try {
+      ReceivedJobOffer? received;
+      if (openAsManualRequest && action.requiresExactJobReceipt) {
+        received = await acknowledgeJobOffer(
+          payload: <String, dynamic>{
+            ...notificationPayload,
+            NotificationPayload.keyType:
+                NotificationPayload.typeJobManuallyAssigned,
+            NotificationPayload.keyJobId: jobId,
+            NotificationPayload.keyOfferId: action.offerId,
+            'offerVersion': action.offerVersion.toString(),
+            'mode': action.assignmentMode,
+          },
+          jobs: ref.read(jobServiceProvider),
+        );
+        if (received == null || !received.hasExactReceipt) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'This assignment is no longer available. Refresh your notifications.',
+                ),
+              ),
+            );
+          return;
+        }
+        if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+          return;
+        }
+        claimedOfferId = received.offerId;
+        ref.read(jobOfferIdByJobProvider.notifier).update(
+              (offers) => {...offers, jobId: received!.offerId!},
+            );
+        ref.read(lastJobOfferIdByJobProvider.notifier).update(
+              (offers) => {...offers, jobId: received!.offerId!},
+            );
+        final deadline = received.decisionExpiresAt;
+        if (deadline != null) {
+          ref.read(jobOfferDeadlineByJobProvider.notifier).update(
+                (deadlines) => {...deadlines, jobId: deadline},
+              );
+        }
+        ref.read(jobOfferDismissalProvider.notifier).state = null;
+      }
+      if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+        return;
+      }
+      if (openAsManualRequest) {
+        surfaceWasAlreadyClaimed =
+            ref.read(surfacedJobIdsProvider).contains(jobId);
+        ref
+            .read(surfacedJobIdsProvider.notifier)
+            .update((ids) => {...ids, jobId});
+        claimedSurface = true;
+        if (ref.read(incomingJobRequestProvider)?.id == jobId) {
+          ref.read(incomingJobRequestProvider.notifier).state = null;
+        }
+      }
       final raw = await ref.read(jobServiceProvider).getJob(jobId);
-      final job = Job.fromJson(raw);
+      if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+        return;
+      }
+      final hydrated = Job.fromJson(raw);
+      final job = received?.decisionExpiresAt == null
+          ? hydrated
+          : hydrated.copyWith(
+              expiresAt: received!.decisionExpiresAt!.toIso8601String(),
+            );
       if (!context.mounted) return;
       if (openAsManualRequest) {
         unawaited(context.push<void>('/job-request', extra: job));
@@ -150,6 +228,19 @@ class _ProviderNotificationsScreenState
         unawaited(context.push<void>('/active-job'));
       }
     } catch (error) {
+      if (claimedSurface &&
+          !surfaceWasAlreadyClaimed &&
+          ref.read(currentAuthSessionIdentityProvider) == expectedSession) {
+        final latestExact = ref.read(lastJobOfferIdByJobProvider)[jobId];
+        if (claimedOfferId == null || latestExact == claimedOfferId) {
+          ref
+              .read(surfacedJobIdsProvider.notifier)
+              .update((ids) => {...ids}..remove(jobId));
+        }
+      }
+      if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) {
+        return;
+      }
       if (!context.mounted) return;
       final message = openAsManualRequest
           ? 'This job could not be opened. Refresh and try again.'

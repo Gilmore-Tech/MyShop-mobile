@@ -165,6 +165,23 @@ void main() {
       ),
       isNull,
     );
+
+    // These are the exact identifier shapes persisted by the backend today.
+    // Neither can safely reconstruct a payment screen or exact activity row.
+    expect(
+      clientInboxActionFor(
+        eventType: 'payment.insufficient_balance',
+        payload: const {'paymentId': rideId},
+      ),
+      isNull,
+    );
+    expect(
+      clientInboxActionFor(
+        eventType: 'payment.refund_processed',
+        payload: const {'disputeId': jobId},
+      ),
+      isNull,
+    );
   });
 
   testWidgets('shows loading instead of the empty state during initial fetch',
@@ -210,6 +227,23 @@ void main() {
     await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
     await _openTrayInbox(tester, router);
 
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client dashboard'), findsOneWidget);
+  });
+
+  testWidgets('root tray inbox system Back falls back to client dashboard',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _testRouter(initialLocation: '/notifications');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+    await tester.pumpAndSettle();
+
+    // This reproduces a cold/deep-linked tray open where the OS restores only
+    // the destination route and therefore Navigator has nothing to pop.
+    expect(router.canPop(), isFalse);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
