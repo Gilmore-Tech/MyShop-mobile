@@ -54,13 +54,20 @@ class _NotificationsListScreenState
     }
   }
 
-  void _goBack(BuildContext context) {
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop();
+  void _goBack(
+    BuildContext context, {
+    required bool openedFromTray,
+  }) {
+    final router = GoRouter.maybeOf(context);
+    if (openedFromTray) {
+      router?.go(clientDashboardRoute);
       return;
     }
-    GoRouter.maybeOf(context)?.go(clientDashboardRoute);
+    if (router?.canPop() == true) {
+      router!.pop();
+      return;
+    }
+    router?.go(clientDashboardRoute);
   }
 
   @override
@@ -70,15 +77,23 @@ class _NotificationsListScreenState
     final h = size.height;
     final notificationsState = ref.watch(notifsProvider);
     final unread = ref.read(notifsProvider.notifier).unreadCount;
+    final router = GoRouter.maybeOf(context);
+    final openedFromTray = router == null
+        ? false
+        : clientNotificationOpenedFromTray(
+            GoRouterState.of(context).uri,
+          );
 
     return PopScope(
       // A tray/deep-link can restore the inbox as the root route with no
       // Navigator history. Intercept that system Back and return to the
       // Client dashboard. An inbox opened inside the app keeps canPop=true,
       // so both app-bar and system Back preserve the caller beneath it.
-      canPop: Navigator.of(context).canPop(),
+      canPop: !openedFromTray && (router?.canPop() ?? false),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _goBack(context);
+        if (!didPop) {
+          _goBack(context, openedFromTray: openedFromTray);
+        }
       },
       child: Scaffold(
         backgroundColor: MyShopColors.offWhite,
@@ -86,7 +101,7 @@ class _NotificationsListScreenState
           backgroundColor: MyShopColors.surfaceWhite,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-            onPressed: () => _goBack(context),
+            onPressed: () => _goBack(context, openedFromTray: openedFromTray),
           ),
           title: Row(
             children: [

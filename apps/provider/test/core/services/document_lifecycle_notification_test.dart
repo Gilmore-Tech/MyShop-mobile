@@ -148,10 +148,12 @@ void main() {
         providerInboxActionFor(eventType: 'ride_category.rejected')?.route,
         '/account/vehicle',
       );
-      expect(
-        providerInboxActionFor(eventType: 'provider.location_degraded')?.route,
-        '/home',
+      final locationAction = providerInboxActionFor(
+        eventType: 'provider.location_degraded',
       );
+      expect(locationAction?.kind, ProviderInboxActionKind.locationSettings);
+      expect(locationAction?.label, 'Fix location');
+      expect(locationAction?.route, isNull);
       expect(
         providerInboxActionFor(eventType: 'account.suspended.low_rating')
             ?.route,

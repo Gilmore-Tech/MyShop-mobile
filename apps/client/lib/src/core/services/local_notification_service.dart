@@ -189,6 +189,29 @@ String clientAnnouncementRoute(Object? rawDestination) {
 }
 
 const clientDashboardRoute = '/home';
+const clientNotificationInboxRoute = '/notifications';
+const clientTraySourceQueryKey = 'source';
+const clientTraySourceQueryValue = 'tray';
+
+/// Marks an inbox destination as originating from an operating-system tray
+/// tap. The marker lets the inbox return to the Client dashboard even if a
+/// platform resume or duplicate callback reconstructs an unexpected stack.
+String clientTrayDestinationRoute(String destinationRoute) {
+  final uri = Uri.tryParse(destinationRoute);
+  if (uri == null || uri.path != clientNotificationInboxRoute) {
+    return destinationRoute;
+  }
+  return uri.replace(
+    queryParameters: <String, String>{
+      ...uri.queryParameters,
+      clientTraySourceQueryKey: clientTraySourceQueryValue,
+    },
+  ).toString();
+}
+
+bool clientNotificationOpenedFromTray(Uri uri) =>
+    uri.path == clientNotificationInboxRoute &&
+    uri.queryParameters[clientTraySourceQueryKey] == clientTraySourceQueryValue;
 
 /// A system-tray tap starts a fresh navigation intent. Seed the authenticated
 /// dashboard before presenting the destination so Back has a deterministic,
@@ -198,7 +221,7 @@ List<String> clientTrayNavigationStack(String destinationRoute) {
   if (destinationRoute == clientDashboardRoute) {
     return const [clientDashboardRoute];
   }
-  return [clientDashboardRoute, destinationRoute];
+  return [clientDashboardRoute, clientTrayDestinationRoute(destinationRoute)];
 }
 
 /// The only operations an inbox row may expose to the Client UI.
