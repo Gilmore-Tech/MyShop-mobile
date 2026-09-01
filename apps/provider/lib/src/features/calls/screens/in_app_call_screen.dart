@@ -126,8 +126,8 @@ class _ProviderInAppCallScreenState
         .read(appCallServiceProvider)
         .joinCall(widget.callId)
         .whenComplete(() {
-          if (identical(_sessionRequest, operation)) _sessionRequest = null;
-        });
+      if (identical(_sessionRequest, operation)) _sessionRequest = null;
+    });
     _sessionRequest = operation;
     return operation;
   }
@@ -247,9 +247,8 @@ class _ProviderInAppCallScreenState
     await _ringback.stop();
     var ended = false;
     try {
-      final session = await ref
-          .read(appCallServiceProvider)
-          .endCall(widget.callId);
+      final session =
+          await ref.read(appCallServiceProvider).endCall(widget.callId);
       if (mounted) {
         setState(() {
           _session = session;
@@ -287,9 +286,8 @@ class _ProviderInAppCallScreenState
         );
         return;
       }
-      final session = await ref
-          .read(appCallServiceProvider)
-          .acceptCall(widget.callId);
+      final session =
+          await ref.read(appCallServiceProvider).acceptCall(widget.callId);
       await LocalNotificationService.instance.cancelIncomingCall(widget.callId);
       if (mounted) _applyRemoteSession(session);
     } catch (error) {
@@ -307,9 +305,8 @@ class _ProviderInAppCallScreenState
     setState(() => _declining = true);
     var declined = false;
     try {
-      var session = await ref
-          .read(appCallServiceProvider)
-          .declineCall(widget.callId);
+      var session =
+          await ref.read(appCallServiceProvider).declineCall(widget.callId);
       if (!session.isTerminal) {
         session = await ref.read(appCallServiceProvider).endCall(widget.callId);
       }
@@ -341,7 +338,8 @@ class _ProviderInAppCallScreenState
   String _returnRoute(AppCallSession? session) {
     return switch (session?.bookingType) {
       'ride' => '/active-ride',
-      'artisan_job' || 'job' when session?.bookingId.isNotEmpty == true =>
+      'artisan_job' ||
+      'job' when session?.bookingId.isNotEmpty == true =>
         '/active-job?jobId=${Uri.encodeQueryComponent(session!.bookingId)}',
       _ => '/home',
     };
@@ -397,11 +395,11 @@ class _ProviderInAppCallScreenState
     return switch (session?.status) {
       'ringing' => _isIncomingRinging(session) ? 'Incoming call' : 'Ringing…',
       'accepted' => switch (_rtcState) {
-        AppCallRtcConnectionState.connected => 'Connected',
-        AppCallRtcConnectionState.failed => 'Connection failed',
-        AppCallRtcConnectionState.disconnected => 'Connection interrupted',
-        AppCallRtcConnectionState.connecting => 'Connecting…',
-      },
+          AppCallRtcConnectionState.connected => 'Connected',
+          AppCallRtcConnectionState.failed => 'Connection failed',
+          AppCallRtcConnectionState.disconnected => 'Connection interrupted',
+          AppCallRtcConnectionState.connecting => 'Connecting…',
+        },
       'declined' => 'Declined',
       'ended' => 'Ended',
       'expired' => 'Missed',

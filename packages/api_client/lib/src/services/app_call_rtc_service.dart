@@ -9,8 +9,8 @@ import 'app_call_socket_service.dart';
 enum AppCallRtcConnectionState { connecting, connected, disconnected, failed }
 
 typedef AppCallSignalHandler = Future<void> Function(AppCallSignal signal);
-typedef AppCallSignalErrorHandler =
-    void Function(Object error, StackTrace stackTrace);
+typedef AppCallSignalErrorHandler = void Function(
+    Object error, StackTrace stackTrace);
 
 /// Serialises WebRTC signaling messages and retains messages received before
 /// the peer connection is ready.
