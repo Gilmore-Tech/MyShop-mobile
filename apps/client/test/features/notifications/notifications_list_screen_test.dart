@@ -234,6 +234,29 @@ void main() {
     expect(find.text('Client dashboard'), findsOneWidget);
   });
 
+  testWidgets('non-inbox tray destination Back returns to the dashboard',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _testRouter(initialLocation: '/profile');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+
+    // Exercise the production same-turn go-then-push coordinator without the
+    // inbox source marker. This proves the dashboard is the real route beneath
+    // an ordinary tray destination, not merely an inbox-specific fallback.
+    final navigation = openClientTrayDestination(router, '/profile/support');
+    await tester.pumpAndSettle();
+    await navigation;
+    await tester.pumpAndSettle();
+    expect(find.text('Support destination'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client dashboard'), findsOneWidget);
+    expect(find.text('Profile origin'), findsNothing);
+  });
+
   testWidgets('root tray inbox system Back falls back to client dashboard',
       (tester) async {
     _usePhoneViewport(tester);
