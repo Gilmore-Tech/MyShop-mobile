@@ -1,11 +1,111 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/services/fcm_service.dart';
+import 'package:myshop_provider/src/core/services/job_offer_receipt_service.dart';
 import 'package:myshop_provider/src/core/services/local_notification_service.dart';
 
 void main() {
+  test('Provider advertises job receipt capability v3 without changing offers',
+      () {
+    expect(providerOfferReceiptCapabilityVersion, 3);
+    expect(legacyProviderOfferReceiptCapabilityVersion, 2);
+    expect(jobOfferReceiptProtocolVersion, 2);
+  });
+
+  test('receipt capability fallback is limited to field validation errors', () {
+    expect(
+      isOfferReceiptCapabilityValidationError(
+        const ApiException(
+          message: 'offerReceiptVersion must not be greater than 2',
+          statusCode: 400,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isOfferReceiptCapabilityValidationError(
+        const ApiException(
+          message: 'Validation failed',
+          statusCode: 422,
+          details: {
+            'offerReceiptVersion': ['Maximum supported value is 2'],
+          },
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isOfferReceiptCapabilityValidationError(
+        const ApiException(
+          message: 'FCM token is invalid',
+          statusCode: 400,
+        ),
+      ),
+      isFalse,
+    );
+  });
+
+  test('manual confirmation hydration is fenced to its starting session', () {
+    final sessionA = Object();
+    final sessionB = Object();
+
+    expect(
+      notificationHydrationSessionIsCurrent(
+        expectedSession: sessionA,
+        currentSession: sessionA,
+      ),
+      isTrue,
+    );
+    expect(
+      notificationHydrationSessionIsCurrent(
+        expectedSession: sessionA,
+        currentSession: sessionB,
+      ),
+      isFalse,
+    );
+    expect(
+      notificationHydrationSessionIsCurrent(
+        expectedSession: null,
+        currentSession: sessionA,
+      ),
+      isFalse,
+    );
+  });
+
+  test('sequential request alerts and ringtone cleanup stay offer-exact', () {
+    expect(
+      incomingRequestNotificationIdentity(
+        type: NotificationPayload.typeJobRequest,
+        requestId: 'job-1',
+        offerId: 'offer-a',
+      ),
+      isNot(
+        incomingRequestNotificationIdentity(
+          type: NotificationPayload.typeJobRequest,
+          requestId: 'job-1',
+          offerId: 'offer-b',
+        ),
+      ),
+    );
+    expect(
+      shouldStopIncomingRingtone(
+        ownerOfferId: 'offer-b',
+        terminalOfferId: 'offer-a',
+      ),
+      isFalse,
+    );
+    expect(
+      shouldStopIncomingRingtone(
+        ownerOfferId: 'offer-b',
+        terminalOfferId: 'offer-b',
+      ),
+      isTrue,
+    );
+  });
+
   test('authorized and provisional notification access can go online', () {
     expect(
       notificationAuthorizationAllowsOnline(AuthorizationStatus.authorized),
@@ -26,6 +126,42 @@ void main() {
       notificationAuthorizationAllowsOnline(AuthorizationStatus.notDetermined),
       isFalse,
     );
+  });
+
+  group('actionable artisan offer classification', () {
+    test('normal job requests remain actionable for legacy compatibility', () {
+      expect(
+        isActionableJobOfferPayload(
+          NotificationPayload.typeJobRequest,
+          const {'jobId': 'job-1'},
+        ),
+        isTrue,
+      );
+    });
+
+    test('version-2 request_quote assignment requires a receipt', () {
+      expect(
+        isActionableJobOfferPayload(
+          NotificationPayload.typeJobManuallyAssigned,
+          const {
+            'mode': 'request_quote',
+            'offerVersion': '2',
+            'offerId': 'offer-1',
+          },
+        ),
+        isTrue,
+      );
+    });
+
+    test('confirm assignment stays informational active-work routing', () {
+      expect(
+        isActionableJobOfferPayload(
+          NotificationPayload.typeJobManuallyAssigned,
+          const {'mode': 'confirm', 'offerVersion': '2'},
+        ),
+        isFalse,
+      );
+    });
   });
 
   test('notification accept does not navigate when listener already did', () {

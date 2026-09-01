@@ -29,6 +29,7 @@ import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
 import '../services/incoming_request_overlay_presenter.dart';
+import '../services/job_offer_receipt_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/ride_cancellation_notice.dart';
 import '../services/ride_offer_receipt_service.dart';
@@ -89,6 +90,96 @@ String? rideCancellationIdFromEvent(
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
+/// Exact invitation identity for each surfaced artisan job. Version-2 decline
+/// calls must include this id so the server can distinguish sequential offers
+/// for the same job. Legacy invitations remain absent from this map.
+final jobOfferIdByJobProvider =
+    StateProvider<Map<String, String>>((_) => <String, String>{});
+
+/// Latest exact offer identity seen for each job during this authenticated
+/// session. Unlike [jobOfferIdByJobProvider], terminal cleanup deliberately
+/// keeps this history so a repeated copy of offer A stays deduped while a
+/// later offer B for the same job is allowed to surface again.
+final lastJobOfferIdByJobProvider =
+    StateProvider<Map<String, String>>((_) => <String, String>{});
+
+/// Handset-clock projection of the current exact offer's server deadline.
+/// Poller-created widgets watch this map so a later authoritative receipt can
+/// replace their legacy/global deadline without stacking a second modal.
+final jobOfferDeadlineByJobProvider =
+    StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
+
+enum JobOfferSurfaceDisposition { surface, enrichExisting, ignoreDuplicate }
+
+JobOfferSurfaceDisposition jobOfferSurfaceDisposition({
+  required bool jobAlreadySurfaced,
+  required String? lastExactOfferId,
+  required String? incomingOfferId,
+}) {
+  if (!jobAlreadySurfaced) return JobOfferSurfaceDisposition.surface;
+  final exact = incomingOfferId?.trim();
+  if (exact == null || exact.isEmpty || exact == lastExactOfferId) {
+    return JobOfferSurfaceDisposition.ignoreDuplicate;
+  }
+  // A poller can surface the job before its directed v2 delivery arrives.
+  // The first exact copy enriches that UI rather than opening it twice.
+  if (lastExactOfferId == null || lastExactOfferId.isEmpty) {
+    return JobOfferSurfaceDisposition.enrichExisting;
+  }
+  // A genuinely new exact offer for the same job gets a fresh response UI.
+  return JobOfferSurfaceDisposition.surface;
+}
+
+/// Exact terminal events may mutate UI only when they refer to the currently
+/// active offer. Legacy state (no current exact identity) keeps the historical
+/// job-id fallback for backwards compatibility.
+bool jobOfferTerminalMatchesCurrent({
+  required String? currentOfferId,
+  required String? terminalOfferId,
+}) {
+  final current = currentOfferId?.trim();
+  if (current == null || current.isEmpty) return true;
+  final terminal = terminalOfferId?.trim();
+  return terminal != null && terminal.isNotEmpty && terminal == current;
+}
+
+/// Whether an async action that started for [capturedOfferId] may still mutate
+/// the job-id keyed UI after its REST response arrives.
+///
+/// [lastExactOfferId] lets a terminal event remove the active map before the
+/// action response returns without stranding the old screen. A genuinely newer
+/// exact offer always changes that lineage and therefore wins.
+bool jobOfferActionStillOwnsCurrent({
+  required String? capturedOfferId,
+  required String? currentOfferId,
+  required String? lastExactOfferId,
+}) {
+  final captured = capturedOfferId?.trim();
+  final current = currentOfferId?.trim();
+  final last = lastExactOfferId?.trim();
+  if (captured == null || captured.isEmpty) {
+    return current == null || current.isEmpty;
+  }
+  return current == captured ||
+      ((current == null || current.isEmpty) && last == captured);
+}
+
+class JobOfferDismissal {
+  const JobOfferDismissal({
+    required this.jobId,
+    required this.reason,
+    this.offerId,
+  });
+
+  final String jobId;
+  final String reason;
+  final String? offerId;
+}
+
+/// Terminal server resolution for an invitation already visible in Flutter.
+final jobOfferDismissalProvider =
+    StateProvider<JobOfferDismissal?>((_) => null);
+
 /// Job id currently visible on the full `/job-request` details route.
 ///
 /// Mirrors [visibleRideRequestIdProvider] on the driver side: FCM taps,
@@ -98,6 +189,11 @@ final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 /// and re-pushing a stub that re-fetches the same job (which reads as
 /// details → loading → details to the artisan).
 final visibleJobRequestIdProvider = StateProvider<String?>((_) => null);
+
+/// Job currently owned by the incoming bottom sheet. Sequential exact offers
+/// for that same job update this sheet in place instead of stacking another
+/// modal on top of it.
+final visibleJobModalIdProvider = StateProvider<String?>((_) => null);
 
 /// True while the Socket.IO connection is open.
 /// Useful for showing a live indicator on the home screen.
@@ -509,7 +605,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('ride:dismissed', handleRideDismissed);
 
     // Listen for incoming job requests (artisan) — new + legacy event names
-    void handleJob(dynamic data) {
+    Future<void> receiveJob(dynamic data) async {
       // Never print the full request: it can contain the customer's name,
       // exact address, description and photo URLs. Keep only routing metadata
       // in release/device logs.
@@ -521,19 +617,77 @@ void _connectAndListen(Ref ref, SocketService socket) {
       } else {
         debugPrint('[WS] Received job event type=${data.runtimeType}');
       }
-      if (data is Map<String, dynamic>) {
+      if (data is Map) {
         try {
-          final job = Job.fromJson(data);
-          // Dedupe against the poller — if the REST fallback already
-          // surfaced this job, skip the duplicate modal.
-          final surfaced = ref.container.read(surfacedJobIdsProvider);
-          if (surfaced.contains(job.id)) {
+          final expectedSession =
+              ref.container.read(currentAuthSessionIdentityProvider);
+          if (expectedSession == null) return;
+          final raw = Map<String, dynamic>.from(data);
+          final received = await acknowledgeJobOffer(
+            payload: raw,
+            jobs: ref.container.read(jobServiceProvider),
+          );
+          if (received == null) {
+            debugPrint('[WS] Job offer receipt failed; request not surfaced');
+            return;
+          }
+          if (ref.container.read(currentAuthSessionIdentityProvider) !=
+              expectedSession) {
+            debugPrint('[WS] Dropped job offer after account/session change');
+            return;
+          }
+          final job = Job.fromJson(received.payload);
+          // Read dedupe state after the async receipt. Socket and FCM copies
+          // can race through that await; the winner must be visible here so
+          // the second copy does not independently surface the same offer.
+          final previouslySurfaced = ref.container
+              .read(surfacedJobIdsProvider)
+              .contains(received.jobId);
+          final previousExact =
+              ref.container.read(lastJobOfferIdByJobProvider)[received.jobId];
+          final disposition = jobOfferSurfaceDisposition(
+            jobAlreadySurfaced: previouslySurfaced,
+            lastExactOfferId: previousExact,
+            incomingOfferId: received.offerId,
+          );
+          if (received.hasExactReceipt) {
+            ref.container.read(jobOfferIdByJobProvider.notifier).update(
+                  (offers) => {...offers, job.id: received.offerId!},
+                );
+            ref.container.read(lastJobOfferIdByJobProvider.notifier).update(
+                  (offers) => {...offers, job.id: received.offerId!},
+                );
+            final deadline = received.decisionExpiresAt;
+            if (deadline != null) {
+              ref.container
+                  .read(jobOfferDeadlineByJobProvider.notifier)
+                  .update((deadlines) => {...deadlines, job.id: deadline});
+            }
+            if (previousExact != received.offerId) {
+              ref.container.read(jobOfferDismissalProvider.notifier).state =
+                  null;
+            }
+          }
+          if (disposition == JobOfferSurfaceDisposition.ignoreDuplicate) {
             debugPrint('[WS] Job ${job.id} already surfaced — skipping');
+            return;
+          }
+          if (disposition == JobOfferSurfaceDisposition.enrichExisting) {
+            ref.container
+                .read(pendingIncomingJobsProvider.notifier)
+                .enqueue(job);
+            debugPrint('[WS] Job ${job.id} enriched with exact offer receipt');
             return;
           }
           ref.container.read(surfacedJobIdsProvider.notifier).update(
                 (s) => {...s, job.id},
               );
+          if (ref.container.read(visibleJobModalIdProvider) == job.id) {
+            ref.container
+                .read(pendingIncomingJobsProvider.notifier)
+                .enqueue(job);
+            return;
+          }
           // Force a state transition even if an identical Job instance is
           // somehow already in the provider (defensive — Job doesn't
           // override ==, but the clear-then-set guarantees the listener
@@ -548,6 +702,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       } else {
         debugPrint('[WS] Job payload not a Map — got ${data.runtimeType}');
       }
+    }
+
+    void handleJob(dynamic data) {
+      unawaited(receiveJob(data));
     }
 
     socket
@@ -707,6 +865,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
             clearIncomingRequestAlert(
               type: NotificationPayload.typeJobRequest,
               requestId: jobId,
+              offerId: data['offerId']?.toString() ??
+                  ref.container.read(jobOfferIdByJobProvider)[jobId],
             ),
           );
         }

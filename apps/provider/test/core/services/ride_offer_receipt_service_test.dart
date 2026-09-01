@@ -145,7 +145,7 @@ void main() {
     'reads newest exact durable identities, ignores corrupt values, and is bounded',
     () async {
       final values = <String, Object>{
-        for (var index = 0; index < 11; index++)
+        for (var index = 0; index <= maxKnownProviderOfferIds; index++)
           'myshop.ride_offer.v2.'
               '22222222-2222-4222-8${index.toString().padLeft(3, '0')}-'
               '${index.toString().padLeft(12, '0')}': jsonEncode({
@@ -174,8 +174,14 @@ void main() {
         identities.map((identity) => identity.localHandoffAt).toList(),
         orderedEquals(
           List<DateTime>.generate(
-            10,
-            (index) => DateTime.utc(2026, 7, 28, 12, 10 - index),
+            maxKnownProviderOfferIds,
+            (index) => DateTime.utc(
+              2026,
+              7,
+              28,
+              12,
+              maxKnownProviderOfferIds - index,
+            ),
           ),
         ),
       );

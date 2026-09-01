@@ -15,8 +15,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../app/router.dart' show JobRequestRouteExtra;
 import '../../../core/di/providers.dart';
+import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/job_offer_receipt_service.dart';
 import '../../../core/services/local_notification_service.dart';
+import '../../../core/services/provider_request_policy.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
@@ -349,7 +352,11 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         return 'Your bid is below the minimum for this category. '
             'Increase the amount and try again.';
       case 'PROVIDER_CANCELLATION_BLOCK':
-        return 'New job requests are temporarily unavailable because your provider account reached the cancellation limit. Contact support if you need help.';
+      case 'PROVIDER_REQUEST_BLOCK':
+        return providerRequestBlockMessage(
+          e,
+          requestLabel: 'job requests',
+        );
       default:
         return userSafeApiErrorMessage(
           e,
@@ -514,10 +521,19 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
 
     // Bid is now on the backend — drop the job from the in-session
     // "New" list so the artisan doesn't see it as pending anymore.
+    final offerId = ref.read(jobOfferIdByJobProvider)[widget.job.id];
+    await clearStoredJobOffer(offerId);
+    ref
+        .read(jobOfferIdByJobProvider.notifier)
+        .update((offers) => {...offers}..remove(widget.job.id));
+    ref
+        .read(jobOfferDeadlineByJobProvider.notifier)
+        .update((deadlines) => {...deadlines}..remove(widget.job.id));
     ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
     await clearIncomingRequestAlert(
       type: NotificationPayload.typeJobRequest,
       requestId: widget.job.id,
+      offerId: offerId,
       reason: 'bid_submitted',
     );
 

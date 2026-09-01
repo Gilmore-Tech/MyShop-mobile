@@ -12,6 +12,7 @@ import '../../../core/providers/location_degradation_provider.dart';
 import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/ride_offer_receipt_service.dart';
+import '../../../core/services/provider_request_policy.dart';
 import '../../../core/services/lifecycle_location_service.dart';
 import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
@@ -249,14 +250,19 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } on ApiException catch (e) {
       developer.log('acceptRide API error: $e', name: 'ActiveRide', level: 900);
       state = ActiveRideState(
-        errorMessage: e.errorCode == null
-            ? userSafeApiErrorMessage(
+        errorMessage: isProviderRequestBlock(e)
+            ? providerRequestBlockMessage(
                 e,
-                fallback: "Couldn't accept the ride. Please try again.",
-                conflictMessage:
-                    'This ride offer changed. Refresh and try again.',
+                requestLabel: 'ride requests',
               )
-            : _friendlyAckError(e.errorCode!),
+            : e.errorCode == null
+                ? userSafeApiErrorMessage(
+                    e,
+                    fallback: "Couldn't accept the ride. Please try again.",
+                    conflictMessage:
+                        'This ride offer changed. Refresh and try again.',
+                  )
+                : _friendlyAckError(e.errorCode!),
       );
       return false;
     } catch (e) {
@@ -315,7 +321,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         level: 900,
       );
       state = ActiveRideState(
-        errorMessage: _friendlyAckError(e.errorCode ?? ''),
+        errorMessage: isProviderRequestBlock(e)
+            ? providerRequestBlockMessage(
+                e,
+                requestLabel: 'ride requests',
+              )
+            : _friendlyAckError(e.errorCode ?? ''),
       );
       return false;
     } catch (e) {
@@ -448,7 +459,15 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       case 'DRIVER_PROFILE_REQUIRED':
         return 'Your driver profile is incomplete — finish verification to accept rides.';
       case 'PROVIDER_CANCELLATION_BLOCK':
-        return 'New ride requests are temporarily unavailable because your provider account reached the cancellation limit. Contact support if you need help.';
+      case 'PROVIDER_REQUEST_BLOCK':
+        return providerRequestBlockMessage(
+          ApiException(
+            message: 'Provider request pause',
+            statusCode: 429,
+            errorCode: code,
+          ),
+          requestLabel: 'ride requests',
+        );
       default:
         return 'Could not accept the ride. Please try again.';
     }

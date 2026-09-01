@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'job_offer_receipt_service.dart';
+
 /// Keys + type constants embedded in local/FCM notification payloads. The
 /// backend must send the SAME [keyType] string in `data` so the tap handler
 /// can deep-link into the correct screen.
@@ -197,10 +199,15 @@ class NotificationPayload {
   static const typeAccountRatingWarning = 'account_rating_warning';
   static const typeProviderCancellationBlockStarted =
       'provider_cancellation_block_started';
+  static const typeProviderResponseBlockStarted =
+      'provider_response_block_started';
+  static const typeProviderResponseBlockWarning =
+      'provider_response_block_warning';
   static const typePaymentDisputeRaised = 'payment_dispute_raised';
   static const typePaymentClawbackPending = 'payment_clawback_pending';
   static const typePaymentDisputeResolvedInProviderFavour =
       'payment_dispute_resolved_in_your_favour';
+  static const typePayoutMethodRebindRequired = 'payout_method_rebind_required';
 
   /// Payload key for support deeplinks.
   static const keyTicketId = 'ticketId';
@@ -325,6 +332,9 @@ class ProviderInboxAction {
     this.route,
     this.entityId,
     this.bookingType,
+    this.offerId,
+    this.offerVersion,
+    this.assignmentMode,
   });
 
   final ProviderInboxActionKind kind;
@@ -332,6 +342,15 @@ class ProviderInboxAction {
   final String? route;
   final String? entityId;
   final String? bookingType;
+  final String? offerId;
+  final int? offerVersion;
+  final String? assignmentMode;
+
+  bool get requiresExactJobReceipt =>
+      kind == ProviderInboxActionKind.manualJob &&
+      assignmentMode == 'request_quote' &&
+      offerVersion == jobOfferReceiptProtocolVersion &&
+      offerId != null;
 }
 
 final RegExp _providerInboxUuidPattern = RegExp(
@@ -448,8 +467,12 @@ ProviderInboxAction? providerInboxActionFor({
   }
 
   if (type == NotificationPayload.typeAccountSuspendedLowRating ||
-      type == NotificationPayload.typeProviderCancellationBlockStarted) {
+      type == NotificationPayload.typeProviderCancellationBlockStarted ||
+      type == NotificationPayload.typeProviderResponseBlockStarted) {
     return _providerInboxRoute('Contact support', '/account/support');
+  }
+  if (type == NotificationPayload.typeProviderResponseBlockWarning) {
+    return _providerInboxRoute('Manage online status', '/home');
   }
   if (type == NotificationPayload.typeAccountRatingWarning) {
     return _providerInboxRoute('View performance', '/earnings');
@@ -461,18 +484,51 @@ ProviderInboxAction? providerInboxActionFor({
     return _providerInboxRoute('View balance', '/earnings');
   }
 
+  if (type == NotificationPayload.typePayoutMethodRebindRequired) {
+    return _providerInboxRoute('Re-add payout method', '/account/payouts');
+  }
+
   final jobId = _providerInboxEntityId(
     payload,
     const [NotificationPayload.keyJobId, 'job_id'],
   );
-  if (type == NotificationPayload.typeJobManuallyAssigned ||
-      type == NotificationPayload.typeJobNoBidsEscalated) {
+  if (type == NotificationPayload.typeJobManuallyAssigned) {
+    final mode = (payload['mode'] ?? payload['assignmentMode'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (mode == 'confirm') {
+      return jobId == null
+          ? null
+          : ProviderInboxAction(
+              kind: ProviderInboxActionKind.activeJob,
+              label: 'Open job',
+              entityId: jobId,
+            );
+    }
+    final offerVersion = int.tryParse(
+      payload['offerVersion']?.toString() ?? '',
+    );
+    final offerId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyOfferId, 'offer_id'],
+    );
+    // A v2 directed quote is safe to open only after the authenticated exact
+    // receipt succeeds. Reject incomplete/tampered v2 inbox records rather
+    // than silently degrading them to the legacy job-id-only path.
+    if (offerVersion != null &&
+        offerVersion >= jobOfferReceiptProtocolVersion) {
+      if (mode != 'request_quote' || offerId == null) return null;
+    }
     return jobId == null
         ? null
         : ProviderInboxAction(
             kind: ProviderInboxActionKind.manualJob,
             label: 'Review & bid',
             entityId: jobId,
+            offerId: offerId,
+            offerVersion: offerVersion,
+            assignmentMode: mode,
           );
   }
 
@@ -548,6 +604,26 @@ ProviderInboxAction? providerInboxActionFor({
   }
 
   return null;
+}
+
+@visibleForTesting
+String incomingRequestNotificationIdentity({
+  required String type,
+  required String requestId,
+  String? offerId,
+}) {
+  final exact = offerId?.trim();
+  return '$type:${exact == null || exact.isEmpty ? requestId : exact}';
+}
+
+@visibleForTesting
+bool shouldStopIncomingRingtone({
+  required String? ownerOfferId,
+  required String? terminalOfferId,
+}) {
+  final terminal = terminalOfferId?.trim();
+  if (terminal == null || terminal.isEmpty) return true;
+  return ownerOfferId?.trim() == terminal;
 }
 
 /// Wraps `flutter_local_notifications` for the provider app. Responsibilities:
@@ -733,6 +809,7 @@ class LocalNotificationService {
   Future<void> cancelIncomingRequest({
     required String type,
     required String requestId,
+    String? offerId,
   }) async {
     if (requestId.isEmpty) return;
     if (type != NotificationPayload.typeRideRequest &&
@@ -743,7 +820,13 @@ class LocalNotificationService {
     final key = type == NotificationPayload.typeRideRequest
         ? NotificationPayload.keyRideId
         : NotificationPayload.keyJobId;
-    await _plugin.cancel(_dedupeId(type, {key: requestId}));
+    await _plugin.cancel(
+      _dedupeId(type, {
+        key: requestId,
+        if (offerId != null && offerId.isNotEmpty)
+          NotificationPayload.keyOfferId: offerId,
+      }),
+    );
   }
 
   /// Show a persistent banner for an incoming job. Used by FCM background
@@ -949,6 +1032,7 @@ class LocalNotificationService {
   AudioPlayer? _ringtonePlayer;
   Timer? _ringtoneTimer;
   bool _ringtoneActive = false;
+  String? _ringtoneOfferId;
   int _ringtoneGeneration = 0;
 
   bool _isCurrentRingtoneSession(int generation) =>
@@ -957,9 +1041,19 @@ class LocalNotificationService {
   /// Start a continuous "incoming request" ringtone. Idempotent — a second
   /// call while the ringtone is already playing is a no-op. Used by the
   /// foreground job/ride request modal/screen to alert the provider.
-  Future<void> startIncomingRingtone() async {
-    if (_ringtoneActive) return;
+  Future<void> startIncomingRingtone({String? offerId}) async {
+    if (_ringtoneActive) {
+      // A sequential exact offer can reuse the already-visible job surface.
+      // Transfer ringtone ownership without restarting the audio/haptic loop.
+      if (offerId != null && offerId.isNotEmpty) {
+        _ringtoneOfferId = offerId;
+      }
+      return;
+    }
     _ringtoneActive = true;
+    final exactOfferId = offerId?.trim();
+    _ringtoneOfferId =
+        exactOfferId == null || exactOfferId.isEmpty ? null : exactOfferId;
     final generation = ++_ringtoneGeneration;
 
     // Haptic loop fires regardless of audio outcome — it's the
@@ -1025,9 +1119,19 @@ class LocalNotificationService {
   /// Stop the incoming-request ringtone. Safe to call when nothing is
   /// playing. Always called from `dispose` of the corresponding screen
   /// so dismissing/accepting/declining/timing-out all silence the alert.
-  Future<void> stopIncomingRingtone() async {
+  Future<void> stopIncomingRingtone({String? offerId}) async {
     if (!_ringtoneActive) return;
+    if (!shouldStopIncomingRingtone(
+      ownerOfferId: _ringtoneOfferId,
+      terminalOfferId: offerId,
+    )) {
+      // A late terminal event for offer A must not silence the ringtone now
+      // owned by sequential offer B. A null argument remains the explicit
+      // unconditional teardown used by widget dispose/logout paths.
+      return;
+    }
     _ringtoneActive = false;
+    _ringtoneOfferId = null;
     _ringtoneGeneration++;
     _ringtoneTimer?.cancel();
     _ringtoneTimer = null;
@@ -1047,6 +1151,20 @@ class LocalNotificationService {
       if (callId != null && callId.isNotEmpty) {
         return _incomingCallNotificationId(callId);
       }
+    }
+    final isIncomingRequest = type == NotificationPayload.typeRideRequest ||
+        type == NotificationPayload.typeJobRequest;
+    if (isIncomingRequest) {
+      final requestId = extras[NotificationPayload.keyJobId] ??
+          extras[NotificationPayload.keyRideId] ??
+          type;
+      return _stableNotificationId(
+        incomingRequestNotificationIdentity(
+          type: type,
+          requestId: requestId,
+          offerId: extras[NotificationPayload.keyOfferId],
+        ),
+      );
     }
     final primary = extras[NotificationPayload.keyJobId] ??
         extras[NotificationPayload.keyRideId] ??

@@ -54,6 +54,15 @@ class _NotificationsListScreenState
     }
   }
 
+  void _goBack(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    GoRouter.maybeOf(context)?.go(clientDashboardRoute);
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -62,88 +71,97 @@ class _NotificationsListScreenState
     final notificationsState = ref.watch(notifsProvider);
     final unread = ref.read(notifsProvider.notifier).unreadCount;
 
-    return Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      appBar: AppBar(
-        backgroundColor: MyShopColors.surfaceWhite,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(clientDashboardRoute),
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                'Notifications',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: MyShopColors.textPrimary,
-                  fontSize: w * 0.044,
-                  fontWeight: FontWeight.w700,
+    return PopScope(
+      // A tray/deep-link can restore the inbox as the root route with no
+      // Navigator history. Intercept that system Back and return to the
+      // Client dashboard. An inbox opened inside the app keeps canPop=true,
+      // so both app-bar and system Back preserve the caller beneath it.
+      canPop: Navigator.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBack(context);
+      },
+      child: Scaffold(
+        backgroundColor: MyShopColors.offWhite,
+        appBar: AppBar(
+          backgroundColor: MyShopColors.surfaceWhite,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => _goBack(context),
+          ),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'Notifications',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.044,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-            ),
-            if (unread > 0) ...[
-              SizedBox(width: w * 0.020),
-              Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
-                decoration: BoxDecoration(
-                  color: MyShopColors.primaryGold,
-                  borderRadius: BorderRadius.circular(20),
+              if (unread > 0) ...[
+                SizedBox(width: w * 0.020),
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGold,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('$unread',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: w * 0.026,
+                        fontWeight: FontWeight.w700,
+                      )),
                 ),
-                child: Text('$unread',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w700,
-                    )),
-              ),
+              ],
             ],
+          ),
+          actions: [
+            if (unread > 0)
+              IconButton(
+                onPressed: () =>
+                    ref.read(notifsProvider.notifier).markAllRead(),
+                tooltip: 'Mark all read',
+                icon: const Icon(
+                  Icons.done_all_rounded,
+                  color: MyShopColors.primaryGold,
+                ),
+              ),
           ],
         ),
-        actions: [
-          if (unread > 0)
-            IconButton(
-              onPressed: () => ref.read(notifsProvider.notifier).markAllRead(),
-              tooltip: 'Mark all read',
-              icon: const Icon(
-                Icons.done_all_rounded,
-                color: MyShopColors.primaryGold,
-              ),
-            ),
-        ],
-      ),
-      body: notificationsState.when(
-        loading: () => const _LoadingState(),
-        error: (_, __) => _ErrorState(
-          onRetry: () => ref.read(notifsProvider.notifier).reload(),
-          w: w,
-        ),
-        data: (notifications) => RefreshIndicator(
-          onRefresh: () => ref.read(notifsProvider.notifier).reload(),
-          color: MyShopColors.primaryGold,
-          child: notifications.isEmpty
-              ? CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _EmptyState(w: w, h: h),
-                    ),
-                  ],
-                )
-              : _NotifList(
-                  notifs: notifications,
-                  now: _now,
-                  onTap: (notification, action) =>
-                      _openNotification(context, notification, action),
-                  w: w,
-                  h: h,
-                ),
+        body: notificationsState.when(
+          loading: () => const _LoadingState(),
+          error: (_, __) => _ErrorState(
+            onRetry: () => ref.read(notifsProvider.notifier).reload(),
+            w: w,
+          ),
+          data: (notifications) => RefreshIndicator(
+            onRefresh: () => ref.read(notifsProvider.notifier).reload(),
+            color: MyShopColors.primaryGold,
+            child: notifications.isEmpty
+                ? CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _EmptyState(w: w, h: h),
+                      ),
+                    ],
+                  )
+                : _NotifList(
+                    notifs: notifications,
+                    now: _now,
+                    onTap: (notification, action) =>
+                        _openNotification(context, notification, action),
+                    w: w,
+                    h: h,
+                  ),
+          ),
         ),
       ),
     );

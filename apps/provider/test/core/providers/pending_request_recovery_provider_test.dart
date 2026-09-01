@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:api_client/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/providers/pending_request_recovery_provider.dart';
+import 'package:myshop_provider/src/core/services/job_offer_receipt_service.dart';
 import 'package:myshop_provider/src/core/services/ride_offer_receipt_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -173,6 +174,125 @@ void main() {
       (await readStoredRideOfferIdentities())
           .map((identity) => identity.offerId),
       [offerId],
+    );
+  });
+
+  test('combines ride and job identities newest-first for exact recovery',
+      () async {
+    final knownIds = <String>[];
+
+    final result = await fetchProviderRequestRecovery(
+      readStoredOffers: () async => [
+        StoredRideOfferIdentity(
+          rideId: 'ride-1',
+          offerId: 'ride-offer',
+          localHandoffAt: DateTime.utc(2026, 8, 31, 12),
+        ),
+      ],
+      readStoredJobOffers: () async => [
+        StoredJobOfferIdentity(
+          jobId: 'job-1',
+          offerId: 'job-offer',
+          localHandoffAt: DateTime.utc(2026, 8, 31, 12, 1),
+        ),
+      ],
+      recover: (offerIds) async {
+        knownIds.addAll(offerIds);
+        return const ProviderRequestRecoveryResult();
+      },
+    );
+
+    expect(result, isNotNull);
+    expect(knownIds, ['job-offer', 'ride-offer']);
+  });
+
+  test('recovered v2 job is receipted before surface with server deadline',
+      () async {
+    const jobId = '11111111-1111-4111-8111-111111111111';
+    const offerId = '22222222-2222-4222-8222-222222222222';
+    final serverDeadline = DateTime.utc(2026, 8, 31, 12, 0, 45);
+    var receiptCalls = 0;
+    var fetchCalls = 0;
+    final request = ProviderPendingRequest.fromJson(const {
+      'kind': 'job',
+      'id': jobId,
+      'offerId': offerId,
+      'offerVersion': 2,
+      'expiresAt': '2026-08-31T12:01:30.000Z',
+      'payload': {
+        'status': 'open',
+        'categoryId': 'plumbing',
+        'description': 'Repair a tap',
+        'latitude': 5.6,
+        'longitude': -0.2,
+      },
+    });
+
+    final resolved = await resolvePendingJobRequestForSurface(
+      request: request,
+      acknowledge: (payload) async {
+        receiptCalls++;
+        expect(payload['offerId'], offerId);
+        return ReceivedJobOffer(
+          jobId: jobId,
+          offerId: offerId,
+          decisionExpiresAt: serverDeadline,
+          payload: {
+            ...payload,
+            'expiresAt': serverDeadline.toIso8601String(),
+          },
+        );
+      },
+      fetchJob: (_) async {
+        fetchCalls++;
+        return const {};
+      },
+    );
+
+    expect(receiptCalls, 1);
+    expect(fetchCalls, 0);
+    expect(resolved?.offerId, offerId);
+    expect(resolved?.decisionExpiresAt, serverDeadline);
+    expect(resolved?.job.expiresAt, serverDeadline.toIso8601String());
+  });
+
+  test('recovered v2 job is not surfaced when exact receipt fails', () async {
+    var fetchCalls = 0;
+    final request = ProviderPendingRequest.fromJson(const {
+      'kind': 'job',
+      'id': '11111111-1111-4111-8111-111111111111',
+      'offerId': '22222222-2222-4222-8222-222222222222',
+      'offerVersion': 2,
+      'payload': {'status': 'open'},
+    });
+
+    final resolved = await resolvePendingJobRequestForSurface(
+      request: request,
+      acknowledge: (_) async => null,
+      fetchJob: (_) async {
+        fetchCalls++;
+        return const {};
+      },
+    );
+
+    expect(resolved, isNull);
+    expect(fetchCalls, 0);
+  });
+
+  test('terminal offer A yields to fresh offer B in the same recovery', () {
+    expect(
+      terminalJobOfferHasFreshReplacement(
+        terminalOfferId: 'offer-a',
+        freshOfferId: 'offer-b',
+      ),
+      isTrue,
+    );
+    expect(
+      terminalJobOfferHasFreshReplacement(
+        terminalOfferId: 'offer-a',
+        freshOfferId: 'offer-a',
+      ),
+      isFalse,
     );
   });
 

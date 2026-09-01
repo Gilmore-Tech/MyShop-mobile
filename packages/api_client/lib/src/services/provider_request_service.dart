@@ -4,7 +4,7 @@ import '../models/api_exception.dart';
 
 enum ProviderRequestKind { ride, job }
 
-const int maxKnownProviderOfferIds = 10;
+const int maxKnownProviderOfferIds = 100;
 
 /// A provider-targeted ride/job request that is still actionable.
 class ProviderPendingRequest {
@@ -14,6 +14,7 @@ class ProviderPendingRequest {
     this.expiresAt,
     this.serverExpiresAt,
     this.offerId,
+    this.offerVersion,
     this.payload = const <String, dynamic>{},
   });
 
@@ -52,7 +53,15 @@ class ProviderPendingRequest {
       id: id,
       expiresAt: expiresAt,
       serverExpiresAt: serverExpiresAt,
-      offerId: (json['offerId'] ?? json['offer_id'])?.toString(),
+      offerId: (json['offerId'] ?? json['offer_id'] ?? payload['offerId'])
+          ?.toString(),
+      offerVersion: int.tryParse(
+        (json['offerVersion'] ??
+                    json['offer_version'] ??
+                    payload['offerVersion'])
+                ?.toString() ??
+            '',
+      ),
       payload: payload,
     );
   }
@@ -62,6 +71,7 @@ class ProviderPendingRequest {
   final DateTime? expiresAt;
   final DateTime? serverExpiresAt;
   final String? offerId;
+  final int? offerVersion;
 
   /// Full ride/job payload when the backend has it available. The mobile app
   /// falls back to GET /rides/:id or GET /jobs/:id when this is empty.
@@ -100,10 +110,10 @@ class ProviderPendingRequest {
   }) {
     if (serverExpiresAt == null) return null;
     if (serverNow == null) return serverExpiresAt;
-    final elapsed =
-        transportElapsed.isNegative ? Duration.zero : transportElapsed;
-    final remaining =
-        serverExpiresAt.toUtc().difference(serverNow.toUtc()) - elapsed;
+    // Both timestamps describe the same server snapshot. Subtracting the
+    // complete REST round trip again would make the recovered offer expire
+    // early (and double-charge the outbound/server portion of the request).
+    final remaining = serverExpiresAt.toUtc().difference(serverNow.toUtc());
     return DateTime.now().toUtc().add(remaining);
   }
 }
@@ -114,19 +124,24 @@ class ProviderRequestResolution {
   const ProviderRequestResolution({
     required this.kind,
     required this.offerId,
-    required this.rideId,
     required this.state,
+    String? requestId,
+    String? rideId,
+    String? jobId,
     this.resolutionReason,
     this.resolvedAt,
     this.cancelledBy,
-  });
+  }) : requestId = requestId ?? rideId ?? jobId ?? '';
 
   factory ProviderRequestResolution.fromJson(Map<String, dynamic> json) {
+    final kind = ProviderPendingRequest._kindFromWire(json['kind'] as String?);
+    final requestId = kind == ProviderRequestKind.job
+        ? (json['jobId'] ?? json['job_id'] ?? json['id'])?.toString()
+        : (json['rideId'] ?? json['ride_id'] ?? json['id'])?.toString();
     return ProviderRequestResolution(
-      kind: ProviderPendingRequest._kindFromWire(json['kind'] as String?),
+      kind: kind,
       offerId: (json['offerId'] ?? json['offer_id'])?.toString() ?? '',
-      rideId:
-          (json['rideId'] ?? json['ride_id'] ?? json['id'])?.toString() ?? '',
+      requestId: requestId ?? '',
       state: json['state']?.toString() ?? '',
       resolutionReason:
           (json['resolutionReason'] ?? json['resolution_reason'])?.toString(),
@@ -139,11 +154,14 @@ class ProviderRequestResolution {
 
   final ProviderRequestKind kind;
   final String offerId;
-  final String rideId;
+  final String requestId;
   final String state;
   final String? resolutionReason;
   final DateTime? resolvedAt;
   final String? cancelledBy;
+
+  String get rideId => kind == ProviderRequestKind.ride ? requestId : '';
+  String get jobId => kind == ProviderRequestKind.job ? requestId : '';
 }
 
 class ProviderRequestRecoveryResult {
@@ -154,6 +172,101 @@ class ProviderRequestRecoveryResult {
 
   final List<ProviderPendingRequest> requests;
   final List<ProviderRequestResolution> resolutions;
+}
+
+/// A temporary server-authored pause on receiving new work.
+///
+/// Every field is additive and nullable so an older backend or a partial
+/// rollout cannot make the Provider app fail to load.
+class ProviderRequestRestriction {
+  const ProviderRequestRestriction({
+    this.policyKind,
+    this.blockedUntil,
+    this.retryAfterSeconds,
+    this.count,
+    this.points,
+    this.threshold,
+  });
+
+  factory ProviderRequestRestriction.fromJson(Map<String, dynamic> json) {
+    int? integer(Object? value) =>
+        value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+
+    return ProviderRequestRestriction(
+      policyKind: json['policyKind']?.toString(),
+      blockedUntil: DateTime.tryParse(
+        json['blockedUntil']?.toString() ?? '',
+      )?.toUtc(),
+      retryAfterSeconds: integer(json['retryAfterSeconds']),
+      count: integer(json['count']),
+      points: integer(json['points']),
+      threshold: integer(json['threshold']),
+    );
+  }
+
+  final String? policyKind;
+  final DateTime? blockedUntil;
+  final int? retryAfterSeconds;
+  final int? count;
+  final int? points;
+  final int? threshold;
+}
+
+/// Provider-facing response metrics. These are deliberately separate from
+/// customer star ratings: declining or missing an offer never mutates rating.
+class ProviderRequestResponseSummary {
+  const ProviderRequestResponseSummary({
+    required this.periodDays,
+    required this.eligibleOffers,
+    required this.acceptedOffers,
+    required this.declinedOffers,
+    required this.noResponseOffers,
+    this.acceptanceRatePercent,
+    this.responseRatePercent,
+    this.activeRestriction,
+  });
+
+  factory ProviderRequestResponseSummary.fromJson(Map<String, dynamic> json) {
+    int integer(Object? value) => value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    double? percentage(Object? value) {
+      final parsed = value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '');
+      if (parsed == null || !parsed.isFinite || parsed < 0 || parsed > 100) {
+        return null;
+      }
+      return parsed;
+    }
+
+    final restriction = json['activeRestriction'];
+    return ProviderRequestResponseSummary(
+      periodDays: integer(json['periodDays']),
+      eligibleOffers: integer(json['eligibleOffers']),
+      acceptedOffers: integer(json['acceptedOffers']),
+      declinedOffers: integer(json['declinedOffers']),
+      noResponseOffers: integer(json['noResponseOffers']),
+      acceptanceRatePercent: percentage(json['acceptanceRatePercent']),
+      responseRatePercent: percentage(json['responseRatePercent']),
+      activeRestriction: restriction is Map
+          ? ProviderRequestRestriction.fromJson(
+              Map<String, dynamic>.from(restriction),
+            )
+          : null,
+    );
+  }
+
+  final int periodDays;
+  final int eligibleOffers;
+  final int acceptedOffers;
+  final int declinedOffers;
+  final int noResponseOffers;
+  final double? acceptanceRatePercent;
+  final double? responseRatePercent;
+  final ProviderRequestRestriction? activeRestriction;
+
+  bool get hasSample => eligibleOffers > 0;
 }
 
 /// REST contract for robust provider request recovery.
@@ -182,6 +295,27 @@ class ProviderRequestService {
   Future<List<ProviderPendingRequest>> listPendingRequests() async {
     final result = await recoverPendingRequests();
     return result.requests;
+  }
+
+  /// GET /providers/me/request-response-summary.
+  ///
+  /// Returns null when an older backend has not shipped the endpoint yet.
+  /// Other failures remain visible to Riverpod callers, which can render a
+  /// neutral unavailable state without showing fabricated percentages.
+  Future<ProviderRequestResponseSummary?> getRequestResponseSummary() async {
+    try {
+      final response = await _dio.get(
+        '/providers/me/request-response-summary',
+      );
+      final data = _unwrap(response);
+      if (data is! Map) return null;
+      return ProviderRequestResponseSummary.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw ApiException.fromDioException(e);
+    }
   }
 
   /// Reconciles actionable requests plus terminal results for exact offer IDs
@@ -223,9 +357,8 @@ class ProviderRequestService {
           .map(ProviderRequestResolution.fromJson)
           .where(
             (resolution) =>
-                resolution.kind == ProviderRequestKind.ride &&
                 resolution.offerId.isNotEmpty &&
-                resolution.rideId.isNotEmpty &&
+                resolution.requestId.isNotEmpty &&
                 exactOfferIds.contains(resolution.offerId),
           )
           .toList(growable: false);

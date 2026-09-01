@@ -346,6 +346,11 @@ ClientInboxAction? clientInboxActionFor({
     );
   }
 
+  // Current persisted payment alerts carry only paymentId or disputeId. The
+  // mobile router has no payment-by-id/dispute-by-id destination, and opening
+  // generic Activity cannot resume an insufficient-balance retry. Keep these
+  // rows informational until the backend includes authoritative booking
+  // context (or a dedicated validated payment destination exists).
   if (const {
     NotificationPayload.typePaymentConfirmed,
     'payment_dispute_resolved',
@@ -354,7 +359,7 @@ ClientInboxAction? clientInboxActionFor({
     'payment_refund_delayed',
     'payment_insufficient_balance',
   }.contains(type)) {
-    return _clientInboxRoute('View payment', '/activity');
+    return null;
   }
 
   final rideId = _clientInboxEntityId(

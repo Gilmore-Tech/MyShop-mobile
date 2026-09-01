@@ -533,7 +533,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                           Text(
                             _expired
                                 ? 'This request has expired. Looking for another driver…'
-                                : 'Accepting this trip confirms the service terms. Cancellations may affect your rating.',
+                                : 'Repeated declines or missed requests may temporarily pause new requests. They do not change your customer rating.',
                             textAlign: TextAlign.center,
                             style:
                                 MyShopTypography.caption.copyWith(fontSize: 11),

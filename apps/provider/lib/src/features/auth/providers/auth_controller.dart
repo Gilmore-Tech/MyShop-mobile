@@ -12,6 +12,7 @@ import '../../profile/providers/provider_type_provider.dart';
 import '../data/auth_repository.dart';
 import '../../../core/providers/provider_online_intent.dart';
 import '../../../core/providers/service_notice_provider.dart';
+import '../../../core/services/job_offer_receipt_service.dart';
 
 // ---------------------------------------------------------------------------
 // Auth states
@@ -261,6 +262,7 @@ final authControllerProvider =
       final cacheCleanup = <Future<void>>[
         ref.read(submittedBidsProvider.notifier).clear(),
         ref.read(bidDraftsProvider.notifier).clear(),
+        purgeStoredJobOffers(),
       ];
       if (exitingUser != null && exitingSession != null) {
         try {

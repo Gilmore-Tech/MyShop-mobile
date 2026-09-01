@@ -13,6 +13,7 @@ import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../di/providers.dart';
 import '../services/ios_always_location_permission_bridge.dart';
 import '../services/fcm_service.dart';
+import '../services/provider_request_policy.dart';
 import 'provider_status_provider.dart';
 import 'availability_reconciliation_controller.dart';
 import 'location_degradation_provider.dart';
@@ -84,6 +85,9 @@ const double onlineLocationMaxAccuracyMeters = 50;
 /// path and older deployments have returned internal or misleading messages;
 /// known machine codes are the authority and unknown failures stay generic.
 String friendlyAvailabilityApiError(ApiException error) {
+  if (isProviderRequestBlock(error)) {
+    return providerRequestBlockMessage(error);
+  }
   if (error.errorCode == 'PROVIDER_NOT_ELIGIBLE') {
     return _providerEligibilityErrorCopy(error.details?['reasonCodes']);
   }

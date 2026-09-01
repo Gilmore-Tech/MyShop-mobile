@@ -84,9 +84,9 @@ class NotificationService {
     required String platform,
     required String role,
     required AuthSessionIdentity expectedIdentity,
-    // v2 adds native ActivityKit delivery receipts so a Live Activity can be
-    // the only visible iOS request surface. Older v1 installs remain on the
-    // standard APNs fallback during a staged rollout.
+    // v2 is the shared ride/ActivityKit receipt capability. Provider builds
+    // that also support exact artisan-job REST receipts pass v3 explicitly;
+    // keeping this default at v2 avoids mislabelling existing Client builds.
     int? offerReceiptVersion = 2,
   }) async {
     try {

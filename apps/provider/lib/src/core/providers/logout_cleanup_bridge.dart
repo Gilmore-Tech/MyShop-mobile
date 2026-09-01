@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
+import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
@@ -12,6 +15,69 @@ import 'socket_provider.dart';
 import 'location_degradation_provider.dart';
 import 'provider_location_session_provider.dart';
 import 'provider_online_intent.dart';
+import '../services/job_offer_receipt_service.dart';
+import '../services/incoming_request_overlay_presenter.dart';
+import '../services/local_notification_service.dart';
+
+typedef JobRequestAlertCleanup = Future<void> Function({
+  required String jobId,
+  String? offerId,
+});
+
+/// Injectable boundary for native alert cleanup so account-switch behavior is
+/// regression-testable without initializing platform notification plugins.
+final jobRequestAlertCleanupProvider = Provider<JobRequestAlertCleanup>((ref) {
+  return ({required String jobId, String? offerId}) =>
+      clearIncomingRequestAlert(
+        type: NotificationPayload.typeJobRequest,
+        requestId: jobId,
+        offerId: offerId,
+        reason: 'logout',
+      );
+});
+
+final incomingRequestRingtoneTeardownProvider =
+    Provider<Future<void> Function()>((ref) {
+  return () => LocalNotificationService.instance.stopIncomingRingtone();
+});
+
+/// Complete account boundary for every job-offer identity and presentation
+/// state. Exposed as a provider-backed operation so regression tests can run
+/// the same cleanup used by real logout/account replacement.
+final jobOfferSessionCleanupProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    // Starts with a synchronous generation fence. Any exact receipt still in
+    // flight for the outgoing account will now return null.
+    final durablePurge = purgeStoredJobOffers();
+    final exactOffers = Map<String, String>.from(
+      ref.read(jobOfferIdByJobProvider),
+    );
+    final jobIds = <String>{
+      ...exactOffers.keys,
+      ...ref.read(pendingIncomingJobsProvider).map((job) => job.id),
+    };
+    final incomingJobId = ref.read(incomingJobRequestProvider)?.id;
+    if (incomingJobId != null) jobIds.add(incomingJobId);
+    final alertCleanup = ref.read(jobRequestAlertCleanupProvider);
+    final alertTeardowns = <Future<void>>[
+      for (final jobId in jobIds)
+        alertCleanup(jobId: jobId, offerId: exactOffers[jobId]),
+      // Account boundaries intentionally silence any legacy/unowned ringtone.
+      ref.read(incomingRequestRingtoneTeardownProvider)(),
+    ];
+    ref.invalidate(surfacedJobIdsProvider);
+    ref.read(incomingJobRequestProvider.notifier).state = null;
+    ref.read(visibleJobRequestIdProvider.notifier).state = null;
+    ref.read(visibleJobModalIdProvider.notifier).state = null;
+    ref.read(jobOfferIdByJobProvider.notifier).state = <String, String>{};
+    ref.read(lastJobOfferIdByJobProvider.notifier).state = <String, String>{};
+    ref.read(jobOfferDeadlineByJobProvider.notifier).state =
+        <String, DateTime>{};
+    ref.read(jobOfferDismissalProvider.notifier).state = null;
+    ref.read(pendingIncomingJobsProvider.notifier).clear();
+    await Future.wait<void>([durablePurge, ...alertTeardowns]);
+  };
+});
 
 /// Bridge that watches auth state and tears down session-scoped state on
 /// logout (or any transition out of [AuthAuthenticated]).
@@ -44,7 +110,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
 
     // Forget which jobs/rides were already surfaced to the previous user so
     // the next user sees fresh open jobs/rides.
-    ref.invalidate(surfacedJobIdsProvider);
+    unawaited(ref.read(jobOfferSessionCleanupProvider)());
     ref.invalidate(surfacedRideIdsProvider);
     // Keep these controllers alive while the outgoing route completes its
     // deferred dispose callback; invalidating them here would leave that

@@ -190,6 +190,43 @@ void main() {
       );
       expect(manual?.kind, ProviderInboxActionKind.manualJob);
       expect(manual?.label, 'Review & bid');
+
+      const offerId = '22222222-2222-4222-8222-222222222222';
+      final exactQuote = providerInboxActionFor(
+        eventType: 'job.manually_assigned',
+        payload: const {
+          NotificationPayload.keyJobId: jobId,
+          NotificationPayload.keyOfferId: offerId,
+          'offerVersion': 2,
+          'mode': 'request_quote',
+        },
+      );
+      expect(exactQuote?.requiresExactJobReceipt, isTrue);
+      expect(exactQuote?.offerId, offerId);
+      expect(exactQuote?.offerVersion, 2);
+      expect(exactQuote?.assignmentMode, 'request_quote');
+
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.manually_assigned',
+          payload: const {
+            NotificationPayload.keyJobId: jobId,
+            'offerVersion': 2,
+            'mode': 'request_quote',
+          },
+        ),
+        isNull,
+      );
+
+      final confirmed = providerInboxActionFor(
+        eventType: 'job.manually_assigned',
+        payload: const {
+          NotificationPayload.keyJobId: jobId,
+          'mode': 'confirm',
+        },
+      );
+      expect(confirmed?.kind, ProviderInboxActionKind.activeJob);
+      expect(confirmed?.label, 'Open job');
     });
 
     test('rejects malformed ids and excludes expiring request offers', () {
@@ -274,6 +311,44 @@ void main() {
         expect(action?.label, 'View earnings');
         expect(action?.route, '/earnings');
       }
+    });
+
+    test('exposes only backend-proven payout and manual-assignment actions',
+        () {
+      final payoutRebind = providerInboxActionFor(
+        eventType: 'payout_method.rebind_required',
+        payload: const {
+          'providerType': 'artisan',
+          'reasonCode': 'PAYOUT_METHOD_REBIND_REQUIRED',
+        },
+      );
+      expect(payoutRebind?.label, 'Re-add payout method');
+      expect(payoutRebind?.route, '/account/payouts');
+
+      // job.no_bids_escalated is emitted to the client role only. It must not
+      // become a provider "Review & bid" action if a stale/malformed row ever
+      // reaches the provider resolver.
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.no_bids_escalated',
+          payload: const {NotificationPayload.keyJobId: jobId},
+        ),
+        isNull,
+      );
+    });
+
+    test('response warning and started events expose safe local actions', () {
+      final warning = providerInboxActionFor(
+        eventType: 'provider.response_block_warning',
+      );
+      expect(warning?.label, 'Manage online status');
+      expect(warning?.route, '/home');
+
+      final started = providerInboxActionFor(
+        eventType: 'provider.response_block_started',
+      );
+      expect(started?.label, 'Contact support');
+      expect(started?.route, '/account/support');
     });
   });
 }
