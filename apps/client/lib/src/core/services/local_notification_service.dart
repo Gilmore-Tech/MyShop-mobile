@@ -195,13 +195,43 @@ const clientDashboardRoute = '/home';
 const clientNotificationInboxRoute = '/notifications';
 const clientTraySourceQueryKey = 'source';
 const clientTraySourceQueryValue = 'tray';
+const _clientInboxActionSourceQueryValue = 'notification_action';
+const _clientInboxOriginQueryKey = 'origin';
+
+String? _clientPrimaryShellRouteForToken(String? token) {
+  final route = token == null || token.isEmpty ? null : '/$token';
+  return route != null && clientRouteUsesPrimaryShell(route) ? route : null;
+}
+
+/// Builds an in-app inbox route that remembers the primary tab underneath it.
+/// Only local shell-route tokens are retained; arbitrary payload routes never
+/// enter the navigation stack.
+String clientInAppNotificationInboxRoute(Uri origin) {
+  final returnRoute = clientRouteUsesPrimaryShell(origin.path)
+      ? origin.path
+      : clientDashboardRoute;
+  return Uri(
+    path: clientNotificationInboxRoute,
+    queryParameters: {
+      _clientInboxOriginQueryKey: returnRoute.substring(1),
+    },
+  ).toString();
+}
+
+String? clientNotificationInboxOrigin(Uri uri) =>
+    _clientPrimaryShellRouteForToken(
+      uri.queryParameters[_clientInboxOriginQueryKey],
+    );
 
 /// Marks an inbox destination as originating from an operating-system tray
 /// tap. The marker lets the inbox return to the Client dashboard even if a
 /// platform resume or duplicate callback reconstructs an unexpected stack.
 String clientTrayDestinationRoute(String destinationRoute) {
   final uri = Uri.tryParse(destinationRoute);
-  if (uri == null || uri.path != clientNotificationInboxRoute) {
+  if (uri == null ||
+      (uri.path != clientNotificationInboxRoute &&
+          !clientRouteUsesPrimaryShell(destinationRoute)) ||
+      uri.path == clientDashboardRoute) {
     return destinationRoute;
   }
   return uri.replace(
@@ -216,13 +246,67 @@ bool clientNotificationOpenedFromTray(Uri uri) =>
     uri.path == clientNotificationInboxRoute &&
     uri.queryParameters[clientTraySourceQueryKey] == clientTraySourceQueryValue;
 
+/// Tags an indexed-shell tab selected by an in-app inbox action so system
+/// Back has an explicit return destination after the safe `go()` transition.
+String clientInboxShellActionRoute(
+  String destinationRoute, {
+  String? returnTo,
+}) {
+  final uri = Uri.tryParse(destinationRoute);
+  if (uri == null || !clientRouteUsesPrimaryShell(destinationRoute)) {
+    return destinationRoute;
+  }
+  final returnRoute = Uri.tryParse(returnTo ?? '')?.path;
+  final returnToken =
+      returnRoute != null && clientRouteUsesPrimaryShell(returnRoute)
+          ? returnRoute.substring(1)
+          : null;
+  return uri.replace(
+    queryParameters: <String, String>{
+      ...uri.queryParameters,
+      clientTraySourceQueryKey: _clientInboxActionSourceQueryValue,
+      if (returnToken != null) _clientInboxOriginQueryKey: returnToken,
+    },
+  ).toString();
+}
+
+bool clientPrimaryShellOpenedFromNotification(Uri uri) {
+  if (!clientRouteUsesPrimaryShell(uri.path)) return false;
+  final source = uri.queryParameters[clientTraySourceQueryKey];
+  if (source == _clientInboxActionSourceQueryValue) return true;
+  return source == clientTraySourceQueryValue &&
+      uri.path != clientDashboardRoute;
+}
+
+String clientNotificationShellBackRoute(Uri uri) {
+  if (uri.queryParameters[clientTraySourceQueryKey] !=
+      _clientInboxActionSourceQueryValue) {
+    return clientDashboardRoute;
+  }
+  final origin = clientNotificationInboxOrigin(uri);
+  return origin == null
+      ? clientNotificationInboxRoute
+      : clientInAppNotificationInboxRoute(Uri(path: origin));
+}
+
+/// Primary-tab destinations already live inside the Client's indexed shell.
+/// They must be selected with `go`, never pushed above another root route,
+/// otherwise GoRouter can build the same StatefulShellRoute page twice and
+/// strand both the action and Back navigation.
+bool clientRouteUsesPrimaryShell(String route) => const {
+      '/home',
+      '/services',
+      '/activity',
+      '/profile',
+    }.contains(Uri.tryParse(route)?.path);
+
 /// A system-tray tap starts a fresh navigation intent. Seed the authenticated
 /// dashboard before presenting the destination so Back has a deterministic,
 /// safe place to return to. In-app inbox taps do not use this stack; they push
 /// onto the user's existing navigation history instead.
 List<String> clientTrayNavigationStack(String destinationRoute) {
-  if (destinationRoute == clientDashboardRoute) {
-    return const [clientDashboardRoute];
+  if (clientRouteUsesPrimaryShell(destinationRoute)) {
+    return [clientTrayDestinationRoute(destinationRoute)];
   }
   return [clientDashboardRoute, clientTrayDestinationRoute(destinationRoute)];
 }

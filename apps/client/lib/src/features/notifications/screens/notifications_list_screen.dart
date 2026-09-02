@@ -22,6 +22,7 @@ class _NotificationsListScreenState
     extends ConsumerState<NotificationsListScreen> {
   late DateTime _now;
   Timer? _relativeTimeTimer;
+  final Set<String> _actionsInFlight = <String>{};
 
   @override
   void initState() {
@@ -40,17 +41,35 @@ class _NotificationsListScreenState
     super.dispose();
   }
 
-  void _openNotification(
+  Future<void> _openNotification(
     BuildContext context,
     Notif notification,
     ClientInboxAction? action,
-  ) {
+  ) async {
     ref.read(notifsProvider.notifier).markRead(notification.id);
     if (action == null) return;
-    // This tap originated inside the app, so preserve the inbox beneath the
-    // destination. Every destination was produced by the local resolver.
-    if (action.route != '/notifications') {
-      unawaited(context.push<void>(action.route, extra: action.extra));
+    if (!_actionsInFlight.add(notification.id)) return;
+    try {
+      if (action.route == '/notifications') return;
+      if (clientRouteUsesPrimaryShell(action.route)) {
+        // The primary tab shell already exists below this root-level inbox.
+        // Select its branch instead of pushing a duplicate shell page.
+        context.go(
+          clientInboxShellActionRoute(
+            action.route,
+            returnTo: clientNotificationInboxOrigin(
+              GoRouterState.of(context).uri,
+            ),
+          ),
+          extra: action.extra,
+        );
+        return;
+      }
+      // Detail destinations are root routes, so preserve the in-app inbox
+      // beneath them and allow Back to return to the exact prior screen.
+      await context.push<void>(action.route, extra: action.extra);
+    } finally {
+      _actionsInFlight.remove(notification.id);
     }
   }
 
@@ -67,7 +86,10 @@ class _NotificationsListScreenState
       router!.pop();
       return;
     }
-    router?.go(clientDashboardRoute);
+    final origin = clientNotificationInboxOrigin(
+      GoRouterState.of(context).uri,
+    );
+    router?.go(origin ?? clientDashboardRoute);
   }
 
   @override
@@ -171,8 +193,9 @@ class _NotificationsListScreenState
                 : _NotifList(
                     notifs: notifications,
                     now: _now,
-                    onTap: (notification, action) =>
-                        _openNotification(context, notification, action),
+                    onTap: (notification, action) => unawaited(
+                      _openNotification(context, notification, action),
+                    ),
                     w: w,
                     h: h,
                   ),

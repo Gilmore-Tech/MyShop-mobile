@@ -9,6 +9,7 @@ import '../providers/my_ratings_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../account_deletion_policy.dart';
 import '../../../app/router.dart' show AppRoutes;
+import '../../../core/services/local_notification_service.dart';
 import '../../notifications/widgets/client_notification_bell.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -90,7 +91,11 @@ class _ProfileBody extends StatelessWidget {
                       title: 'Notifications',
                       subtitle: 'Alerts, messages, and task updates',
                       badgeCount: notifCount > 0 ? notifCount : null,
-                      onTap: () => context.push(AppRoutes.notifications),
+                      onTap: () => context.push(
+                        clientInAppNotificationInboxRoute(
+                          GoRouterState.of(context).uri,
+                        ),
+                      ),
                       w: w,
                       h: h,
                     ),

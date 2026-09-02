@@ -51,6 +51,58 @@ class _StaticNotificationService extends NotificationService {
   Future<void> markAsRead(String notificationId) async {}
 }
 
+class _ActivityNotificationService extends NotificationService {
+  _ActivityNotificationService() : super(Dio());
+
+  @override
+  Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+    int limit = 20,
+  }) async =>
+      {
+        'data': [
+          {
+            'id': 'announcement_activity_1',
+            'channel': 'in_app',
+            'eventType': 'announcement',
+            'title': 'Activity update',
+            'body': 'Review your latest activity.',
+            'createdAt': DateTime.now().toUtc().toIso8601String(),
+            'payload': {'destination': 'activity'},
+          },
+        ],
+      };
+
+  @override
+  Future<void> markAsRead(String notificationId) async {}
+}
+
+class _PromotionNotificationService extends NotificationService {
+  _PromotionNotificationService() : super(Dio());
+
+  @override
+  Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+    int limit = 20,
+  }) async =>
+      {
+        'data': [
+          {
+            'id': 'announcement_promotion_1',
+            'channel': 'in_app',
+            'eventType': 'announcement',
+            'title': 'Promotion update',
+            'body': 'See the latest promotion.',
+            'createdAt': DateTime.now().toUtc().toIso8601String(),
+            'payload': {'destination': 'promotions'},
+          },
+        ],
+      };
+
+  @override
+  Future<void> markAsRead(String notificationId) async {}
+}
+
 GoRouter _testRouter({required String initialLocation}) {
   return GoRouter(
     initialLocation: initialLocation,
@@ -73,6 +125,83 @@ GoRouter _testRouter({required String initialLocation}) {
           appBar: AppBar(title: const Text('Support destination')),
           body: const Text('Support content'),
         ),
+      ),
+    ],
+  );
+}
+
+GoRouter _shellRouter({required String initialLocation}) {
+  return GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) {
+          final openedFromNotification =
+              clientPrimaryShellOpenedFromNotification(state.uri);
+          return PopScope(
+            canPop: !openedFromNotification,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop && openedFromNotification) {
+                context.go(clientNotificationShellBackRoute(state.uri));
+              }
+            },
+            child: Scaffold(
+              body: navigationShell,
+              bottomNavigationBar: const Text('Client tabs'),
+            ),
+          );
+        },
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                builder: (context, state) => Scaffold(
+                  body: Column(
+                    children: [
+                      const Text('Client dashboard'),
+                      TextButton(
+                        onPressed: () => context.push(
+                          clientInAppNotificationInboxRoute(state.uri),
+                        ),
+                        child: const Text('Open notifications'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/activity',
+                builder: (context, state) => Scaffold(
+                  body: Column(
+                    children: [
+                      const Text('Activity destination'),
+                      TextButton(
+                        onPressed: () => context.push(
+                          clientInAppNotificationInboxRoute(state.uri),
+                        ),
+                        child: const Text('Open notifications'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsListScreen(),
+      ),
+      GoRoute(
+        path: '/profile/support',
+        builder: (context, state) =>
+            const Scaffold(body: Text('Support destination')),
       ),
     ],
   );
@@ -307,6 +436,78 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Profile origin'), findsOneWidget);
+  });
+
+  testWidgets(
+      'in-app primary-tab action selects the real shell without a duplicate key',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      _routerApp(router, _ActivityNotificationService()),
+    );
+
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Activity destination'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+  });
+
+  testWidgets('dashboard action preserves a non-home inbox origin',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _shellRouter(initialLocation: '/activity');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      _routerApp(router, _PromotionNotificationService()),
+    );
+
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View promotions'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client dashboard'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Activity destination'), findsOneWidget);
+  });
+
+  testWidgets('in-app detail action Back returns through the real client shell',
+      (tester) async {
+    _usePhoneViewport(tester);
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_routerApp(router, _StaticNotificationService()));
+
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Get support'));
+    await tester.pumpAndSettle();
+    expect(find.text('Support destination'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Support destination'), findsNothing);
   });
 
   testWidgets('inbox item system Back returns to inbox then its prior route',

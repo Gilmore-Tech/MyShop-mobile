@@ -65,6 +65,7 @@ class ProviderNotificationsScreen extends ConsumerStatefulWidget {
 class _ProviderNotificationsScreenState
     extends ConsumerState<ProviderNotificationsScreen> {
   Timer? _relativeTimeTicker;
+  final Set<String> _actionsInFlight = <String>{};
 
   @override
   void initState() {
@@ -97,9 +98,10 @@ class _ProviderNotificationsScreenState
       context.pop();
       return;
     }
-    // A tray deep-link is opened with go(), so there is no meaningful inbox
-    // route below it. Always return to the active role's /home dashboard.
-    context.go('/home');
+    final origin = providerNotificationInboxOrigin(
+      GoRouterState.of(context).uri,
+    );
+    context.go(origin ?? '/home');
   }
 
   Future<void> _openNotification(
@@ -109,47 +111,76 @@ class _ProviderNotificationsScreenState
   ) async {
     ref.read(providerNotifsProvider.notifier).markRead(notification.id);
     if (action == null) return;
+    if (!_actionsInFlight.add(notification.id)) return;
 
-    switch (action.kind) {
-      case ProviderInboxActionKind.route:
-        final route = action.route;
-        if (route == null || route == '/notifications') return;
-        if (route == '/account/documents') {
-          ref.invalidate(verificationStatusProvider);
-          // The document destination loads the authoritative review snapshot.
-          // Refresh the authenticated profile in parallel so other provider
-          // surfaces do not retain an older verification status.
-          unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
-        }
-        unawaited(context.push<void>(route));
-        return;
+    try {
+      switch (action.kind) {
+        case ProviderInboxActionKind.route:
+          final route = action.route;
+          if (route == null || route == '/notifications') return;
+          if (route == '/account/documents') {
+            ref.invalidate(verificationStatusProvider);
+            // The document destination loads the authoritative review snapshot.
+            // Refresh the authenticated profile in parallel so other provider
+            // surfaces do not retain an older verification status.
+            unawaited(
+              ref.read(authControllerProvider.notifier).refreshProfile(),
+            );
+          }
+          await _openResolvedRoute(context, route);
+          return;
 
-      case ProviderInboxActionKind.locationSettings:
-        await _openLocationRecoverySettings(context);
-        return;
+        case ProviderInboxActionKind.locationSettings:
+          await _openLocationRecoverySettings(context);
+          return;
 
-      case ProviderInboxActionKind.manualJob:
-        await _hydrateAndOpenJob(
-          context,
-          action,
-          notificationPayload: notification.payload,
-          openAsManualRequest: true,
-        );
-        return;
+        case ProviderInboxActionKind.manualJob:
+          await _hydrateAndOpenJob(
+            context,
+            action,
+            notificationPayload: notification.payload,
+            openAsManualRequest: true,
+          );
+          return;
 
-      case ProviderInboxActionKind.activeJob:
-        await _hydrateAndOpenJob(
-          context,
-          action,
-          notificationPayload: notification.payload,
-          openAsManualRequest: false,
-        );
-        return;
+        case ProviderInboxActionKind.activeJob:
+          await _hydrateAndOpenJob(
+            context,
+            action,
+            notificationPayload: notification.payload,
+            openAsManualRequest: false,
+          );
+          return;
 
-      case ProviderInboxActionKind.rating:
-        await _openRatingAction(context, action);
-        return;
+        case ProviderInboxActionKind.rating:
+          await _openRatingAction(context, action);
+          return;
+      }
+    } finally {
+      _actionsInFlight.remove(notification.id);
     }
+  }
+
+  Future<void> _openResolvedRoute(
+    BuildContext context,
+    String route, {
+    Object? extra,
+  }) async {
+    if (providerRouteUsesPrimaryShell(route)) {
+      // Selecting an existing shell tab replaces the inbox route. Pushing it
+      // would duplicate the ShellRoute page key and corrupt the Back stack.
+      context.go(
+        providerInboxShellActionRoute(
+          route,
+          returnTo: providerNotificationInboxOrigin(
+            GoRouterState.of(context).uri,
+          ),
+        ),
+        extra: extra,
+      );
+      return;
+    }
+    await context.push<void>(route, extra: extra);
   }
 
   Future<void> _openLocationRecoverySettings(BuildContext context) async {
@@ -257,7 +288,7 @@ class _ProviderNotificationsScreenState
             );
       if (!context.mounted) return;
       if (openAsManualRequest) {
-        unawaited(context.push<void>('/job-request', extra: job));
+        await _openResolvedRoute(context, '/job-request', extra: job);
       } else {
         if (!providerInboxJobStatusCanOpenActive(job.status)) {
           final message = switch (job.status) {
@@ -271,11 +302,11 @@ class _ProviderNotificationsScreenState
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(SnackBar(content: Text(message)));
-          unawaited(context.push<void>('/trips'));
+          await _openResolvedRoute(context, '/trips');
           return;
         }
         ref.read(activeJobProvider.notifier).setJob(job);
-        unawaited(context.push<void>('/active-job'));
+        await _openResolvedRoute(context, '/active-job');
       }
     } catch (error) {
       if (claimedSurface &&
@@ -299,7 +330,7 @@ class _ProviderNotificationsScreenState
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
       if (!openAsManualRequest) {
-        unawaited(context.push<void>('/trips'));
+        await _openResolvedRoute(context, '/trips');
       }
     }
   }

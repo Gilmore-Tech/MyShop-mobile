@@ -430,7 +430,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                   ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => context.push('/notifications'),
+                    onTap: () => context.push(
+                      providerInAppNotificationInboxRoute(
+                        GoRouterState.of(context).uri,
+                      ),
+                    ),
                     child: const Icon(Icons.notifications_outlined,
                         color: MyShopColors.textSecondary),
                   ),

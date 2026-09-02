@@ -86,6 +86,10 @@ Future<void> _finishStartup(ProviderContainer container) async {
     try {
       container.read(firebaseReadyProvider.notifier).state = true;
       container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
+      // Attach tap routing before init can drain a cold-start local
+      // notification. Waiting for ProviderApp's next rebuild leaves a race in
+      // which the launch payload is consumed while onTapMessage is still null.
+      container.read(fcmTapBridgeProvider);
       unawaited(container.read(fcmServiceProvider).init().catchError(
             (Object e) => debugPrint('[main] FCM init failed: $e'),
           ));

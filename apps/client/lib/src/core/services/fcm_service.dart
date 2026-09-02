@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart' show ChatBookingType, Ride;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
@@ -1091,6 +1092,7 @@ Future<bool> _waitForClientTrayBase(
 ///   everything else             → /activity
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
+  final notificationTapGuard = NotificationTapGuard();
 
   Future<bool> waitForAuthenticatedCall(
     String callId,
@@ -1111,26 +1113,55 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
-  // Two-step navigation for tray deep-links: first land on the dashboard so
-  // the navigator has at least one safe route, then push the detail screen on
-  // top. Without the leading `go`, `router.go(detailPath)` replaces the
-  // entire stack with the detail and tapping back throws
-  // `GoError: There is nothing to pop`. Detail routes here use
-  // `parentNavigatorKey: _rootNavigatorKey` (top-level overlays, not
-  // nested under the shell), so the parent stack isn't reconstructed
-  // automatically — we have to seed it.
-  Future<void> pushDeepLink(
-    GoRouter router,
-    String path, {
-    Object? extra,
-  }) =>
-      openClientTrayDestination(router, path, extra: extra);
+  Future<AuthSessionIdentity?> waitForRestoredNotificationSession() =>
+      waitForNotificationSession<AuthSessionIdentity>(
+        probe: () {
+          final auth = ref.read(clientAuthControllerProvider);
+          final session = ref.read(currentClientAuthSessionIdentityProvider);
+          final routerBootstrapReady = ref.read(onboardingFlagLoadedProvider);
+          if (auth is AuthAuthenticated &&
+              session != null &&
+              routerBootstrapReady) {
+            return NotificationSessionSnapshot.authenticated(session);
+          }
+          if (auth is AuthUnknown ||
+              auth is AuthSessionRestorePending ||
+              auth is AuthAuthenticated) {
+            return const NotificationSessionSnapshot.restoring();
+          }
+          return const NotificationSessionSnapshot.unavailable();
+        },
+      );
 
-  Future<void> openTrayDestination(GoRouter router, String path) =>
-      openClientTrayDestination(router, path);
+  Future<void> handleTapMessage(Map<String, dynamic> payload) async {
+    final expectedTapSession = await waitForRestoredNotificationSession();
+    if (expectedTapSession == null) {
+      debugPrint(
+        '[FCM-tap] notification ignored because authentication was not restored',
+      );
+      return;
+    }
+    bool tapSessionIsCurrent() =>
+        ref.read(currentClientAuthSessionIdentityProvider) ==
+        expectedTapSession;
 
-  fcm.onTapMessage = (payload) async {
     final router = ref.read(routerProvider);
+    // Two-step navigation for tray deep-links: first land on the dashboard so
+    // the navigator has at least one safe route, then push detail above it.
+    Future<void> pushDeepLink(
+      GoRouter router,
+      String path, {
+      Object? extra,
+    }) async {
+      if (!tapSessionIsCurrent()) return;
+      await openClientTrayDestination(router, path, extra: extra);
+    }
+
+    Future<void> openTrayDestination(GoRouter router, String path) async {
+      if (!tapSessionIsCurrent()) return;
+      await openClientTrayDestination(router, path);
+    }
+
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.bid_received") in the FCM data
     // payload. The local-notification path normalises before re-encoding,
@@ -1464,7 +1495,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       default:
         await openTrayDestination(router, AppRoutes.activity);
     }
+  }
+
+  fcm.onTapMessage = (payload) async {
+    await notificationTapGuard.run(
+      notificationTapIdentity(payload),
+      () => handleTapMessage(payload),
+    );
   };
+  ref.listen<ClientAuthState>(clientAuthControllerProvider, (previous, next) {
+    if (previous is! AuthAuthenticated) return;
+    final sameClient =
+        next is AuthAuthenticated && previous.profile.id == next.profile.id;
+    if (!sameClient) notificationTapGuard.reset();
+  });
+  ref.onDispose(notificationTapGuard.dispose);
 });
 
 /// Renders a friendly "what is the driver up to right now" string for

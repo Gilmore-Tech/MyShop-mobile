@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../../app/router.dart';
 import '../../features/artisan_home/providers/active_job_provider.dart';
@@ -2669,6 +2670,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
   final rideNavigationLatchTokens = <String, Object>{};
   final requestTapCoordinator = IncomingRequestTapCoordinator();
+  final notificationTapGuard = NotificationTapGuard();
 
   Future<bool> waitForAuthenticatedCall(
     String callId,
@@ -2701,6 +2703,26 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }
     return false;
   }
+
+  Future<AuthSessionIdentity?> waitForRestoredNotificationSession() =>
+      waitForNotificationSession<AuthSessionIdentity>(
+        probe: () {
+          final auth = ref.read(authControllerProvider);
+          final session = ref.read(currentAuthSessionIdentityProvider);
+          final routerBootstrapReady = ref.read(onboardingFlagLoadedProvider);
+          if (auth is AuthAuthenticated &&
+              session != null &&
+              routerBootstrapReady) {
+            return NotificationSessionSnapshot.authenticated(session);
+          }
+          if (auth is AuthUnknown ||
+              auth is AuthSessionRestorePending ||
+              auth is AuthAuthenticated) {
+            return const NotificationSessionSnapshot.restoring();
+          }
+          return const NotificationSessionSnapshot.unavailable();
+        },
+      );
 
   void releaseRideRequestNavigationLatch(String rideId, Object token) {
     releaseRideRequestNavigationLatchIfOwned(
@@ -2747,6 +2769,16 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
   }
 
   Future<void> handleTapMessage(Map<String, dynamic> payload) async {
+    final expectedTapSession = await waitForRestoredNotificationSession();
+    if (expectedTapSession == null) {
+      debugPrint(
+        '[FCM-tap] notification ignored because authentication was not restored',
+      );
+      return;
+    }
+    bool tapSessionIsCurrent() =>
+        ref.read(currentAuthSessionIdentityProvider) == expectedTapSession;
+
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.request") in the FCM data payload.
     // The local-notification path normalises before re-encoding, but the
@@ -2764,12 +2796,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     Future<void> openSystemTrayDestination(
       String destination, {
       Object? extra,
-    }) =>
-        openProviderTrayDestination(
-          router,
-          destination,
-          extra: extra,
-        );
+    }) async {
+      if (!tapSessionIsCurrent()) return;
+      await openProviderTrayDestination(
+        router,
+        destination,
+        extra: extra,
+      );
+    }
 
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
@@ -3741,10 +3775,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     releaseUntransferredRideClaim();
   }
 
-  fcm.onTapMessage = (payload) {
-    return requestTapCoordinator.dispatch(
-      payload,
-      () => handleTapMessage(payload),
+  fcm.onTapMessage = (payload) async {
+    await notificationTapGuard.run(
+      notificationTapIdentity(payload),
+      () async {
+        await requestTapCoordinator.dispatch(
+          payload,
+          () => handleTapMessage(payload),
+        );
+      },
     );
   };
 
@@ -3761,11 +3800,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         previous.user.id == next.user.id &&
         previous.user.role == next.user.role;
     if (!sameProvider) {
+      notificationTapGuard.reset();
       requestTapCoordinator.reset();
       rideNavigationLatchTokens.clear();
     }
   });
   ref.onDispose(() {
+    notificationTapGuard.dispose();
     requestTapCoordinator.dispose();
     unawaited(nativeActionBridge.dispose());
   });

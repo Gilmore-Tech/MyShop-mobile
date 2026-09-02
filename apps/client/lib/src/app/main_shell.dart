@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/ride/providers/ride_provider.dart';
 import '../features/notifications/providers/notifications_provider.dart';
+import '../core/services/local_notification_service.dart';
 import 'router.dart';
 import 'widgets/app_bottom_nav.dart';
 
@@ -92,14 +93,25 @@ class _MainShellState extends ConsumerState<MainShell>
       context.go(AppRoutes.rideTracking, extra: driver);
     });
 
-    return Scaffold(
-      body: widget.navigationShell,
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.values[widget.navigationShell.currentIndex],
-        onTap: (tab) => widget.navigationShell.goBranch(
-          tab.index,
-          // Re-tapping the active tab pops back to the branch root.
-          initialLocation: tab.index == widget.navigationShell.currentIndex,
+    final uri = GoRouterState.of(context).uri;
+    final openedFromNotification =
+        clientPrimaryShellOpenedFromNotification(uri);
+    return PopScope(
+      canPop: !openedFromNotification,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && openedFromNotification) {
+          context.go(clientNotificationShellBackRoute(uri));
+        }
+      },
+      child: Scaffold(
+        body: widget.navigationShell,
+        bottomNavigationBar: AppBottomNav(
+          activeTab: AppTab.values[widget.navigationShell.currentIndex],
+          onTap: (tab) => widget.navigationShell.goBranch(
+            tab.index,
+            // Re-tapping the active tab pops back to the branch root.
+            initialLocation: tab.index == widget.navigationShell.currentIndex,
+          ),
         ),
       ),
     );

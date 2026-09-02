@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/services/local_notification_service.dart';
 import '../providers/notifications_provider.dart';
 
 /// One notification entry point shared by the Client Home and Profile headers.
@@ -24,7 +25,9 @@ class ClientNotificationBell extends ConsumerWidget {
 
     return IconButton(
       key: const Key('client-notification-bell'),
-      onPressed: () => context.push('/notifications'),
+      onPressed: () => context.push(
+        clientInAppNotificationInboxRoute(GoRouterState.of(context).uri),
+      ),
       tooltip: unreadCount > 0
           ? 'Notifications, $unreadCount unread'
           : 'Notifications',

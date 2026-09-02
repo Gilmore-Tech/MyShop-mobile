@@ -118,10 +118,22 @@ GoRouter _shellRouter({required String initialLocation}) => GoRouter(
       initialLocation: initialLocation,
       routes: [
         ShellRoute(
-          builder: (context, state, child) => Scaffold(
-            body: child,
-            bottomNavigationBar: const Text('Provider tabs'),
-          ),
+          builder: (context, state, child) {
+            final openedFromNotification =
+                providerPrimaryShellOpenedFromNotification(state.uri);
+            return PopScope(
+              canPop: !openedFromNotification,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop && openedFromNotification) {
+                  context.go(providerNotificationShellBackRoute(state.uri));
+                }
+              },
+              child: Scaffold(
+                body: child,
+                bottomNavigationBar: const Text('Provider tabs'),
+              ),
+            );
+          },
           routes: [
             GoRoute(
               path: '/home',
@@ -130,7 +142,9 @@ GoRouter _shellRouter({required String initialLocation}) => GoRouter(
                   children: [
                     const Text('Role dashboard'),
                     TextButton(
-                      onPressed: () => context.push('/notifications'),
+                      onPressed: () => context.push(
+                        providerInAppNotificationInboxRoute(state.uri),
+                      ),
                       child: const Text('Open notifications'),
                     ),
                   ],
@@ -139,14 +153,30 @@ GoRouter _shellRouter({required String initialLocation}) => GoRouter(
             ),
             GoRoute(
               path: '/earnings',
-              builder: (context, state) =>
-                  const Scaffold(body: Text('Earnings destination')),
+              builder: (context, state) => Scaffold(
+                body: Column(
+                  children: [
+                    const Text('Earnings destination'),
+                    TextButton(
+                      onPressed: () => context.push(
+                        providerInAppNotificationInboxRoute(state.uri),
+                      ),
+                      child: const Text('Open notifications'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
         GoRoute(
           path: '/notifications',
           builder: (context, state) => const ProviderNotificationsScreen(),
+        ),
+        GoRoute(
+          path: '/account/vehicle',
+          builder: (context, state) =>
+              const Scaffold(body: Text('Vehicle destination')),
         ),
       ],
     );
@@ -248,7 +278,7 @@ void main() {
     final service = _MockNotificationService();
     when(() => service.getNotifications(page: 1, limit: 30))
         .thenAnswer((_) async => {'data': <Object>[]});
-    final router = _router(initialLocation: '/home');
+    final router = _shellRouter(initialLocation: '/home');
     addTearDown(router.dispose);
 
     await tester.pumpWidget(_app(router, service));
@@ -290,7 +320,7 @@ void main() {
   testWidgets('tray action destination system Back returns to role dashboard',
       (tester) async {
     final service = _MockNotificationService();
-    final router = _router(initialLocation: '/home');
+    final router = _shellRouter(initialLocation: '/home');
     addTearDown(router.dispose);
 
     await tester.pumpWidget(_app(router, service));
@@ -304,6 +334,118 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Role dashboard'), findsOneWidget);
+  });
+
+  testWidgets(
+      'in-app shell destination action selects the tab without duplicating shell',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {
+              'data': [
+                {
+                  'id': 'announcement_shell_1',
+                  'channel': 'in_app',
+                  'eventType': 'announcement',
+                  'title': 'Earnings update',
+                  'body': 'Review the latest earnings update.',
+                  'createdAt': '2026-08-30T20:00:00Z',
+                  'payload': {'destination': 'promotions'},
+                },
+              ],
+            });
+    when(() => service.markAsRead('announcement_shell_1'))
+        .thenAnswer((_) async {});
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(router, service));
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View earnings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Earnings destination'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+  });
+
+  testWidgets('dashboard action preserves a non-home inbox origin',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {
+              'data': [
+                {
+                  'id': 'response_warning_1',
+                  'channel': 'in_app',
+                  'eventType': 'provider.response_block_warning',
+                  'title': 'Response warning',
+                  'body': 'Manage your online status.',
+                  'createdAt': '2026-08-30T20:00:00Z',
+                },
+              ],
+            });
+    when(() => service.markAsRead('response_warning_1'))
+        .thenAnswer((_) async {});
+    final router = _shellRouter(initialLocation: '/earnings');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(router, service));
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manage online status'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Role dashboard'), findsOneWidget);
+    expect(find.text('Notifications'), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notifications'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Earnings destination'), findsOneWidget);
+  });
+
+  testWidgets('in-app detail action Back returns through the real shell',
+      (tester) async {
+    final service = _MockNotificationService();
+    when(() => service.getNotifications(page: 1, limit: 30))
+        .thenAnswer((_) async => {
+              'data': [
+                {
+                  'id': 'vehicle_detail_1',
+                  'channel': 'in_app',
+                  'eventType': 'ride_category.rejected',
+                  'title': 'Vehicle update required',
+                  'body': 'Review the rejected vehicle category.',
+                  'createdAt': '2026-08-30T20:00:00Z',
+                },
+              ],
+            });
+    when(() => service.markAsRead('vehicle_detail_1')).thenAnswer((_) async {});
+    final router = _shellRouter(initialLocation: '/home');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(router, service));
+    await tester.tap(find.text('Open notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review vehicle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vehicle destination'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Vehicle destination'), findsNothing);
   });
 
   testWidgets(
@@ -417,7 +559,7 @@ void main() {
               ],
             });
     when(() => service.markAsRead('announcement_1')).thenAnswer((_) async {});
-    final router = _router(initialLocation: '/home');
+    final router = _shellRouter(initialLocation: '/home');
     addTearDown(router.dispose);
 
     await tester.pumpWidget(_app(router, service));
@@ -431,7 +573,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Earnings destination'), findsOneWidget);
 
-    router.pop();
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
     expect(find.text('Notifications'), findsOneWidget);
