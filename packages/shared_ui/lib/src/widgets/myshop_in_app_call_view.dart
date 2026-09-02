@@ -22,6 +22,9 @@ class MyShopInAppCallView extends StatelessWidget {
     this.onAcceptCall,
     this.onDeclineCall,
     this.errorMessage,
+    this.showRetryConnection = false,
+    this.isRetryingConnection = false,
+    this.onRetryConnection,
   });
 
   final String peerName;
@@ -40,6 +43,9 @@ class MyShopInAppCallView extends StatelessWidget {
   final VoidCallback? onAcceptCall;
   final VoidCallback? onDeclineCall;
   final String? errorMessage;
+  final bool showRetryConnection;
+  final bool isRetryingConnection;
+  final VoidCallback? onRetryConnection;
 
   @override
   Widget build(BuildContext context) {
@@ -59,8 +65,9 @@ class MyShopInAppCallView extends StatelessWidget {
               const Spacer(),
               CircleAvatar(
                 radius: 54,
-                backgroundColor:
-                    MyShopColors.primaryGold.withValues(alpha: 0.18),
+                backgroundColor: MyShopColors.primaryGold.withValues(
+                  alpha: 0.18,
+                ),
                 child: Text(
                   _initials(peerName),
                   style: theme.textTheme.headlineMedium?.copyWith(
@@ -113,6 +120,22 @@ class MyShopInAppCallView extends StatelessWidget {
                   ),
                 ),
               ],
+              if (showRetryConnection) ...[
+                const SizedBox(height: MyShopSpacing.md),
+                FilledButton.tonalIcon(
+                  key: const Key('retry-call-audio-button'),
+                  onPressed: isRetryingConnection ? null : onRetryConnection,
+                  icon: isRetryingConnection
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  label: Text(
+                    isRetryingConnection ? 'Retrying audio…' : 'Retry audio',
+                  ),
+                ),
+              ],
               const Spacer(),
               if (isLoading)
                 const SizedBox(height: 72)
@@ -149,10 +172,7 @@ class MyShopInAppCallView extends StatelessWidget {
                       onPressed: onToggleMuted,
                     ),
                     const SizedBox(width: MyShopSpacing.lg),
-                    _EndCallButton(
-                      isEnding: isEnding,
-                      onPressed: onEndCall,
-                    ),
+                    _EndCallButton(isEnding: isEnding, onPressed: onEndCall),
                     const SizedBox(width: MyShopSpacing.lg),
                     _CallControl(
                       tooltip: speakerOn ? 'Speaker off' : 'Speaker',
@@ -267,10 +287,7 @@ class _CallControl extends StatelessWidget {
 }
 
 class _EndCallButton extends StatelessWidget {
-  const _EndCallButton({
-    required this.isEnding,
-    required this.onPressed,
-  });
+  const _EndCallButton({required this.isEnding, required this.onPressed});
 
   final bool isEnding;
   final VoidCallback? onPressed;
@@ -286,8 +303,9 @@ class _EndCallButton extends StatelessWidget {
           backgroundColor: MyShopColors.error,
           foregroundColor: MyShopColors.textOnPrimary,
           disabledBackgroundColor: MyShopColors.error.withValues(alpha: 0.5),
-          disabledForegroundColor:
-              MyShopColors.textOnPrimary.withValues(alpha: 0.72),
+          disabledForegroundColor: MyShopColors.textOnPrimary.withValues(
+            alpha: 0.72,
+          ),
         ),
         icon: isEnding
             ? const SizedBox.square(
