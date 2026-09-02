@@ -65,6 +65,19 @@ class _DelayedProviderAvailabilityService extends ProviderAvailabilityService {
   Future<ProviderAvailabilitySnapshot> getMyAvailability() => completer.future;
 }
 
+class _FakeProviderRequestService extends ProviderRequestService {
+  _FakeProviderRequestService(this.summary) : super(Dio());
+
+  final ProviderRequestResponseSummary? summary;
+  int calls = 0;
+
+  @override
+  Future<ProviderRequestResponseSummary?> getRequestResponseSummary() async {
+    calls += 1;
+    return summary;
+  }
+}
+
 ProviderAvailabilitySnapshot _snapshot({
   ProviderAvailabilityRole role = ProviderAvailabilityRole.artisan,
   String providerId = 'provider-1',
@@ -102,6 +115,7 @@ ProviderContainer _container(
   bool firebaseReady = true,
   AvailabilityReconciliationActions? actions,
   ProviderType providerType = ProviderType.artisan,
+  ProviderRequestService? requestService,
 }) {
   final identity = providerType == ProviderType.driver
       ? const ProviderOnlineIntentIdentity(
@@ -119,6 +133,8 @@ ProviderContainer _container(
       providerOnlineIntentStoreProvider.overrideWithValue(
         intentStore ?? _FakeOnlineIntentStore(),
       ),
+      if (requestService != null)
+        providerRequestServiceProvider.overrideWithValue(requestService),
       firebaseReadyProvider.overrideWith((_) => firebaseReady),
       availabilityReconciliationActionsProvider.overrideWithValue(
         actions ??
@@ -143,6 +159,62 @@ void main() {
         .reconcile(trigger: 'test');
 
     expect(container.read(providerStatusProvider), DriverStatus.offline);
+  });
+
+  test(
+      'authoritative request restriction demotes Online and consumes its intent',
+      () async {
+    final service = _FakeProviderAvailabilityService(_snapshot());
+    final store = _FakeOnlineIntentStore(shouldBeOnline: true);
+    final requests = _FakeProviderRequestService(
+      ProviderRequestResponseSummary(
+        periodDays: 7,
+        eligibleOffers: 3,
+        acceptedOffers: 0,
+        declinedOffers: 3,
+        noResponseOffers: 0,
+        activeRestriction: ProviderRequestRestriction(
+          policyKind: 'accepted_cancellation',
+          blockedUntil: DateTime.now().toUtc().add(const Duration(minutes: 15)),
+          retryAfterSeconds: 900,
+          count: 3,
+          threshold: 3,
+        ),
+      ),
+    );
+    var forcedOffline = 0;
+    final container = _container(
+      service,
+      intentStore: store,
+      requestService: requests,
+      actions: AvailabilityReconciliationActions(
+        restoreOnline: (_) async => 'Unexpected restore attempt.',
+        forceOffline: () async {
+          forcedOffline += 1;
+          return null;
+        },
+      ),
+    );
+    addTearDown(container.dispose);
+    container.read(providerStatusProvider.notifier).goOnline();
+    container
+        .read(providerLocationSessionProvider.notifier)
+        .install('60000000-0000-4000-8000-000000000006', 42);
+
+    await container
+        .read(availabilityReconciliationControllerProvider)
+        .reconcile(trigger: 'forced_offline_event');
+
+    expect(requests.calls, 1);
+    expect(forcedOffline, 0);
+    expect(store.writes, <bool>[false]);
+    expect(store.shouldBeOnline, isFalse);
+    expect(container.read(providerStatusProvider), DriverStatus.offline);
+    expect(container.read(providerLocationSessionProvider), isNull);
+    expect(
+      container.read(availabilityRestoreNoticeProvider),
+      contains('repeated accepted-work cancellations'),
+    );
   });
 
   test('never changes local busy state', () async {

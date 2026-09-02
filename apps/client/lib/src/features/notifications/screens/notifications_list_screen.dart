@@ -1,75 +1,207 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/local_notification_service.dart';
 import '../providers/notifications_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
-class NotificationsListScreen extends ConsumerWidget {
+class NotificationsListScreen extends ConsumerStatefulWidget {
   const NotificationsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsListScreen> createState() =>
+      _NotificationsListScreenState();
+}
+
+class _NotificationsListScreenState
+    extends ConsumerState<NotificationsListScreen> {
+  late DateTime _now;
+  Timer? _relativeTimeTimer;
+  final Set<String> _actionsInFlight = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    // Relative labels remain correct while the inbox stays open. This is only
+    // a local rebuild; it makes no API, map, or Redis calls.
+    _relativeTimeTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _relativeTimeTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openNotification(
+    BuildContext context,
+    Notif notification,
+    ClientInboxAction? action,
+  ) async {
+    ref.read(notifsProvider.notifier).markRead(notification.id);
+    if (action == null) return;
+    if (!_actionsInFlight.add(notification.id)) return;
+    try {
+      if (action.route == '/notifications') return;
+      if (clientRouteUsesPrimaryShell(action.route)) {
+        // The primary tab shell already exists below this root-level inbox.
+        // Select its branch instead of pushing a duplicate shell page.
+        context.go(
+          clientInboxShellActionRoute(
+            action.route,
+            returnTo: clientNotificationInboxOrigin(
+              GoRouterState.of(context).uri,
+            ),
+          ),
+          extra: action.extra,
+        );
+        return;
+      }
+      // Detail destinations are root routes, so preserve the in-app inbox
+      // beneath them and allow Back to return to the exact prior screen.
+      await context.push<void>(action.route, extra: action.extra);
+    } finally {
+      _actionsInFlight.remove(notification.id);
+    }
+  }
+
+  void _goBack(
+    BuildContext context, {
+    required bool openedFromTray,
+  }) {
+    final router = GoRouter.maybeOf(context);
+    if (openedFromTray) {
+      router?.go(clientDashboardRoute);
+      return;
+    }
+    if (router?.canPop() == true) {
+      router!.pop();
+      return;
+    }
+    final origin = clientNotificationInboxOrigin(
+      GoRouterState.of(context).uri,
+    );
+    router?.go(origin ?? clientDashboardRoute);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
-    final notifs = ref.watch(notifsProvider);
-    final unread = notifs.where((n) => !n.isRead).length;
+    final notificationsState = ref.watch(notifsProvider);
+    final unread = ref.read(notifsProvider.notifier).unreadCount;
+    final router = GoRouter.maybeOf(context);
+    final openedFromTray = router == null
+        ? false
+        : clientNotificationOpenedFromTray(
+            GoRouterState.of(context).uri,
+          );
 
-    return Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      appBar: AppBar(
-        backgroundColor: MyShopColors.surfaceWhite,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: Row(
-          children: [
-            Text('Notifications',
-                style: TextStyle(
+    return PopScope(
+      // A tray/deep-link can restore the inbox as the root route with no
+      // Navigator history. Intercept that system Back and return to the
+      // Client dashboard. An inbox opened inside the app keeps canPop=true,
+      // so both app-bar and system Back preserve the caller beneath it.
+      canPop: !openedFromTray && (router?.canPop() ?? false),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _goBack(context, openedFromTray: openedFromTray);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: MyShopColors.offWhite,
+        appBar: AppBar(
+          backgroundColor: MyShopColors.surfaceWhite,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => _goBack(context, openedFromTray: openedFromTray),
+          ),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'Notifications',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     color: MyShopColors.textPrimary,
                     fontSize: w * 0.044,
-                    fontWeight: FontWeight.w700)),
-            if (unread > 0) ...[
-              SizedBox(width: w * 0.020),
-              Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
-                decoration: BoxDecoration(
-                  color: MyShopColors.primaryGold,
-                  borderRadius: BorderRadius.circular(20),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                child: Text('$unread',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w700,
-                    )),
               ),
+              if (unread > 0) ...[
+                SizedBox(width: w * 0.020),
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGold,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('$unread',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: w * 0.026,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ),
+              ],
             ],
+          ),
+          actions: [
+            if (unread > 0)
+              IconButton(
+                onPressed: () =>
+                    ref.read(notifsProvider.notifier).markAllRead(),
+                tooltip: 'Mark all read',
+                icon: const Icon(
+                  Icons.done_all_rounded,
+                  color: MyShopColors.primaryGold,
+                ),
+              ),
           ],
         ),
-        actions: [
-          if (unread > 0)
-            TextButton(
-              onPressed: () => ref.read(notifsProvider.notifier).markAllRead(),
-              child: Text('Mark all read',
-                  style: TextStyle(
-                      color: MyShopColors.primaryGold, fontSize: w * 0.032)),
-            ),
-        ],
+        body: notificationsState.when(
+          loading: () => const _LoadingState(),
+          error: (_, __) => _ErrorState(
+            onRetry: () => ref.read(notifsProvider.notifier).reload(),
+            w: w,
+          ),
+          data: (notifications) => RefreshIndicator(
+            onRefresh: () => ref.read(notifsProvider.notifier).reload(),
+            color: MyShopColors.primaryGold,
+            child: notifications.isEmpty
+                ? CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _EmptyState(w: w, h: h),
+                      ),
+                    ],
+                  )
+                : _NotifList(
+                    notifs: notifications,
+                    now: _now,
+                    onTap: (notification, action) => unawaited(
+                      _openNotification(context, notification, action),
+                    ),
+                    w: w,
+                    h: h,
+                  ),
+          ),
+        ),
       ),
-      body: notifs.isEmpty
-          ? _EmptyState(w: w, h: h)
-          : _NotifList(
-              notifs: notifs,
-              onTap: (id) => ref.read(notifsProvider.notifier).markRead(id),
-              w: w,
-              h: h,
-            ),
     );
   }
 }
@@ -78,11 +210,13 @@ class NotificationsListScreen extends ConsumerWidget {
 
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
-  final void Function(String) onTap;
+  final DateTime now;
+  final void Function(Notif, ClientInboxAction?) onTap;
   final double w, h;
 
   const _NotifList({
     required this.notifs,
+    required this.now,
     required this.onTap,
     required this.w,
     required this.h,
@@ -90,27 +224,52 @@ class _NotifList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Group into "Today" and "Earlier"
-    final today = notifs.where((n) => _isToday(n.time)).toList();
-    final earlier = notifs.where((n) => !_isToday(n.time)).toList();
+    // Use the actual local calendar date. The old implementation tried to
+    // infer "today" from strings such as "2 hours ago", so ISO timestamps
+    // from the API incorrectly placed every row under Earlier.
+    final today =
+        notifs.where((n) => clientNotificationIsToday(n, now: now)).toList();
+    final earlier =
+        notifs.where((n) => !clientNotificationIsToday(n, now: now)).toList();
 
     return ListView(
       padding: EdgeInsets.symmetric(vertical: h * 0.010),
       children: [
         if (today.isNotEmpty) ...[
           _GroupLabel(label: 'TODAY', w: w),
-          ...today.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...today.map(
+            (n) => _NotifTile(
+              notif: n,
+              action: clientInboxActionFor(
+                eventType: n.eventType,
+                payload: n.payload,
+              ),
+              now: now,
+              onTap: onTap,
+              w: w,
+              h: h,
+            ),
+          ),
         ],
         if (earlier.isNotEmpty) ...[
           _GroupLabel(label: 'EARLIER', w: w),
-          ...earlier.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
+          ...earlier.map(
+            (n) => _NotifTile(
+              notif: n,
+              action: clientInboxActionFor(
+                eventType: n.eventType,
+                payload: n.payload,
+              ),
+              now: now,
+              onTap: onTap,
+              w: w,
+              h: h,
+            ),
+          ),
         ],
       ],
     );
   }
-
-  static bool _isToday(String time) =>
-      time == 'Just now' || time.contains('min') || time.contains('hour');
 }
 
 class _GroupLabel extends StatelessWidget {
@@ -137,11 +296,15 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
-  final void Function(String) onTap;
+  final ClientInboxAction? action;
+  final DateTime now;
+  final void Function(Notif, ClientInboxAction?) onTap;
   final double w, h;
 
   const _NotifTile({
     required this.notif,
+    required this.action,
+    required this.now,
     required this.onTap,
     required this.w,
     required this.h,
@@ -150,9 +313,11 @@ class _NotifTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (iconData, iconColor, iconBg) = _iconFor(notif.type);
+    final relativeTime = clientNotificationTimeAgo(notif, now: now);
+    final absoluteTime = clientNotificationLocalDateTime(notif);
 
     return InkWell(
-      onTap: () => onTap(notif.id),
+      onTap: () => onTap(notif, action),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding:
@@ -187,7 +352,7 @@ class _NotifTile extends StatelessWidget {
                             )),
                       ),
                       SizedBox(width: w * 0.020),
-                      Text(notif.time,
+                      Text(relativeTime,
                           style: TextStyle(
                               color: MyShopColors.textSecondary,
                               fontSize: w * 0.028)),
@@ -199,6 +364,41 @@ class _NotifTile extends StatelessWidget {
                           color: MyShopColors.textSecondary,
                           fontSize: w * 0.032,
                           height: 1.4)),
+                  if (absoluteTime != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      absoluteTime,
+                      style: TextStyle(
+                        color: MyShopColors.textSecondary.withAlpha(180),
+                        fontSize: w * 0.027,
+                      ),
+                    ),
+                  ],
+                  if (action case final action?) ...[
+                    SizedBox(height: h * 0.008),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        key: ValueKey('client-notification-action-${notif.id}'),
+                        onPressed: () => onTap(notif, action),
+                        style: TextButton.styleFrom(
+                          foregroundColor: MyShopColors.primaryGold,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: w * 0.020,
+                            vertical: h * 0.004,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          textStyle: TextStyle(
+                            fontSize: w * 0.031,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: Text(action.label),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -244,12 +444,78 @@ class _NotifTile extends StatelessWidget {
             MyShopColors.error,
             MyShopColors.errorLight
           ),
+        NotifType.announcement => (
+            Icons.campaign_rounded,
+            MyShopColors.primaryGold,
+            MyShopColors.primaryGoldLight
+          ),
         NotifType.system => (
             Icons.notifications_rounded,
             MyShopColors.darkSlate,
             MyShopColors.surfaceGrey
           ),
       };
+}
+
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(color: MyShopColors.primaryGold),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.onRetry, required this.w});
+
+  final VoidCallback onRetry;
+  final double w;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(w * 0.08),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              color: MyShopColors.textSecondary,
+              size: w * 0.12,
+            ),
+            SizedBox(height: w * 0.04),
+            Text(
+              'Could not load notifications',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.040,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: w * 0.02),
+            Text(
+              'Check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textSecondary,
+                fontSize: w * 0.032,
+              ),
+            ),
+            SizedBox(height: w * 0.05),
+            FilledButton(
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────────

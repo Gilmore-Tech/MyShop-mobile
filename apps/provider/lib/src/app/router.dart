@@ -11,6 +11,7 @@ import '../core/providers/background_location_sync_provider.dart';
 import '../core/di/providers.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
+import '../core/services/local_notification_service.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
 import '../features/artisan_home/providers/active_job_provider.dart';
@@ -28,6 +29,7 @@ import '../features/artisan_home/screens/supplement_request_screen.dart';
 import '../features/calls/screens/in_app_call_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
+import '../features/notifications/providers/notifications_provider.dart';
 import '../features/notifications/screens/notifications_list_screen.dart';
 import '../features/safety/screens/emergency_screen.dart';
 import '../features/artisan_home/screens/artisan_home_screen.dart';
@@ -1393,12 +1395,14 @@ class _DriverShellState extends ConsumerState<_DriverShell>
 
   String? _lastVerificationRefreshLocation;
   bool _verificationRefreshQueued = false;
+  bool _pendingNotificationReadQueued = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scheduleVerificationRefresh(force: true);
+    _schedulePendingNotificationReadConsumption();
   }
 
   @override
@@ -1411,7 +1415,26 @@ class _DriverShellState extends ConsumerState<_DriverShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _scheduleVerificationRefresh(force: true);
+      unawaited(ref.read(providerNotifsProvider.notifier).reload());
+      _schedulePendingNotificationReadConsumption();
     }
+  }
+
+  void _schedulePendingNotificationReadConsumption() {
+    if (_pendingNotificationReadQueued) return;
+    _pendingNotificationReadQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _pendingNotificationReadQueued = false;
+        return;
+      }
+      unawaited(
+        ref
+            .read(consumePendingProviderNotificationReadProvider)()
+            .catchError((Object _, StackTrace __) {})
+            .whenComplete(() => _pendingNotificationReadQueued = false),
+      );
+    });
   }
 
   int _currentIndex(String location) {
@@ -1471,6 +1494,11 @@ class _DriverShellState extends ConsumerState<_DriverShell>
 
   @override
   Widget build(BuildContext context) {
+    // Keep one notification snapshot alive while the authenticated shell is
+    // mounted. Header bells then share the same unread total across tab
+    // switches instead of each tab disposing and refetching its own state.
+    ref.watch(providerNotifsProvider);
+
     // Activate the Socket.IO connection manager — connects/disconnects
     // automatically when the provider toggles online/offline.
     ref.watch(socketConnectionProvider);
@@ -1492,14 +1520,17 @@ class _DriverShellState extends ConsumerState<_DriverShell>
     // home-screen "HOURS" stat reflects today's real total.
     ref.watch(onlineSessionRecorderProvider);
 
-    final location = GoRouterState.of(context).uri.path;
+    final uri = GoRouterState.of(context).uri;
+    final location = uri.path;
     _scheduleVerificationRefresh(location: location);
 
     final currentIndex = _currentIndex(location);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final badges = ref.watch(navBadgeProvider);
 
-    return Scaffold(
+    final openedFromNotification =
+        providerPrimaryShellOpenedFromNotification(uri);
+    final shell = Scaffold(
       body: IncomingRequestListener(child: widget.child),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -1585,6 +1616,15 @@ class _DriverShellState extends ConsumerState<_DriverShell>
           ),
         ),
       ),
+    );
+    return PopScope(
+      canPop: !openedFromNotification,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && openedFromNotification) {
+          context.go(providerNotificationShellBackRoute(uri));
+        }
+      },
+      child: shell,
     );
   }
 }

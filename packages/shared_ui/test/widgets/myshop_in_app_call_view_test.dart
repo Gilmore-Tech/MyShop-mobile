@@ -8,6 +8,8 @@ void main() {
     bool isLoading = false,
     VoidCallback? onAccept,
     VoidCallback? onDecline,
+    bool showRetry = false,
+    VoidCallback? onRetry,
   }) {
     return MaterialApp(
       home: MyShopInAppCallView(
@@ -24,37 +26,42 @@ void main() {
         onToggleMuted: () {},
         onToggleSpeaker: () {},
         onEndCall: () {},
+        showRetryConnection: showRetry,
+        onRetryConnection: onRetry,
       ),
     );
   }
 
-  testWidgets('shows explicit accept and decline controls for an incoming call',
-      (tester) async {
-    var accepted = false;
-    var declined = false;
-    await tester.pumpWidget(
-      buildView(
-        incomingRinging: true,
-        onAccept: () => accepted = true,
-        onDecline: () => declined = true,
-      ),
-    );
+  testWidgets(
+    'shows explicit accept and decline controls for an incoming call',
+    (tester) async {
+      var accepted = false;
+      var declined = false;
+      await tester.pumpWidget(
+        buildView(
+          incomingRinging: true,
+          onAccept: () => accepted = true,
+          onDecline: () => declined = true,
+        ),
+      );
 
-    expect(find.text('Accept'), findsOneWidget);
-    expect(find.text('Decline'), findsOneWidget);
-    expect(find.byTooltip('Mute'), findsNothing);
+      expect(find.text('Accept'), findsOneWidget);
+      expect(find.text('Decline'), findsOneWidget);
+      expect(find.byTooltip('Mute'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.call_rounded));
-    await tester.pump();
-    expect(accepted, isTrue);
+      await tester.tap(find.byIcon(Icons.call_rounded));
+      await tester.pump();
+      expect(accepted, isTrue);
 
-    await tester.tap(find.byIcon(Icons.call_end_rounded));
-    await tester.pump();
-    expect(declined, isTrue);
-  });
+      await tester.tap(find.byIcon(Icons.call_end_rounded));
+      await tester.pump();
+      expect(declined, isTrue);
+    },
+  );
 
-  testWidgets('shows media controls for an outgoing or connected call',
-      (tester) async {
+  testWidgets('shows media controls for an outgoing or connected call', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildView(incomingRinging: false));
 
     expect(find.text('Accept'), findsNothing);
@@ -64,11 +71,10 @@ void main() {
     expect(find.byTooltip('End call'), findsOneWidget);
   });
 
-  testWidgets('hides call actions while the session is loading',
-      (tester) async {
-    await tester.pumpWidget(
-      buildView(incomingRinging: false, isLoading: true),
-    );
+  testWidgets('hides call actions while the session is loading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildView(incomingRinging: false, isLoading: true));
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Accept'), findsNothing);
@@ -76,5 +82,23 @@ void main() {
     expect(find.byTooltip('Mute'), findsNothing);
     expect(find.byTooltip('End call'), findsNothing);
     expect(find.byTooltip('Speaker'), findsNothing);
+  });
+
+  testWidgets('offers an explicit audio retry after connection failure', (
+    tester,
+  ) async {
+    var retried = false;
+    await tester.pumpWidget(
+      buildView(
+        incomingRinging: false,
+        showRetry: true,
+        onRetry: () => retried = true,
+      ),
+    );
+
+    expect(find.text('Retry audio'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('retry-call-audio-button')));
+    await tester.pump();
+    expect(retried, isTrue);
   });
 }

@@ -4,7 +4,7 @@ import 'dart:developer' as developer;
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart'
-    show RideToll, kFreeWaitAtPickupSeconds;
+    show RideRouteUpdate, RideToll, kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -257,6 +257,41 @@ class MatchedDriver {
   String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get activeFareDisplay => _fmt(activeFarePesewas);
+
+  MatchedDriver copyWith({
+    double? distanceKm,
+    int? confirmedFarePesewas,
+    int? promoDiscountPesewas,
+    RideToll? toll,
+    bool replaceRouteDiscounts = false,
+  }) {
+    return MatchedDriver(
+      name: name,
+      vehicle: vehicle,
+      plateNumber: plateNumber,
+      rating: rating,
+      minutesAway: minutesAway,
+      driversAvailable: driversAvailable,
+      tripCount: tripCount,
+      isVerified: isVerified,
+      isPoliceChecked: isPoliceChecked,
+      phone: phone,
+      vehicleTier: vehicleTier,
+      baseFarePesewas: baseFarePesewas,
+      distanceFarePesewas: distanceFarePesewas,
+      distanceKm: distanceKm ?? this.distanceKm,
+      bookingFeePesewas: bookingFeePesewas,
+      promoDiscountPesewas: replaceRouteDiscounts
+          ? (promoDiscountPesewas ?? 0)
+          : this.promoDiscountPesewas,
+      loyaltyDiscountPesewas: loyaltyDiscountPesewas,
+      toll: replaceRouteDiscounts ? toll : (toll ?? this.toll),
+      vehicleShortName: vehicleShortName,
+      confirmedFarePesewas: confirmedFarePesewas ?? this.confirmedFarePesewas,
+      paymentMethod: paymentMethod,
+      photoUrl: photoUrl,
+    );
+  }
 }
 
 class RideFareFields {
@@ -763,6 +798,19 @@ final bookingPhaseProvider =
 /// driver-matching screen so the rider sees what went wrong.
 final bookingFailureMessageProvider = StateProvider<String?>((_) => null);
 
+/// Governs how the matching failure screen may be dismissed.
+///
+/// [cancellationRequired] is the fail-closed default: a ride may exist on the
+/// server, so leaving matching must first cancel it and reconcile the result.
+/// [noRideCreated] is set only for a definitive, non-ambiguous pre-create
+/// `NO_DRIVERS_AVAILABLE` response. In that one case there is no server ride
+/// to cancel and the client may safely clear its local request state.
+enum BookingFailureExitMode { cancellationRequired, noRideCreated }
+
+final bookingFailureExitModeProvider = StateProvider<BookingFailureExitMode>(
+  (_) => BookingFailureExitMode.cancellationRequired,
+);
+
 /// Why the backend just (re-)dispatched. Drives the rider's matching screen
 /// copy: 'initial' → "Notifying N driver(s)…"; 'decline' → "Driver declined,
 /// searching again"; 'timeout' → "Driver didn't respond, expanding search".
@@ -1052,6 +1100,56 @@ final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
 /// The ID of the active ride returned by POST /rides.
 final activeRideIdProvider = StateProvider<String?>((_) => null);
 
+/// Latest complete destination/route projection applied for the active ride.
+/// The revision fence is shared by REST confirmation, Socket.IO and push
+/// recovery so an older event can never roll the map back.
+final activeRideRouteUpdateProvider =
+    StateProvider<RideRouteUpdate?>((_) => null);
+
+bool applyActiveRideRouteUpdate(
+  RideStateReader read,
+  RideRouteUpdate update,
+) {
+  if (read(activeRideIdProvider) != update.rideId ||
+      !update.hasRouteProjection) {
+    return false;
+  }
+  final current = read(activeRideRouteUpdateProvider);
+  if (current != null &&
+      current.rideId == update.rideId &&
+      update.routeRevision <= current.routeRevision) {
+    return false;
+  }
+
+  final destination = update.destination!;
+  read(rideSearchProvider.notifier).setLocation(
+    RideSearchField.destination,
+    RideLocation(
+      name: destination.address,
+      address: destination.address,
+      lat: destination.lat,
+      lng: destination.lng,
+    ),
+  );
+  read(rideSearchProvider.notifier).markSubmitted();
+
+  final matched = read(matchedDriverProvider);
+  if (matched != null) {
+    final distanceMeters = update.projectedDistanceMeters;
+    read(matchedDriverProvider.notifier).state = matched.copyWith(
+      confirmedFarePesewas:
+          update.clientPayableEstimatePesewas ?? update.estimatedFarePesewas,
+      distanceKm:
+          distanceMeters == null ? null : distanceMeters.toDouble() / 1000,
+      promoDiscountPesewas: update.promo?.discountPesewas,
+      toll: update.toll,
+      replaceRouteDiscounts: true,
+    );
+  }
+  read(activeRideRouteUpdateProvider.notifier).state = update;
+  return true;
+}
+
 /// Countdown timer (seconds remaining during search phase). Sized to cover
 /// the backend's full BR-39 matching budget: five minutes in which a new
 /// delivery attempt may start, the final timely recipient's fresh 30-second
@@ -1266,6 +1364,8 @@ Future<void> requestRideAndMatchDriver(
   ref.read(searchCountdownProvider.notifier).reset();
   ref.read(rideMatchedViaSocketProvider.notifier).state = false;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
+  ref.read(bookingFailureExitModeProvider.notifier).state =
+      BookingFailureExitMode.cancellationRequired;
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(rideOfferDecisionCountdownProvider.notifier).clear();
@@ -1273,8 +1373,13 @@ Future<void> requestRideAndMatchDriver(
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(rideArrivalAnchorProvider.notifier).state = null;
 
-  void failWith(String message) {
+  void failWith(
+    String message, {
+    BookingFailureExitMode exitMode =
+        BookingFailureExitMode.cancellationRequired,
+  }) {
     ref.read(bookingFailureMessageProvider.notifier).state = message;
+    ref.read(bookingFailureExitModeProvider.notifier).state = exitMode;
     ref.read(bookingPhaseProvider.notifier).fail();
   }
 
@@ -1412,7 +1517,12 @@ Future<void> requestRideAndMatchDriver(
       // (undiscounted) price when the rider returns to book again.
       ref.invalidate(fareEstimateProvider);
     }
-    failWith(rideRequestErrorMessage(e));
+    failWith(
+      rideRequestErrorMessage(e),
+      exitMode: isDefinitiveNoDriversPreCreateFailure(e)
+          ? BookingFailureExitMode.noRideCreated
+          : BookingFailureExitMode.cancellationRequired,
+    );
     return;
   } catch (e) {
     developer.log(
@@ -1556,6 +1666,7 @@ typedef RideStateReader = T Function<T>(ProviderListenable<T>);
 /// circular import between the active-ride and edit-trip provider modules.
 void clearRideRequestDraft(RideStateReader read) {
   read(rideSearchProvider.notifier).reset();
+  read(activeRideRouteUpdateProvider.notifier).state = null;
   read(selectedVehicleProvider.notifier).state = '';
   final epoch = read(rideRequestDraftResetEpochProvider);
   read(rideRequestDraftResetEpochProvider.notifier).state = epoch + 1;
@@ -1652,6 +1763,18 @@ Future<void> _hydrateFromRest(
         name: 'RideProvider',
       );
       return;
+    }
+    try {
+      applyActiveRideRouteUpdate(
+        read,
+        RideRouteUpdate.fromRideJson(json),
+      );
+    } on FormatException catch (error) {
+      developer.log(
+        'Ride route projection unavailable: $error',
+        name: 'RideProvider',
+        level: 800,
+      );
     }
     final status = json['status'] as String? ?? '';
     final cancelledBy = json['cancelledBy'] as String?;
@@ -1889,17 +2012,57 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
     ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
     return false;
   }
+  _resetLocalRideMatchingState(ref);
+  return true;
+}
+
+/// Dismisses a terminal matching failure without weakening cancellation
+/// authority for a real or potentially-real ride.
+///
+/// A definitive pre-create no-driver response has no ride id because the
+/// backend rejected the request before committing a row. Calling the cancel
+/// endpoint in that state can never succeed and used to trap the rider on the
+/// failure screen. Every other failure still follows the authoritative
+/// cancel/read-back path.
+Future<bool> dismissFailedRideRequest(ProviderContainer ref) async {
+  final rideId = ref.read(activeRideIdProvider);
+  final canResetLocally =
+      ref.read(bookingPhaseProvider) == BookingPhase.failed &&
+          ref.read(bookingFailureExitModeProvider) ==
+              BookingFailureExitMode.noRideCreated &&
+          (rideId == null || rideId.isEmpty);
+
+  if (!canResetLocally) {
+    final cancelled = await cancelInFlightRideRequest(ref);
+    if (cancelled) clearRideRequestDraft(ref.read);
+    return cancelled;
+  }
+
+  // RideBookingCoordinator already clears the exact key for definitive 4xx
+  // responses. Awaiting a second idempotent clear here makes the UI boundary
+  // self-contained and guarantees a retry cannot inherit stale local state.
+  await ref.read(rideBookingAttemptStoreProvider).clear();
+  _resetLocalRideMatchingState(ref);
+  clearRideRequestDraft(ref.read);
+  return true;
+}
+
+void _resetLocalRideMatchingState(ProviderContainer ref) {
   ref.read(activeRideIdProvider.notifier).state = null;
+  ref.read(activeRideRouteUpdateProvider.notifier).state = null;
   ref.read(matchedDriverProvider.notifier).state = null;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
+  ref.read(bookingFailureExitModeProvider.notifier).state =
+      BookingFailureExitMode.cancellationRequired;
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(rideOfferDecisionCountdownProvider.notifier).clear();
+  ref.read(searchCountdownProvider.notifier).reset();
+  ref.read(rideMatchedViaSocketProvider.notifier).state = false;
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(rideArrivalAnchorProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
   ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
-  return true;
 }
 
 DateTime? _dateFromJson(dynamic value) {

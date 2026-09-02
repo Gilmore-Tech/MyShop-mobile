@@ -1,4 +1,5 @@
 import 'package:api_client/api_client.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:myshop_provider/src/features/auth/data/auth_repository.dart';
@@ -33,7 +34,6 @@ DriverRegistrationDraft _completeDriverDraft(String fullName) =>
     DriverRegistrationDraft(
       fullName: fullName,
       email: 'driver@example.com',
-      ghanaCardNumber: 'GHA-123456789-0',
       vehicleMake: 'Toyota',
       vehicleModel: 'Corolla',
       vehicleYear: '2020',
@@ -46,9 +46,7 @@ ArtisanRegistrationDraft _completeArtisanDraft(String fullName) =>
     ArtisanRegistrationDraft(
       fullName: fullName,
       email: 'artisan@example.com',
-      ghanaCardNumber: 'GHA-123456789-0',
       businessName: 'Plumbing Services',
-      tradeCategory: 'Plumber',
       serviceCategories: const ['11111111-1111-4111-8111-111111111111'],
     );
 
@@ -64,24 +62,56 @@ void main() {
     );
   });
 
+  test('legal acceptance is isolated between provider roles', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container.read(termsAcceptedProvider(ProviderType.driver).notifier).state =
+        true;
+    container
+        .read(privacyAcceptedProvider(ProviderType.driver).notifier)
+        .state = true;
+
+    expect(
+      container.read(policyAcceptedProvider(ProviderType.driver)),
+      isTrue,
+    );
+    expect(
+      container.read(policyAcceptedProvider(ProviderType.artisan)),
+      isFalse,
+    );
+  });
+
   test('final draft validation identifies the first section to correct', () {
     final incompleteDriver = DriverRegistrationDraft(
       fullName: 'Kofi Mensah',
       email: 'kofi@example.com',
-      ghanaCardNumber: 'GHA-123456789-0',
       rideCategories: const ['regular'],
     );
     final validArtisan = ArtisanRegistrationDraft(
       fullName: 'Ama Mensah',
       email: 'ama@example.com',
-      ghanaCardNumber: 'GHA-123456789-0',
       businessName: 'Ama Plumbing',
-      tradeCategory: 'Plumber',
       serviceCategories: const ['11111111-1111-4111-8111-111111111111'],
     );
 
     expect(firstDriverRegistrationIssue(incompleteDriver)?.step, 1);
     expect(firstArtisanRegistrationIssue(validArtisan), isNull);
+    expect(
+      firstDriverRegistrationIssue(
+        _completeDriverDraft('Kofi Mensah').copyWith(email: ''),
+      )?.step,
+      0,
+    );
+    expect(
+      firstArtisanRegistrationIssue(
+        _completeArtisanDraft('Ama Mensah').copyWith(email: ''),
+      )?.step,
+      0,
+    );
+    expect(validateRegistrationEmail('   '), isNotNull);
+    expect(validateRegistrationEmail('  driver@example.com  '), isNull);
+    expect(validateRegistrationEmail('not-an-email'), isNotNull);
     expect(validateOptionalReferralCode(''), isNull);
   });
 
@@ -136,6 +166,27 @@ void main() {
     );
     expect(
       registrationCorrectionForErrorCode(
+        'SIGNUP_ATTRIBUTION_ALREADY_LINKED',
+        ProviderType.artisan,
+      )?.step,
+      0,
+    );
+    expect(
+      registrationCorrectionForFieldErrors(
+        const {'vehicleYear': 'Check this field and try again.'},
+        ProviderType.driver,
+      )?.step,
+      1,
+    );
+    expect(
+      registrationCorrectionForFieldErrors(
+        const {'legalAcceptances': 'Check this field and try again.'},
+        ProviderType.artisan,
+      )?.step,
+      3,
+    );
+    expect(
+      registrationCorrectionForErrorCode(
         'INVALID_VEHICLE_PLATE',
         ProviderType.driver,
       )?.step,
@@ -171,7 +222,8 @@ void main() {
     );
   });
 
-  test('controller preserves correction code and safe support reference',
+  test(
+      'controller preserves correction code without using a support UUID as field copy',
       () async {
     final repository = _MockAuthRepository();
     final controller = AuthController(
@@ -201,7 +253,8 @@ void main() {
     final state = controller.state as AuthUnauthenticated;
     expect(state.errorCode, 'INVALID_RIDE_CATEGORY');
     expect(state.error, contains('no longer available'));
-    expect(state.error, contains('15286d11-fceb-43e6-ac0e-41f96d9a1b77'));
+    expect(
+        state.error, isNot(contains('15286d11-fceb-43e6-ac0e-41f96d9a1b77')));
     expect(state.error, isNot(contains('inactive database category')));
   });
 

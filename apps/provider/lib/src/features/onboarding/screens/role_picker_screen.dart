@@ -39,6 +39,12 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
     if (widget.isSignIn) {
       context.go('/signin/phone');
     } else {
+      // This is a new role-registration review. Legal acknowledgement is
+      // intentionally not shared across roles or carried from an abandoned
+      // attempt, even when both roles use the same device.
+      ref.read(termsAcceptedProvider(role).notifier).state = false;
+      ref.read(privacyAcceptedProvider(role).notifier).state = false;
+      ref.read(showRegistrationErrorsProvider.notifier).state = false;
       context.go(role.isDriver ? '/signup/driver' : '/signup/artisan');
     }
   }

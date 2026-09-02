@@ -147,6 +147,10 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
                     ),
                   ),
                   errorText: error,
+                  // Authentication guidance is intentionally concise, but it
+                  // still needs enough room on compact devices and at larger
+                  // text scales. Do not collapse it back to a one-line code.
+                  errorMaxLines: 5,
                 ),
                 style: const TextStyle(
                   fontFamily: 'Raleway',

@@ -23,6 +23,7 @@ class NotificationPayload {
   static const keyBookingId = 'bookingId';
   static const keyCallId = 'callId';
   static const keyExpiresAt = 'expiresAt';
+  static const keyDestination = 'destination';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_submitted`, `chat.message`).
@@ -48,6 +49,9 @@ class NotificationPayload {
 
   /// Ride was cancelled by the driver or the system.
   static const typeRideCancelled = 'ride_cancelled';
+
+  /// Rider-confirmed destination and route revision changed.
+  static const typeRideDestinationChanged = 'ride_destination_changed';
 
   // ── Job / artisan timeline (client-targeted) ─────────────────────────────
   /// A new bid was submitted on the rider's open job.
@@ -128,6 +132,10 @@ class NotificationPayload {
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
+  /// Admin-authored push campaign. Its destination is resolved through the
+  /// local allowlist in [clientAnnouncementRoute].
+  static const typeAnnouncement = 'announcement';
+
   /// In-app voice call fallback. iOS should route this through CallKit when
   /// Flutter receives it; background/locked iOS must still rely on PushKit.
   static const typeCallIncoming = 'call_incoming';
@@ -167,6 +175,387 @@ class NotificationPayload {
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
   /// conversational pings — time-sensitive but not call-style.
   static const Set<String> chatTypes = {typeNewMessage};
+}
+
+/// Resolves an admin announcement destination without ever trusting a remote
+/// path. App-store campaigns fall back to the inbox until the payload contract
+/// includes a separately validated store URL.
+String clientAnnouncementRoute(Object? rawDestination) {
+  final destination = rawDestination?.toString().trim().toLowerCase();
+  return switch (destination) {
+    'activity' => '/activity',
+    'support' => '/profile/support',
+    'promotions' => '/home',
+    'notifications' || 'app_store' => '/notifications',
+    _ => '/notifications',
+  };
+}
+
+const clientDashboardRoute = '/home';
+const clientNotificationInboxRoute = '/notifications';
+const clientTraySourceQueryKey = 'source';
+const clientTraySourceQueryValue = 'tray';
+const _clientInboxActionSourceQueryValue = 'notification_action';
+const _clientInboxOriginQueryKey = 'origin';
+
+String? _clientPrimaryShellRouteForToken(String? token) {
+  final route = token == null || token.isEmpty ? null : '/$token';
+  return route != null && clientRouteUsesPrimaryShell(route) ? route : null;
+}
+
+/// Builds an in-app inbox route that remembers the primary tab underneath it.
+/// Only local shell-route tokens are retained; arbitrary payload routes never
+/// enter the navigation stack.
+String clientInAppNotificationInboxRoute(Uri origin) {
+  final returnRoute = clientRouteUsesPrimaryShell(origin.path)
+      ? origin.path
+      : clientDashboardRoute;
+  return Uri(
+    path: clientNotificationInboxRoute,
+    queryParameters: {
+      _clientInboxOriginQueryKey: returnRoute.substring(1),
+    },
+  ).toString();
+}
+
+String? clientNotificationInboxOrigin(Uri uri) =>
+    _clientPrimaryShellRouteForToken(
+      uri.queryParameters[_clientInboxOriginQueryKey],
+    );
+
+/// Marks an inbox destination as originating from an operating-system tray
+/// tap. The marker lets the inbox return to the Client dashboard even if a
+/// platform resume or duplicate callback reconstructs an unexpected stack.
+String clientTrayDestinationRoute(String destinationRoute) {
+  final uri = Uri.tryParse(destinationRoute);
+  if (uri == null ||
+      (uri.path != clientNotificationInboxRoute &&
+          !clientRouteUsesPrimaryShell(destinationRoute)) ||
+      uri.path == clientDashboardRoute) {
+    return destinationRoute;
+  }
+  return uri.replace(
+    queryParameters: <String, String>{
+      ...uri.queryParameters,
+      clientTraySourceQueryKey: clientTraySourceQueryValue,
+    },
+  ).toString();
+}
+
+bool clientNotificationOpenedFromTray(Uri uri) =>
+    uri.path == clientNotificationInboxRoute &&
+    uri.queryParameters[clientTraySourceQueryKey] == clientTraySourceQueryValue;
+
+/// Tags an indexed-shell tab selected by an in-app inbox action so system
+/// Back has an explicit return destination after the safe `go()` transition.
+String clientInboxShellActionRoute(
+  String destinationRoute, {
+  String? returnTo,
+}) {
+  final uri = Uri.tryParse(destinationRoute);
+  if (uri == null || !clientRouteUsesPrimaryShell(destinationRoute)) {
+    return destinationRoute;
+  }
+  final returnRoute = Uri.tryParse(returnTo ?? '')?.path;
+  final returnToken =
+      returnRoute != null && clientRouteUsesPrimaryShell(returnRoute)
+          ? returnRoute.substring(1)
+          : null;
+  return uri.replace(
+    queryParameters: <String, String>{
+      ...uri.queryParameters,
+      clientTraySourceQueryKey: _clientInboxActionSourceQueryValue,
+      if (returnToken != null) _clientInboxOriginQueryKey: returnToken,
+    },
+  ).toString();
+}
+
+bool clientPrimaryShellOpenedFromNotification(Uri uri) {
+  if (!clientRouteUsesPrimaryShell(uri.path)) return false;
+  final source = uri.queryParameters[clientTraySourceQueryKey];
+  if (source == _clientInboxActionSourceQueryValue) return true;
+  return source == clientTraySourceQueryValue &&
+      uri.path != clientDashboardRoute;
+}
+
+String clientNotificationShellBackRoute(Uri uri) {
+  if (uri.queryParameters[clientTraySourceQueryKey] !=
+      _clientInboxActionSourceQueryValue) {
+    return clientDashboardRoute;
+  }
+  final origin = clientNotificationInboxOrigin(uri);
+  return origin == null
+      ? clientNotificationInboxRoute
+      : clientInAppNotificationInboxRoute(Uri(path: origin));
+}
+
+/// Primary-tab destinations already live inside the Client's indexed shell.
+/// They must be selected with `go`, never pushed above another root route,
+/// otherwise GoRouter can build the same StatefulShellRoute page twice and
+/// strand both the action and Back navigation.
+bool clientRouteUsesPrimaryShell(String route) => const {
+      '/home',
+      '/services',
+      '/activity',
+      '/profile',
+    }.contains(Uri.tryParse(route)?.path);
+
+/// A system-tray tap starts a fresh navigation intent. Seed the authenticated
+/// dashboard before presenting the destination so Back has a deterministic,
+/// safe place to return to. In-app inbox taps do not use this stack; they push
+/// onto the user's existing navigation history instead.
+List<String> clientTrayNavigationStack(String destinationRoute) {
+  if (clientRouteUsesPrimaryShell(destinationRoute)) {
+    return [clientTrayDestinationRoute(destinationRoute)];
+  }
+  return [clientDashboardRoute, clientTrayDestinationRoute(destinationRoute)];
+}
+
+/// The only operations an inbox row may expose to the Client UI.
+///
+/// [rating] stays distinct because it opens the app's existing trusted rating
+/// context rather than accepting a remotely supplied route or modal contract.
+enum ClientInboxActionKind { route, rating }
+
+@immutable
+class ClientInboxAction {
+  const ClientInboxAction({
+    required this.kind,
+    required this.label,
+    required this.route,
+    this.extra,
+  });
+
+  final ClientInboxActionKind kind;
+  final String label;
+  final String route;
+  final Map<String, Object?>? extra;
+}
+
+final RegExp _clientInboxUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
+
+String? _clientInboxEntityId(
+  Map<String, dynamic> payload,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = payload[key]?.toString().trim();
+    if (value != null && _clientInboxUuidPattern.hasMatch(value)) return value;
+  }
+  return null;
+}
+
+ClientInboxAction _clientInboxRoute(String label, String route) =>
+    ClientInboxAction(
+      kind: ClientInboxActionKind.route,
+      label: label,
+      route: route,
+    );
+
+/// Resolves one optional, locally allowlisted CTA for a Client inbox row.
+///
+/// Remote route fields are deliberately ignored. Dynamic paths are returned
+/// only after their ids pass UUID validation; unknown events remain
+/// informational and therefore return null.
+ClientInboxAction? clientInboxActionFor({
+  required String eventType,
+  Map<String, dynamic> payload = const {},
+}) {
+  final type = NotificationPayload.normaliseType(
+    eventType.trim().toLowerCase(),
+  ).replaceAll('-', '_');
+
+  if (type == NotificationPayload.typeAnnouncement) {
+    final route = clientAnnouncementRoute(
+      payload[NotificationPayload.keyDestination],
+    );
+    return switch (route) {
+      '/activity' => _clientInboxRoute('View activity', route),
+      '/profile/support' => _clientInboxRoute('Get support', route),
+      '/home' => _clientInboxRoute('View promotions', route),
+      _ => null,
+    };
+  }
+
+  if (type == NotificationPayload.typeSupportTicketMessage ||
+      type == NotificationPayload.typeSupportTicketStatusChanged) {
+    final ticketId = _clientInboxEntityId(
+      payload,
+      const [NotificationPayload.keyTicketId, 'ticket_id'],
+    );
+    return ticketId == null
+        ? _clientInboxRoute('View support', '/profile/support/tickets')
+        : _clientInboxRoute(
+            type == NotificationPayload.typeSupportTicketMessage
+                ? 'View & reply'
+                : 'View ticket',
+            '/profile/support/tickets/$ticketId',
+          );
+  }
+
+  if (type == NotificationPayload.typeRatingPrompt) {
+    final bookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (bookingType != 'ride' &&
+        bookingType != 'job' &&
+        bookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _clientInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (bookingType == 'ride') NotificationPayload.keyRideId,
+        if (bookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    if (bookingId == null) return null;
+    return ClientInboxAction(
+      kind: ClientInboxActionKind.rating,
+      label: 'Rate now',
+      route: bookingType == 'ride'
+          ? '/ride/$bookingId/receipt'
+          : '/services/job/$bookingId/complete',
+    );
+  }
+
+  if (type == NotificationPayload.typeNewMessage || type == 'chat_message') {
+    final rawBookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (rawBookingType != 'ride' &&
+        rawBookingType != 'job' &&
+        rawBookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _clientInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (rawBookingType == 'ride') NotificationPayload.keyRideId,
+        if (rawBookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    if (bookingId == null) return null;
+    return ClientInboxAction(
+      kind: ClientInboxActionKind.route,
+      label: 'View message',
+      route: '/chat',
+      extra: <String, Object?>{
+        'bookingType': rawBookingType == 'ride' ? 'ride' : 'artisan_job',
+        'bookingId': bookingId,
+      },
+    );
+  }
+
+  // Current persisted payment alerts carry only paymentId or disputeId. The
+  // mobile router has no payment-by-id/dispute-by-id destination, and opening
+  // generic Activity cannot resume an insufficient-balance retry. Keep these
+  // rows informational until the backend includes authoritative booking
+  // context (or a dedicated validated payment destination exists).
+  if (const {
+    NotificationPayload.typePaymentConfirmed,
+    'payment_dispute_resolved',
+    'payment_dispute_refund_approved',
+    'payment_refund_processed',
+    'payment_refund_delayed',
+    'payment_insufficient_balance',
+  }.contains(type)) {
+    return null;
+  }
+
+  final rideId = _clientInboxEntityId(
+    payload,
+    const [
+      NotificationPayload.keyRideId,
+      'ride_id',
+      NotificationPayload.keyBookingId,
+      'booking_id',
+    ],
+  );
+  if (const {
+    NotificationPayload.typeRideDriverAssigned,
+    NotificationPayload.typeRideDriverEnRoute,
+    NotificationPayload.typeRideDriverArrived,
+    NotificationPayload.typeRideInProgress,
+    NotificationPayload.typeRideDestinationChanged,
+    NotificationPayload.typeRideCancelled,
+    'ride_provider_location_unavailable',
+    'ride_provider_location_degraded_escalated',
+  }.contains(type)) {
+    return rideId == null
+        ? null
+        : _clientInboxRoute('View ride', '/activity/ride/$rideId');
+  }
+  if (type == NotificationPayload.typeRideCompleted || type == 'ride_settled') {
+    return rideId == null
+        ? null
+        : _clientInboxRoute('View receipt', '/ride/$rideId/receipt');
+  }
+
+  final jobId = _clientInboxEntityId(
+    payload,
+    const [
+      NotificationPayload.keyJobId,
+      'job_id',
+      NotificationPayload.keyBookingId,
+      'booking_id',
+    ],
+  );
+  if (type == NotificationPayload.typeJobSupplementRequested) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute(
+            'Review supplement',
+            '/services/job/$jobId/supplement',
+          );
+  }
+  if (const {
+    NotificationPayload.typeJobArtisanEnRoute,
+    NotificationPayload.typeJobArtisanArrived,
+    NotificationPayload.typeJobInProgress,
+    NotificationPayload.typeJobMarkedComplete,
+    NotificationPayload.typeJobConfirmCompletionRequested,
+  }.contains(type)) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('Open job', '/services/job/$jobId/active');
+  }
+  if (type == NotificationPayload.typeJobCompleted ||
+      type == NotificationPayload.typeJobForceCompleted) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('View job', '/activity/job/$jobId');
+  }
+  if (const {
+    NotificationPayload.typeJobBidSubmitted,
+    NotificationPayload.typeJobReminder2h,
+    NotificationPayload.typeJobCheckin8h,
+    NotificationPayload.typeJobStale24h,
+    NotificationPayload.typeJobStale48h,
+    NotificationPayload.typeJobNoBidsEscalated,
+    NotificationPayload.typeJobArtisanNoShow,
+    NotificationPayload.typeJobCancelled,
+    NotificationPayload.typeJobCancelledByArtisan,
+    'job_directed_quote_awaiting_accept',
+    'job_directed_assignment_requeued',
+    'job_provider_location_unavailable',
+    'job_provider_location_degraded_escalated',
+  }.contains(type)) {
+    return jobId == null
+        ? null
+        : _clientInboxRoute('View job', '/services/job/$jobId');
+  }
+
+  return null;
 }
 
 /// Thin wrapper around `flutter_local_notifications`. Responsibilities:

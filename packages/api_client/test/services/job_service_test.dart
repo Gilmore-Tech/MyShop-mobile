@@ -34,6 +34,81 @@ void main() {
     expect(capturedRequest.data, {'reason': 'overlay_skip'});
   });
 
+  test('declineJobRequest includes the exact offer identity when present',
+      () async {
+    late RequestOptions capturedRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          capturedRequest = options;
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: const {
+                'success': true,
+                'data': {'acknowledged': true},
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    await JobService(dio).declineJobRequest(
+      'job_123',
+      offerId: ' offer_456 ',
+      reason: 'provider_declined',
+    );
+
+    expect(capturedRequest.path, '/jobs/job_123/decline');
+    expect(capturedRequest.data, {
+      'offerId': 'offer_456',
+      'reason': 'provider_declined',
+    });
+  });
+
+  test('acknowledgeJobOffer uses the exact authenticated receipt endpoint',
+      () async {
+    late RequestOptions capturedRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          capturedRequest = options;
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: const {
+                'success': true,
+                'data': {
+                  'jobId': 'job_123',
+                  'offerId': 'offer_456',
+                  'state': 'active',
+                },
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    final result =
+        await JobService(dio).acknowledgeJobOffer('job_123', 'offer_456');
+
+    expect(capturedRequest.method, 'POST');
+    expect(
+      capturedRequest.path,
+      '/jobs/job_123/offers/offer_456/received',
+    );
+    expect(capturedRequest.data, isNull);
+    expect(result['offerId'], 'offer_456');
+  });
+
   test('disputeJob sends the backend reason/details contract', () async {
     late RequestOptions capturedRequest;
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));

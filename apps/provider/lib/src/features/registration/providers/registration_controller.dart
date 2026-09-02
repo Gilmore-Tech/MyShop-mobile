@@ -15,12 +15,21 @@ final pendingRoleProvider = StateProvider<ProviderType?>((_) => null);
 /// navigating to the next step.
 final showRegistrationErrorsProvider = StateProvider<bool>((_) => false);
 
-final termsAcceptedProvider = StateProvider<bool>((_) => false);
-final privacyAcceptedProvider = StateProvider<bool>((_) => false);
+/// Legal acceptance is scoped to the exact provider role being registered.
+/// A Driver review must never satisfy the separate Artisan registration.
+final termsAcceptedProvider =
+    StateProvider.family<bool, ProviderType>((_, __) => false);
+final privacyAcceptedProvider =
+    StateProvider.family<bool, ProviderType>((_, __) => false);
 
 /// Both exact documents must be accepted independently.
-final policyAcceptedProvider = Provider<bool>((ref) =>
-    ref.watch(termsAcceptedProvider) && ref.watch(privacyAcceptedProvider));
+final policyAcceptedProvider = Provider.family<bool, ProviderType>((ref, role) {
+  return ref.watch(termsAcceptedProvider(role)) &&
+      ref.watch(privacyAcceptedProvider(role));
+});
+
+String? validateRegistrationEmail(String value) =>
+    Validators.email(value.trim());
 
 String? validateOptionalReferralCode(String value) {
   final code = value.trim().toUpperCase();
@@ -52,8 +61,13 @@ RegistrationDraftIssue? registrationCorrectionForErrorCode(
     'SELF_REFERRAL_NOT_ALLOWED',
     'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
     'REFERRAL_ALREADY_LINKED',
+    'INVALID_PLATFORM_REFERRAL_CODE',
+    'PLATFORM_REFERRAL_CODE_INACTIVE',
+    'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
+    'SIGNUP_ATTRIBUTION_ALREADY_LINKED',
     AuthErrorCodes.invalidPersonName,
     'REGISTRATION_RESTART_REQUIRED',
+    AuthErrorCodes.registrationStateChanged,
   }.contains(errorCode)) {
     return const RegistrationDraftIssue(step: 0, message: 'Review profile');
   }
@@ -102,13 +116,75 @@ RegistrationDraftIssue? registrationCorrectionForErrorCode(
   return null;
 }
 
+/// Routes structured backend validation fields back to the wizard section
+/// that owns them. Unknown fields stay on the phone screen rather than
+/// guessing and sending the user to an unrelated step.
+RegistrationDraftIssue? registrationCorrectionForFieldErrors(
+  Map<String, String> fieldErrors,
+  ProviderType role,
+) {
+  final fields = fieldErrors.keys.map((field) => field.toLowerCase()).toSet();
+  if (fields.intersection(const {
+    'fullname',
+    'displayname',
+    'legalname',
+    'email',
+    'referralcode',
+  }).isNotEmpty) {
+    return const RegistrationDraftIssue(step: 0, message: 'Review profile');
+  }
+
+  if (role == ProviderType.driver) {
+    if (fields.intersection(const {
+      'vehiclemake',
+      'vehiclemodel',
+      'vehicleyear',
+      'vehicleplate',
+      'vehiclecolor',
+    }).isNotEmpty) {
+      return const RegistrationDraftIssue(step: 1, message: 'Review vehicle');
+    }
+    if (fields.contains('ridecategories')) {
+      return const RegistrationDraftIssue(
+        step: 2,
+        message: 'Review ride categories',
+      );
+    }
+    if (fields.contains('regionid')) {
+      return const RegistrationDraftIssue(step: 3, message: 'Review region');
+    }
+    if (fields.contains('legalacceptances')) {
+      return const RegistrationDraftIssue(step: 4, message: 'Review policies');
+    }
+    return null;
+  }
+
+  if (fields.intersection(const {
+    'businessname',
+    'categories',
+    'shopcapacity',
+    'maxconcurrentjobs',
+  }).isNotEmpty) {
+    return const RegistrationDraftIssue(
+      step: 1,
+      message: 'Review business details',
+    );
+  }
+  if (fields.contains('regionid')) {
+    return const RegistrationDraftIssue(step: 2, message: 'Review region');
+  }
+  if (fields.contains('legalacceptances')) {
+    return const RegistrationDraftIssue(step: 3, message: 'Review policies');
+  }
+  return null;
+}
+
 RegistrationDraftIssue? firstDriverRegistrationIssue(
   DriverRegistrationDraft draft, {
   bool regionSelectionRequired = false,
 }) {
   if (Validators.fullName(draft.fullName) != null ||
-      Validators.email(draft.email) != null ||
-      Validators.ghanaCard(draft.ghanaCardNumber) != null ||
+      validateRegistrationEmail(draft.email) != null ||
       validateOptionalReferralCode(draft.referralCode) != null) {
     return const RegistrationDraftIssue(
       step: 0,
@@ -145,8 +221,7 @@ RegistrationDraftIssue? firstArtisanRegistrationIssue(
   bool regionSelectionRequired = false,
 }) {
   if (Validators.fullName(draft.fullName) != null ||
-      Validators.email(draft.email) != null ||
-      Validators.ghanaCard(draft.ghanaCardNumber) != null ||
+      validateRegistrationEmail(draft.email) != null ||
       validateOptionalReferralCode(draft.referralCode) != null) {
     return const RegistrationDraftIssue(
       step: 0,
@@ -154,7 +229,6 @@ RegistrationDraftIssue? firstArtisanRegistrationIssue(
     );
   }
   if (Validators.required(draft.businessName, 'Business name') != null ||
-      Validators.required(draft.tradeCategory, 'Primary trade') != null ||
       draft.serviceCategories.isEmpty) {
     return const RegistrationDraftIssue(
       step: 1,
@@ -186,7 +260,6 @@ class DriverRegistrationDraft {
   DriverRegistrationDraft({
     this.fullName = '',
     this.email = '',
-    this.ghanaCardNumber = '',
     this.vehicleMake = '',
     this.vehicleModel = '',
     this.vehicleYear = '',
@@ -199,7 +272,6 @@ class DriverRegistrationDraft {
 
   final String fullName;
   final String email;
-  final String ghanaCardNumber;
   final String vehicleMake;
   final String vehicleModel;
   final String vehicleYear;
@@ -223,7 +295,6 @@ class DriverRegistrationDraft {
   DriverRegistrationDraft copyWith({
     String? fullName,
     String? email,
-    String? ghanaCardNumber,
     String? vehicleMake,
     String? vehicleModel,
     String? vehicleYear,
@@ -236,7 +307,6 @@ class DriverRegistrationDraft {
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
         email: email ?? this.email,
-        ghanaCardNumber: ghanaCardNumber ?? this.ghanaCardNumber,
         vehicleMake: vehicleMake ?? this.vehicleMake,
         vehicleModel: vehicleModel ?? this.vehicleModel,
         vehicleYear: vehicleYear ?? this.vehicleYear,
@@ -274,10 +344,7 @@ class ArtisanRegistrationDraft {
   ArtisanRegistrationDraft({
     this.fullName = '',
     this.email = '',
-    this.ghanaCardNumber = '',
     this.businessName = '',
-    this.tradeCategory = '',
-    this.yearsOfExperience = 0,
     this.serviceCategories = const [],
     this.serviceRadiusKm = 5,
     this.regionId = '',
@@ -286,10 +353,7 @@ class ArtisanRegistrationDraft {
 
   final String fullName;
   final String email;
-  final String ghanaCardNumber;
   final String businessName;
-  final String tradeCategory;
-  final int yearsOfExperience;
   final List<String> serviceCategories;
   final double serviceRadiusKm;
 
@@ -306,10 +370,7 @@ class ArtisanRegistrationDraft {
   ArtisanRegistrationDraft copyWith({
     String? fullName,
     String? email,
-    String? ghanaCardNumber,
     String? businessName,
-    String? tradeCategory,
-    int? yearsOfExperience,
     List<String>? serviceCategories,
     double? serviceRadiusKm,
     String? regionId,
@@ -318,19 +379,19 @@ class ArtisanRegistrationDraft {
       ArtisanRegistrationDraft(
         fullName: fullName ?? this.fullName,
         email: email ?? this.email,
-        ghanaCardNumber: ghanaCardNumber ?? this.ghanaCardNumber,
         businessName: businessName ?? this.businessName,
-        tradeCategory: tradeCategory ?? this.tradeCategory,
-        yearsOfExperience: yearsOfExperience ?? this.yearsOfExperience,
         serviceCategories: serviceCategories ?? this.serviceCategories,
         serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
         regionId: regionId ?? this.regionId,
         referralCode: referralCode ?? this.referralCode,
       );
 
-  /// Only fullName and serviceCategories are required for POST /auth/register.
-  /// Business details are submitted later via profile endpoints.
-  bool get isComplete => fullName.isNotEmpty && serviceCategories.isNotEmpty;
+  /// Full name, business name, and service categories are sent during
+  /// registration. Service radius remains the one post-signup profile update.
+  bool get isComplete =>
+      fullName.isNotEmpty &&
+      businessName.isNotEmpty &&
+      serviceCategories.isNotEmpty;
 }
 
 class ArtisanRegistrationController

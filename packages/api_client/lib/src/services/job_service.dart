@@ -135,6 +135,26 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:jobId/offers/:offerId/received — authenticated, idempotent
+  /// acknowledgement that this exact invitation reached the artisan device.
+  ///
+  /// Version-2 job offers are not actionable until this succeeds. The server
+  /// starts the response window at receipt time and returns its authoritative
+  /// deadline; callers must not invent an offer id for legacy payloads.
+  Future<Map<String, dynamic>> acknowledgeJobOffer(
+    String jobId,
+    String offerId,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/jobs/$jobId/offers/$offerId/received',
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /jobs/:id/decline — skip an incoming artisan job invitation.
   ///
   /// This only clears the authenticated artisan's invitation; it never
@@ -142,12 +162,15 @@ class JobService {
   /// that are replayed after a terminated-app cold start.
   Future<void> declineJobRequest(
     String jobId, {
+    String? offerId,
     String? reason,
   }) async {
     try {
       await _dio.post(
         '/jobs/$jobId/decline',
         data: {
+          if (offerId != null && offerId.trim().isNotEmpty)
+            'offerId': offerId.trim(),
           if (reason != null && reason.trim().isNotEmpty)
             'reason': reason.trim(),
         },

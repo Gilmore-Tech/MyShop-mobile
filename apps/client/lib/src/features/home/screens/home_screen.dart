@@ -14,6 +14,7 @@ import '../../../core/providers/current_location_provider.dart';
 import '../../../core/services/google_places_service.dart';
 import '../../../core/utils/ride_service_area.dart';
 import '../../profile/providers/profile_provider.dart';
+import '../../notifications/widgets/client_notification_bell.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../../ride/providers/ride_provider.dart' show clearRideRequestDraft;
 import '../providers/home_provider.dart';
@@ -197,6 +198,8 @@ class _HomeGreeting extends ConsumerWidget {
               ],
             ),
           ),
+          const ClientNotificationBell(),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => context.go(AppRoutes.profile),
             child: _Avatar(

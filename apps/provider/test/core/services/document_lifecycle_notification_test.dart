@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/services/local_notification_service.dart';
 
 void main() {
+  const jobId = '11111111-1111-4111-8111-111111111111';
+  const ticketId = '22222222-2222-4222-8222-222222222222';
+
   test('backend document lifecycle event types map to mobile constants', () {
     expect(
       NotificationPayload.normaliseType('provider.document.upload_confirmed'),
@@ -101,5 +104,253 @@ void main() {
       providerLifecycleNotificationRoute('/admin/unsafe'),
       isNull,
     );
+  });
+
+  group('provider inbox action resolver', () {
+    test('returns corrective document actions only when action is required',
+        () {
+      final rejected = providerInboxActionFor(
+        eventType: 'verification.rejected',
+        payload: const {'route': '/unsafe/admin'},
+      );
+      final reviewedRejected = providerInboxActionFor(
+        eventType: 'verification.document_reviewed',
+        payload: const {'status': 'rejected'},
+      );
+
+      expect(rejected?.label, 'Re-upload document');
+      expect(rejected?.route, '/account/documents');
+      expect(reviewedRejected?.label, 'Re-upload document');
+      expect(
+        providerInboxActionFor(
+          eventType: 'verification.document_reviewed',
+          payload: const {'status': 'approved'},
+        ),
+        isNull,
+      );
+      expect(
+        providerInboxActionFor(eventType: 'verification.approved'),
+        isNull,
+      );
+    });
+
+    test('maps expiry, rejected category, location, and account alerts', () {
+      expect(
+        providerInboxActionFor(eventType: 'provider.document.expiry_24h')
+            ?.label,
+        'Renew document',
+      );
+      expect(
+        providerInboxActionFor(eventType: 'provider.document.expired')?.label,
+        'Replace document',
+      );
+      expect(
+        providerInboxActionFor(eventType: 'ride_category.rejected')?.route,
+        '/account/vehicle',
+      );
+      final locationAction = providerInboxActionFor(
+        eventType: 'provider.location_degraded',
+      );
+      expect(locationAction?.kind, ProviderInboxActionKind.locationSettings);
+      expect(locationAction?.label, 'Fix location');
+      expect(locationAction?.route, isNull);
+      expect(
+        providerInboxActionFor(eventType: 'account.suspended.low_rating')
+            ?.route,
+        '/account/support',
+      );
+      expect(
+        providerInboxActionFor(
+          eventType: 'provider.cancellation_block_started',
+        )?.label,
+        'Contact support',
+      );
+      expect(
+        providerInboxActionFor(eventType: 'account.rating.warning')?.route,
+        '/earnings',
+      );
+      expect(
+        providerInboxActionFor(eventType: 'ride_category.approved'),
+        isNull,
+      );
+    });
+
+    test('supports backend event names and mobile aliases for jobs', () {
+      for (final eventType in const ['job.bid_selected', 'bid_accepted']) {
+        final action = providerInboxActionFor(
+          eventType: eventType,
+          payload: const {NotificationPayload.keyJobId: jobId},
+        );
+        expect(action?.kind, ProviderInboxActionKind.activeJob);
+        expect(action?.entityId, jobId);
+        expect(action?.label, 'Open job');
+      }
+
+      final manual = providerInboxActionFor(
+        eventType: 'job.manually_assigned',
+        payload: const {NotificationPayload.keyJobId: jobId},
+      );
+      expect(manual?.kind, ProviderInboxActionKind.manualJob);
+      expect(manual?.label, 'Review & bid');
+
+      const offerId = '22222222-2222-4222-8222-222222222222';
+      final exactQuote = providerInboxActionFor(
+        eventType: 'job.manually_assigned',
+        payload: const {
+          NotificationPayload.keyJobId: jobId,
+          NotificationPayload.keyOfferId: offerId,
+          'offerVersion': 2,
+          'mode': 'request_quote',
+        },
+      );
+      expect(exactQuote?.requiresExactJobReceipt, isTrue);
+      expect(exactQuote?.offerId, offerId);
+      expect(exactQuote?.offerVersion, 2);
+      expect(exactQuote?.assignmentMode, 'request_quote');
+
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.manually_assigned',
+          payload: const {
+            NotificationPayload.keyJobId: jobId,
+            'offerVersion': 2,
+            'mode': 'request_quote',
+          },
+        ),
+        isNull,
+      );
+
+      final confirmed = providerInboxActionFor(
+        eventType: 'job.manually_assigned',
+        payload: const {
+          NotificationPayload.keyJobId: jobId,
+          'mode': 'confirm',
+        },
+      );
+      expect(confirmed?.kind, ProviderInboxActionKind.activeJob);
+      expect(confirmed?.label, 'Open job');
+    });
+
+    test('rejects malformed ids and excludes expiring request offers', () {
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.manually_assigned',
+          payload: const {NotificationPayload.keyJobId: 'not-a-uuid'},
+        ),
+        isNull,
+      );
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.request',
+          payload: const {NotificationPayload.keyJobId: jobId},
+        ),
+        isNull,
+      );
+      expect(
+        providerInboxActionFor(
+          eventType: 'ride.request',
+          payload: const {NotificationPayload.keyRideId: jobId},
+        ),
+        isNull,
+      );
+    });
+
+    test('allows only bounded announcement destinations', () {
+      expect(
+        providerInboxActionFor(
+          eventType: 'announcement',
+          payload: const {NotificationPayload.keyDestination: 'promotions'},
+        )?.route,
+        '/earnings',
+      );
+      expect(
+        providerInboxActionFor(
+          eventType: 'announcement',
+          payload: const {
+            NotificationPayload.keyDestination: 'notifications',
+            'route': '/unsafe/admin',
+          },
+        ),
+        isNull,
+      );
+      expect(
+        providerInboxActionFor(
+          eventType: 'unknown.event',
+          payload: const {'route': '/earnings'},
+        ),
+        isNull,
+      );
+    });
+
+    test('validates support and rating entity ids', () {
+      final support = providerInboxActionFor(
+        eventType: 'support.ticket_message',
+        payload: const {NotificationPayload.keyTicketId: ticketId},
+      );
+      final rating = providerInboxActionFor(
+        eventType: 'rating.prompt',
+        payload: const {
+          NotificationPayload.keyBookingType: 'artisan_job',
+          NotificationPayload.keyBookingId: jobId,
+        },
+      );
+
+      expect(support?.label, 'View & reply');
+      expect(support?.route, '/account/support/tickets/$ticketId');
+      expect(rating?.kind, ProviderInboxActionKind.rating);
+      expect(rating?.entityId, jobId);
+      expect(rating?.bookingType, 'artisan_job');
+    });
+
+    test('maps earnings settlement events to the earnings screen', () {
+      for (final eventType in const [
+        'ride.settled',
+        'payment.received',
+        'earnings.updated',
+        'job.payment_releasing',
+      ]) {
+        final action = providerInboxActionFor(eventType: eventType);
+        expect(action?.label, 'View earnings');
+        expect(action?.route, '/earnings');
+      }
+    });
+
+    test('exposes only backend-proven payout and manual-assignment actions',
+        () {
+      final payoutRebind = providerInboxActionFor(
+        eventType: 'payout_method.rebind_required',
+        payload: const {
+          'providerType': 'artisan',
+          'reasonCode': 'PAYOUT_METHOD_REBIND_REQUIRED',
+        },
+      );
+      expect(payoutRebind?.label, 'Re-add payout method');
+      expect(payoutRebind?.route, '/account/payouts');
+
+      // job.no_bids_escalated is emitted to the client role only. It must not
+      // become a provider "Review & bid" action if a stale/malformed row ever
+      // reaches the provider resolver.
+      expect(
+        providerInboxActionFor(
+          eventType: 'job.no_bids_escalated',
+          payload: const {NotificationPayload.keyJobId: jobId},
+        ),
+        isNull,
+      );
+    });
+
+    test('response warning and started events expose safe local actions', () {
+      final warning = providerInboxActionFor(
+        eventType: 'provider.response_block_warning',
+      );
+      expect(warning?.label, 'Manage online status');
+      expect(warning?.route, '/home');
+
+      final started = providerInboxActionFor(
+        eventType: 'provider.response_block_started',
+      );
+      expect(started?.label, 'Contact support');
+      expect(started?.route, '/account/support');
+    });
   });
 }

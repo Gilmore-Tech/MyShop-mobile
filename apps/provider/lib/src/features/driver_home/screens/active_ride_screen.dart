@@ -551,6 +551,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeRideProvider);
+    final destinationNotice = ref.watch(driverDestinationChangeNoticeProvider);
     // When the backend tells us the ride has reached a terminal state,
     // navigate off this screen so the driver isn't stuck tapping buttons
     // that 400 every time.
@@ -636,6 +637,16 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                     ),
                     if (metrics.routeWarning case final warning?)
                       RouteWarningBanner(message: warning),
+                    if (destinationNotice?.rideId == ride.id &&
+                        destinationNotice?.routeRevision == ride.routeRevision)
+                      _DestinationChangedBanner(
+                        update: destinationNotice!,
+                        onDismiss: () => ref
+                            .read(
+                              driverDestinationChangeNoticeProvider.notifier,
+                            )
+                            .state = null,
+                      ),
                   ],
                 );
               },
@@ -797,7 +808,10 @@ class _NavigationMap extends ConsumerStatefulWidget {
 class _NavigationMapState extends ConsumerState<_NavigationMap> {
   GoogleMapController? _mapController;
   DirectionsRoute? _route;
-  bool _routeLoading = false;
+  int _routeGeneration = 0;
+  int? _routeFetchGeneration;
+
+  bool get _routeLoading => _routeFetchGeneration == _routeGeneration;
 
   /// Origin (driver GPS) used when the last route was fetched — lets us skip
   /// a refetch if the GPS fix has barely moved.
@@ -893,6 +907,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     // cached route + refit the camera so we navigate to the new target.
     if (oldWidget.target.latitude != widget.target.latitude ||
         oldWidget.target.longitude != widget.target.longitude) {
+      _routeGeneration += 1;
       _route = null;
       _lastRouteOrigin = null;
       _lastRouteFetchAt = null;
@@ -977,6 +992,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     LatLng origin, {
     bool force = false,
   }) async {
+    final generation = _routeGeneration;
     if (_routeLoading) return;
 
     if (!force) {
@@ -997,14 +1013,15 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       }
     }
 
-    _routeLoading = true;
+    _routeFetchGeneration = generation;
     _lastRouteFetchAt = DateTime.now();
+    final destination = widget.target;
     try {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
-            destination: widget.target,
+            destination: destination,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _routeGeneration) return;
       if (route.isFallback && _route != null && !_route!.isFallback) {
         debugPrint(
           '[NAV] Route refresh returned direct-line fallback; keeping '
@@ -1027,7 +1044,9 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       // two-pin bounds view and breaking nav mode.
       _publishMetrics();
     } finally {
-      _routeLoading = false;
+      if (_routeFetchGeneration == generation) {
+        _routeFetchGeneration = null;
+      }
     }
   }
 
@@ -1246,6 +1265,82 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
 }
 
 // ─── Map controls ───────────────────────────────────────────────────────────
+
+class _DestinationChangedBanner extends StatelessWidget {
+  const _DestinationChangedBanner({
+    required this.update,
+    required this.onDismiss,
+  });
+
+  final RideRouteUpdate update;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final destination = update.destination;
+    if (destination == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+      decoration: BoxDecoration(
+        color: MyShopColors.primaryGoldLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: MyShopColors.primaryGold.withValues(alpha: 0.55),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.alt_route_rounded,
+            color: MyShopColors.textPrimary,
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Destination changed',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  destination.address,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.25,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Dismiss',
+            onPressed: onDismiss,
+            icon: const Icon(Icons.close_rounded, size: 19),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _MapControlButton extends StatelessWidget {
   const _MapControlButton({required this.icon, required this.onTap});

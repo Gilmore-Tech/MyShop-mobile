@@ -13,6 +13,7 @@ import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../di/providers.dart';
 import '../services/ios_always_location_permission_bridge.dart';
 import '../services/fcm_service.dart';
+import '../services/provider_request_policy.dart';
 import 'provider_status_provider.dart';
 import 'availability_reconciliation_controller.dart';
 import 'location_degradation_provider.dart';
@@ -84,6 +85,9 @@ const double onlineLocationMaxAccuracyMeters = 50;
 /// path and older deployments have returned internal or misleading messages;
 /// known machine codes are the authority and unknown failures stay generic.
 String friendlyAvailabilityApiError(ApiException error) {
+  if (isProviderRequestBlock(error)) {
+    return providerRequestBlockMessage(error);
+  }
   if (error.errorCode == 'PROVIDER_NOT_ELIGIBLE') {
     return _providerEligibilityErrorCopy(error.details?['reasonCodes']);
   }
@@ -411,6 +415,17 @@ class AvailabilityController {
     required bool allowPermissionPrompts,
     required bool promptOverlayPermission,
   }) async {
+    // Response/cancellation enforcement clears the authoritative Online
+    // session. Check its dedicated, server-authored summary before spending
+    // notification/GPS/rate-limit budget so a generic location throttle can
+    // never hide the actual reason this provider cannot receive work.
+    final requestBlockMessage = await _activeRequestBlockMessage();
+    if (requestBlockMessage != null) {
+      _ref.read(availabilityRestoreNoticeProvider.notifier).state =
+          requestBlockMessage;
+      return requestBlockMessage;
+    }
+
     // iOS does not add the app to Settings > Location Services until Core
     // Location receives its first authorization request. Run that explicit
     // Go Online gate before the notification reachability probe so an FCM
@@ -517,6 +532,31 @@ class AvailabilityController {
       unawaited(_promptForOverlayPermissionIfNeeded());
     }
     return null;
+  }
+
+  Future<String?> _activeRequestBlockMessage() async {
+    try {
+      final summary = await _ref
+          .read(providerRequestServiceProvider)
+          .getRequestResponseSummary();
+      final restriction = summary?.activeRestriction;
+      return restriction == null
+          ? null
+          : providerActiveRestrictionMessage(restriction);
+    } on ApiException catch (error) {
+      // Compatibility/read failures must not replace the authoritative Online
+      // endpoint. That endpoint still applies the normal machine-code mapping.
+      debugPrint(
+        '[Availability] request-restriction preflight unavailable: '
+        '${error.errorCode ?? error.message}',
+      );
+      return null;
+    } on FormatException catch (error) {
+      debugPrint(
+        '[Availability] request-restriction preflight malformed: $error',
+      );
+      return null;
+    }
   }
 
   Future<void> _promptForOverlayPermissionIfNeeded() async {

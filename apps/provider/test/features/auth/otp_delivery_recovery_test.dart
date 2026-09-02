@@ -72,6 +72,42 @@ void main() {
     expect(state.error, contains('code is still active'));
   });
 
+  test(
+      'canonical rate limit enters OTP state when the server says a code is active',
+      () async {
+    final repository = _MockAuthRepository();
+    final controller = AuthController(
+      repository,
+      tokenStorage: _MockTokenStorage(),
+    );
+    when(() => repository.register(any())).thenThrow(
+      const ApiException(
+        message: 'Too many requests. Please try again later.',
+        statusCode: 429,
+        errorCode: 'RATE_LIMIT_EXCEEDED',
+        details: {
+          'otpActive': true,
+          'supportReference': '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
+        },
+      ),
+    );
+
+    await controller.registerAndSendOtp(
+      phone: _phone,
+      fullName: 'Kwame Mensah',
+      type: 'driver',
+      legalAcceptances: _legalAcceptances,
+      role: ProviderType.driver,
+      rideCategories: const ['standard'],
+    );
+
+    final state = controller.state;
+    expect(state, isA<AuthOtpSent>());
+    expect((state as AuthOtpSent).error, contains('code is still active'));
+    expect(state.error, contains('use resend'));
+    expect(state.error, isNot(contains('15286d11')));
+  });
+
   test('provider registration preserves the retained-role support signal',
       () async {
     final repository = _MockAuthRepository();

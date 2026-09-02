@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../models/api_exception.dart';
 
@@ -359,6 +360,58 @@ class RideService {
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /rides/:id/destination-change/preview — quote an exact destination
+  /// replacement without mutating the ride.
+  ///
+  /// [expectedRouteRevision] is the last authoritative revision displayed by
+  /// the client. The backend rejects a stale revision instead of quoting or
+  /// committing against a route which changed in another session.
+  Future<RideDestinationChangePreview> previewDestinationChange(
+    String rideId, {
+    required RideDestinationPoint destination,
+    required int expectedRouteRevision,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/rides/$rideId/destination-change/preview',
+        data: {
+          ...destination.toDropoffJson(),
+          'expectedRouteRevision': expectedRouteRevision,
+        },
+      );
+      return RideDestinationChangePreview.fromJson(
+        _unwrap(response) as Map<String, dynamic>,
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// PATCH /rides/:id/destination — consume one server preview and atomically
+  /// commit its exact route/fare projection.
+  Future<RideRouteUpdate> confirmDestinationChange(
+    String rideId, {
+    required String confirmationToken,
+    required int expectedRouteRevision,
+    required String idempotencyKey,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/rides/$rideId/destination',
+        options: Options(headers: {'Idempotency-Key': idempotencyKey}),
+        data: {
+          'confirmationToken': confirmationToken,
+          'expectedRouteRevision': expectedRouteRevision,
+        },
+      );
+      return RideRouteUpdate.fromJson(
+        _unwrap(response) as Map<String, dynamic>,
+      );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

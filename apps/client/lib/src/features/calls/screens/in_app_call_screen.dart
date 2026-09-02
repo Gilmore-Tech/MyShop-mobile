@@ -34,6 +34,7 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
   bool _declining = false;
   bool _muted = false;
   bool _speakerOn = false;
+  bool _retryingRtc = false;
   String? _errorMessage;
   StreamSubscription<AppCallSession>? _callStateSub;
   StreamSubscription<AppCallRtcConnectionState>? _rtcStateSub;
@@ -43,6 +44,9 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
   AppCallRtcConnectionState _rtcState = AppCallRtcConnectionState.disconnected;
   bool _rtcStarting = false;
   Future<void>? _acceptedTransition;
+  Future<AppCallSession>? _sessionRequest;
+  int _sessionMutationEpoch = 0;
+  int _rtcAttempt = 0;
   final CallRingbackPlayer _ringback = CallRingbackPlayer();
 
   @override
@@ -56,6 +60,7 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
 
   @override
   void dispose() {
+    _rtcAttempt += 1;
     _terminalCloseTimer?.cancel();
     _refreshTimer?.cancel();
     _callStateSub?.cancel();
@@ -79,13 +84,13 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
   }
 
   Future<void> _joinCall() async {
+    final epoch = _sessionMutationEpoch;
     try {
-      final session =
-          await ref.read(appCallServiceProvider).joinCall(widget.callId);
-      if (!mounted) return;
+      final session = await _loadSession();
+      if (!mounted || epoch != _sessionMutationEpoch) return;
       _applyRemoteSession(session);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || epoch != _sessionMutationEpoch) return;
       setState(() {
         _loading = false;
         _errorMessage = _callErrorMessage(error);
@@ -94,11 +99,17 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
   }
 
   Future<void> _refreshCallState() async {
-    if (!mounted || _session?.isTerminal == true) return;
+    if (!mounted ||
+        _session?.isTerminal == true ||
+        _ending ||
+        _accepting ||
+        _declining) {
+      return;
+    }
+    final epoch = _sessionMutationEpoch;
     try {
-      final session =
-          await ref.read(appCallServiceProvider).joinCall(widget.callId);
-      if (!mounted) return;
+      final session = await _loadSession();
+      if (!mounted || epoch != _sessionMutationEpoch) return;
       _applyRemoteSession(session);
     } catch (_) {
       // Best-effort fallback only; the visible error state belongs to the
@@ -106,12 +117,47 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
     }
   }
 
+  Future<AppCallSession> _loadSession() {
+    final existing = _sessionRequest;
+    if (existing != null) return existing;
+
+    late final Future<AppCallSession> operation;
+    operation = ref
+        .read(appCallServiceProvider)
+        .joinCall(widget.callId)
+        .whenComplete(() {
+      if (identical(_sessionRequest, operation)) _sessionRequest = null;
+    });
+    _sessionRequest = operation;
+    return operation;
+  }
+
+  void _invalidateSessionRequest() {
+    _sessionMutationEpoch += 1;
+    // A Future cannot be cancelled, but detaching it prevents a later refresh
+    // from reusing a pre-mutation response. Its epoch check still prevents the
+    // original waiter from applying that stale response.
+    _sessionRequest = null;
+  }
+
   void _applyRemoteSession(AppCallSession session) {
     if (!mounted || session.callId != widget.callId) return;
+    final current = _session;
+    // REST polling and socket broadcasts race each other. Call lifecycle state
+    // is monotonic, so never let a slower, older response move an accepted or
+    // terminal call back to ringing (or resurrect a terminal call).
+    if ((current?.isAccepted == true && session.isRinging) ||
+        (current?.isTerminal == true && !session.isTerminal)) {
+      return;
+    }
     setState(() {
       _session = session;
       _loading = false;
-      _errorMessage = null;
+      if (_rtcState != AppCallRtcConnectionState.failed &&
+          !(_rtc != null &&
+              _rtcState == AppCallRtcConnectionState.disconnected)) {
+        _errorMessage = null;
+      }
     });
     if (session.isTerminal) {
       unawaited(_ringback.stop());
@@ -148,12 +194,27 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
 
   Future<void> _ensureRtc(AppCallSession session) async {
     if (_rtc != null || _rtcStarting) return;
+    final attempt = ++_rtcAttempt;
     _rtcStarting = true;
     final rtc = AppCallRtcService(
       socket: ref.read(appCallSocketServiceProvider),
     );
+    _rtc = rtc;
     _rtcStateSub = rtc.connectionStateStream.listen((state) {
-      if (mounted) setState(() => _rtcState = state);
+      if (!mounted || attempt != _rtcAttempt || !identical(_rtc, rtc)) return;
+      setState(() {
+        _rtcState = state;
+        if (state == AppCallRtcConnectionState.connected) {
+          _errorMessage = null;
+        } else if (state == AppCallRtcConnectionState.failed) {
+          _errorMessage =
+              'Call audio could not connect. Check your connection, '
+              'then tap Retry audio.';
+        } else if (state == AppCallRtcConnectionState.disconnected) {
+          _errorMessage = 'Call audio was interrupted. Check your connection, '
+              'then tap Retry audio.';
+        }
+      });
     });
     try {
       await rtc.start(
@@ -164,16 +225,44 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
         await rtc.dispose();
         return;
       }
-      _rtc = rtc;
     } catch (error) {
-      await _rtcStateSub?.cancel();
-      _rtcStateSub = null;
+      if (attempt == _rtcAttempt) {
+        await _rtcStateSub?.cancel();
+        _rtcStateSub = null;
+        _rtc = null;
+      }
       await rtc.dispose();
-      if (mounted) {
-        setState(() => _errorMessage = _callErrorMessage(error));
+      if (mounted && attempt == _rtcAttempt) {
+        setState(() {
+          _rtcState = AppCallRtcConnectionState.failed;
+          _errorMessage = _callErrorMessage(error);
+        });
       }
     } finally {
-      _rtcStarting = false;
+      if (attempt == _rtcAttempt) _rtcStarting = false;
+    }
+  }
+
+  Future<void> _retryRtcConnection() async {
+    final session = _session;
+    if (_retryingRtc || session?.status != 'accepted') return;
+    final oldRtc = _rtc;
+    _rtc = null;
+    _rtcAttempt += 1;
+    _rtcStarting = false;
+    setState(() {
+      _retryingRtc = true;
+      _rtcState = AppCallRtcConnectionState.connecting;
+      _errorMessage = null;
+    });
+    await _rtcStateSub?.cancel();
+    _rtcStateSub = null;
+    await oldRtc?.dispose();
+    if (!mounted) return;
+    try {
+      await _ensureRtc(session!);
+    } finally {
+      if (mounted) setState(() => _retryingRtc = false);
     }
   }
 
@@ -200,6 +289,7 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
 
   Future<void> _endCall() async {
     if (_ending) return;
+    _invalidateSessionRequest();
     setState(() => _ending = true);
     await _ringback.stop();
     var ended = false;
@@ -233,12 +323,14 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
 
   Future<void> _acceptCall() async {
     if (_accepting || _declining) return;
+    _invalidateSessionRequest();
     setState(() => _accepting = true);
     try {
       if (Platform.isIOS &&
           await VoipCallBridgeService.instance.answerCall(widget.callId)) {
-        await LocalNotificationService.instance
-            .cancelIncomingCall(widget.callId);
+        await LocalNotificationService.instance.cancelIncomingCall(
+          widget.callId,
+        );
         return;
       }
       final session =
@@ -256,6 +348,7 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
 
   Future<void> _declineCall() async {
     if (_accepting || _declining) return;
+    _invalidateSessionRequest();
     setState(() => _declining = true);
     var declined = false;
     try {
@@ -333,6 +426,12 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
         isAccepting: _accepting,
         isDeclining: _declining,
         errorMessage: _errorMessage,
+        showRetryConnection: session?.status == 'accepted' &&
+            (_rtcState == AppCallRtcConnectionState.failed ||
+                (_rtc != null &&
+                    _rtcState == AppCallRtcConnectionState.disconnected)),
+        isRetryingConnection: _retryingRtc,
+        onRetryConnection: _retryRtcConnection,
         onAcceptCall: _acceptCall,
         onDeclineCall: _declineCall,
         onToggleMuted: () {
@@ -363,7 +462,8 @@ class _ClientInAppCallScreenState extends ConsumerState<ClientInAppCallScreen> {
           AppCallRtcConnectionState.connected => 'Connected',
           AppCallRtcConnectionState.failed => 'Connection failed',
           AppCallRtcConnectionState.disconnected => 'Connection interrupted',
-          AppCallRtcConnectionState.connecting => 'Connecting…',
+          AppCallRtcConnectionState.connecting =>
+            _retryingRtc ? 'Reconnecting…' : 'Connecting…',
         },
       'declined' => 'Declined',
       'ended' => 'Ended',

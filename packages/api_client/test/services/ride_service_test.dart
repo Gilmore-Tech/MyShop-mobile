@@ -1,8 +1,128 @@
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'destination preview sends exact route revision and parses quote',
+    () async {
+      late RequestOptions capturedRequest;
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            capturedRequest = options;
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'success': true,
+                  'data': {
+                    'rideId': 'ride_123',
+                    'routeRevision': 3,
+                    'confirmationToken': 'preview-token',
+                    'oldDestination': {
+                      'address': 'Adum',
+                      'lat': 6.6885,
+                      'lng': -1.6244,
+                    },
+                    'newDestination': {
+                      'address': 'KNUST',
+                      'lat': 6.6732,
+                      'lng': -1.5654,
+                    },
+                    'oldFarePesewas': 4000,
+                    'newFarePesewas': 4600,
+                    'projectedDistanceMeters': 8000,
+                    'projectedDurationSeconds': 1200,
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final preview = await RideService(dio).previewDestinationChange(
+        'ride_123',
+        destination: const RideDestinationPoint(
+          address: 'KNUST',
+          lat: 6.6732,
+          lng: -1.5654,
+        ),
+        expectedRouteRevision: 3,
+      );
+
+      expect(capturedRequest.method, 'POST');
+      expect(
+        capturedRequest.path,
+        '/rides/ride_123/destination-change/preview',
+      );
+      expect(capturedRequest.data, {
+        'dropoffLat': 6.6732,
+        'dropoffLng': -1.5654,
+        'dropoffAddress': 'KNUST',
+        'expectedRouteRevision': 3,
+      });
+      expect(preview.fareDeltaPesewas, 600);
+    },
+  );
+
+  test(
+    'destination commit uses preview revision and idempotency key',
+    () async {
+      late RequestOptions capturedRequest;
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            capturedRequest = options;
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'success': true,
+                  'data': {
+                    'rideId': 'ride_123',
+                    'routeRevision': 4,
+                    'destination': {
+                      'address': 'KNUST',
+                      'lat': 6.6732,
+                      'lng': -1.5654,
+                    },
+                    'estimatedFarePesewas': 4600,
+                    'projectedDistanceMeters': 8000,
+                    'projectedDurationSeconds': 1200,
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final update = await RideService(dio).confirmDestinationChange(
+        'ride_123',
+        confirmationToken: 'preview-token',
+        expectedRouteRevision: 3,
+        idempotencyKey: 'commit-key-123',
+      );
+
+      expect(capturedRequest.method, 'PATCH');
+      expect(capturedRequest.path, '/rides/ride_123/destination');
+      expect(capturedRequest.headers['Idempotency-Key'], 'commit-key-123');
+      expect(capturedRequest.data, {
+        'confirmationToken': 'preview-token',
+        'expectedRouteRevision': 3,
+      });
+      expect(update.routeRevision, 4);
+      expect(update.destination?.address, 'KNUST');
+    },
+  );
+
   test('estimate sends ordered stops using backend lat/lng contract', () async {
     late RequestOptions capturedRequest;
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../../notifications/widgets/provider_notification_bell.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../promos/widgets/earnings_promo_callout.dart';
 import '../providers/earnings_providers.dart';
@@ -199,25 +199,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
                           ]),
                         ]),
                     Row(children: [
-                      GestureDetector(
-                        onTap: () => context.push('/notifications'),
-                        behavior: HitTestBehavior.opaque,
-                        child: Stack(children: [
-                          const Icon(Icons.notifications_outlined,
-                              size: 24, color: MyShopColors.textPrimary),
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                  color: MyShopColors.error,
-                                  shape: BoxShape.circle),
-                            ),
-                          ),
-                        ]),
-                      ),
+                      const ProviderNotificationBell(),
                       const SizedBox(width: MyShopSpacing.md),
                       CircleAvatar(
                         radius: 18,

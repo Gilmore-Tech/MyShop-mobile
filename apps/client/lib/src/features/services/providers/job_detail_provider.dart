@@ -1,5 +1,7 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_models/shared_models.dart'
+    show JobAssignment, JobAssignmentPhase;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -141,6 +143,9 @@ class JobDetail {
   /// is still open / queued. Used to resolve the accepted bid for display.
   final String? selectedArtisanId;
 
+  /// Server-authored state for an admin-directed quote request.
+  final JobAssignment? assignment;
+
   /// ISO timestamp set by the backend when the client picks a payment
   /// method on the payment screen. For cash, the job stays at
   /// `artisan_marked_complete` server-side until the artisan taps "Yes,
@@ -168,6 +173,7 @@ class JobDetail {
     required this.bids,
     required this.timeline,
     this.selectedArtisanId,
+    this.assignment,
     this.clientPaymentAcknowledgedAt,
     this.clientPaymentMethod,
   });
@@ -258,6 +264,9 @@ class _JobDetailNotifier
 
     final clientPaymentAck = data['clientPaymentAcknowledgedAt'] as String?;
     final clientPaymentMethod = data['clientPaymentMethod'] as String?;
+    final assignment = data['assignment'] is Map<String, dynamic>
+        ? JobAssignment.fromJson(data['assignment'] as Map<String, dynamic>)
+        : null;
 
     // When the client has acknowledged payment but the job hasn't been
     // marked completed yet (cash flow waiting on the artisan, or a
@@ -297,8 +306,13 @@ class _JobDetailNotifier
           Color(0xFF607D8B),
         ],
       ),
-      timeline: _buildTimeline(timelineStatus),
-      selectedArtisanId: data['artisanId'] as String?,
+      timeline: _buildTimeline(
+        timelineStatus,
+        assignmentPhase: assignment?.phase,
+      ),
+      selectedArtisanId:
+          (data['assignedArtisanId'] ?? data['artisanId']) as String?,
+      assignment: assignment,
       clientPaymentAcknowledgedAt: clientPaymentAck,
       clientPaymentMethod: clientPaymentMethod,
     );
@@ -344,7 +358,10 @@ class _JobDetailNotifier
     };
   }
 
-  static List<TimelineStep> _buildTimeline(JobStatus status) {
+  static List<TimelineStep> _buildTimeline(
+    JobStatus status, {
+    JobAssignmentPhase? assignmentPhase,
+  }) {
     // Skip cancelled — it's a terminal state shown via the status badge.
     if (status == JobStatus.cancelled) {
       return const [
@@ -353,6 +370,46 @@ class _JobDetailNotifier
           status: TimelineStepStatus.active,
           badgeLabel: 'CANCELLED',
           description: 'This job request has been cancelled.',
+        ),
+      ];
+    }
+
+    if (status == JobStatus.adminAssigned) {
+      final (title, description) = switch (assignmentPhase) {
+        JobAssignmentPhase.awaitingAdminReview => (
+            'Quote Under Review',
+            'The artisan submitted a quote and MyShop is reviewing it.',
+          ),
+        JobAssignmentPhase.awaitingClientAccept => (
+            'Review Artisan Quote',
+            'The assigned artisan submitted a quote for you to review.',
+          ),
+        _ => (
+            'Artisan Preparing Quote',
+            'An artisan has been assigned and is preparing your quote.',
+          ),
+      };
+      return [
+        const TimelineStep(
+          title: 'Request Posted',
+          status: TimelineStepStatus.completed,
+          description: 'Your service request was posted to the marketplace.',
+        ),
+        const TimelineStep(
+          title: 'Artisan Assigned',
+          status: TimelineStepStatus.completed,
+          description: 'MyShop directed your request to an artisan.',
+        ),
+        TimelineStep(
+          title: title,
+          status: TimelineStepStatus.active,
+          badgeLabel: 'CURRENT',
+          description: description,
+        ),
+        const TimelineStep(
+          title: 'Job Confirmed',
+          status: TimelineStepStatus.pending,
+          description: 'Work starts only after you accept the quote.',
         ),
       ];
     }

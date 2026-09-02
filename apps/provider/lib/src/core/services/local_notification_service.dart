@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'job_offer_receipt_service.dart';
+
 /// Keys + type constants embedded in local/FCM notification payloads. The
 /// backend must send the SAME [keyType] string in `data` so the tap handler
 /// can deep-link into the correct screen.
@@ -26,6 +28,7 @@ class NotificationPayload {
   static const keyExpiresAt = 'expiresAt';
   static const keyOfferId = 'offerId';
   static const keyActionId = 'actionId';
+  static const keyDestination = 'destination';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_accepted`, `chat.message`).
@@ -102,6 +105,9 @@ class NotificationPayload {
   /// Client confirmed the ride complete — fare settled.
   static const typeRideSettled = 'ride_settled';
 
+  /// Rider confirmed a newly-priced destination for the active ride.
+  static const typeRideDestinationChanged = 'ride_destination_changed';
+
   // ── Cross-cutting ────────────────────────────────────────────────────────
   /// New chat message from the client.
   static const typeNewMessage = 'new_message';
@@ -120,6 +126,10 @@ class NotificationPayload {
 
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
+
+  /// Admin-authored push campaign. Its destination is resolved through the
+  /// local allowlist in [providerAnnouncementRoute].
+  static const typeAnnouncement = 'announcement';
 
   // Provider-document lifecycle alerts. These route to the corrective
   // Documents & Verification screen instead of silently falling back Home.
@@ -181,6 +191,27 @@ class NotificationPayload {
   /// Ticket status flipped server-side (resolved by agent, etc.).
   static const typeSupportTicketStatusChanged = 'support_ticket_status_changed';
 
+  // ── Inbox-only provider state alerts ───────────────────────────────────
+  // These events are persisted in the in-app feed. They are not all FCM
+  // data types, but keeping their canonical names here lets the inbox derive
+  // safe local actions without trusting a server-supplied route.
+  static const typeProviderLocationDegraded = 'provider_location_degraded';
+  static const typeProviderLocationDegradedEscalated =
+      'provider_location_degraded_escalated';
+  static const typeAccountSuspendedLowRating = 'account_suspended_low_rating';
+  static const typeAccountRatingWarning = 'account_rating_warning';
+  static const typeProviderCancellationBlockStarted =
+      'provider_cancellation_block_started';
+  static const typeProviderResponseBlockStarted =
+      'provider_response_block_started';
+  static const typeProviderResponseBlockWarning =
+      'provider_response_block_warning';
+  static const typePaymentDisputeRaised = 'payment_dispute_raised';
+  static const typePaymentClawbackPending = 'payment_clawback_pending';
+  static const typePaymentDisputeResolvedInProviderFavour =
+      'payment_dispute_resolved_in_your_favour';
+  static const typePayoutMethodRebindRequired = 'payout_method_rebind_required';
+
   /// Payload key for support deeplinks.
   static const keyTicketId = 'ticketId';
   static const keyMessageId = 'messageId';
@@ -224,6 +255,143 @@ class NotificationPayload {
   static const Set<String> chatTypes = {typeNewMessage};
 }
 
+/// Resolves an admin announcement destination without ever trusting a remote
+/// path. App-store campaigns fall back to the inbox until the payload contract
+/// includes a separately validated store URL.
+String providerAnnouncementRoute(Object? rawDestination) {
+  final destination = rawDestination?.toString().trim().toLowerCase();
+  return switch (destination) {
+    'activity' => '/trips',
+    'support' => '/account/support',
+    'promotions' => '/earnings',
+    'notifications' || 'app_store' => '/notifications',
+    _ => '/notifications',
+  };
+}
+
+const _providerTraySourceParameter = 'source';
+const _providerTraySourceValue = 'tray';
+const _providerInboxActionSourceValue = 'notification_action';
+const _providerInboxOriginParameter = 'origin';
+const providerDashboardRoute = '/home';
+
+String? _providerPrimaryShellRouteForToken(String? token) {
+  final route = token == null || token.isEmpty ? null : '/$token';
+  return route != null && providerRouteUsesPrimaryShell(route) ? route : null;
+}
+
+/// Builds an in-app inbox route that remembers the primary tab underneath it.
+/// Only local shell-route tokens are retained; arbitrary payload routes never
+/// enter the navigation stack.
+String providerInAppNotificationInboxRoute(Uri origin) {
+  final returnRoute = providerRouteUsesPrimaryShell(origin.path)
+      ? origin.path
+      : providerDashboardRoute;
+  return Uri(
+    path: '/notifications',
+    queryParameters: {
+      _providerInboxOriginParameter: returnRoute.substring(1),
+    },
+  ).toString();
+}
+
+String? providerNotificationInboxOrigin(Uri uri) =>
+    _providerPrimaryShellRouteForToken(
+      uri.queryParameters[_providerInboxOriginParameter],
+    );
+
+/// Tags the inbox route with its navigation origin. The inbox uses this
+/// marker to make Back deterministic even if iOS/Android reports the same
+/// physical tray tap through more than one plugin callback.
+String providerSystemTrayDestinationRoute(String destination) {
+  final uri = Uri.tryParse(destination);
+  if (uri == null ||
+      (uri.path != '/notifications' &&
+          !providerRouteUsesPrimaryShell(destination)) ||
+      uri.path == providerDashboardRoute) {
+    return destination;
+  }
+  return uri.replace(
+    queryParameters: {
+      ...uri.queryParameters,
+      _providerTraySourceParameter: _providerTraySourceValue,
+    },
+  ).toString();
+}
+
+bool providerNotificationOpenedFromSystemTray(Uri uri) =>
+    uri.path == '/notifications' &&
+    uri.queryParameters[_providerTraySourceParameter] ==
+        _providerTraySourceValue;
+
+/// Tags a primary-tab action selected from inside the inbox. The shell uses
+/// this marker to make system Back return to the inbox instead of closing the
+/// app after the safe `go()` branch selection.
+String providerInboxShellActionRoute(
+  String destination, {
+  String? returnTo,
+}) {
+  final uri = Uri.tryParse(destination);
+  if (uri == null || !providerRouteUsesPrimaryShell(destination)) {
+    return destination;
+  }
+  final returnRoute = Uri.tryParse(returnTo ?? '')?.path;
+  final returnToken =
+      returnRoute != null && providerRouteUsesPrimaryShell(returnRoute)
+          ? returnRoute.substring(1)
+          : null;
+  return uri.replace(
+    queryParameters: {
+      ...uri.queryParameters,
+      _providerTraySourceParameter: _providerInboxActionSourceValue,
+      if (returnToken != null) _providerInboxOriginParameter: returnToken,
+    },
+  ).toString();
+}
+
+bool providerPrimaryShellOpenedFromNotification(Uri uri) {
+  if (!providerRouteUsesPrimaryShell(uri.path)) return false;
+  final source = uri.queryParameters[_providerTraySourceParameter];
+  if (source == _providerInboxActionSourceValue) return true;
+  return source == _providerTraySourceValue &&
+      uri.path != providerDashboardRoute;
+}
+
+String providerNotificationShellBackRoute(Uri uri) {
+  if (uri.queryParameters[_providerTraySourceParameter] !=
+      _providerInboxActionSourceValue) {
+    return providerDashboardRoute;
+  }
+  final origin = providerNotificationInboxOrigin(uri);
+  return origin == null
+      ? '/notifications'
+      : providerInAppNotificationInboxRoute(Uri(path: origin));
+}
+
+/// Routes owned by the provider bottom-tab shell must replace the current
+/// location. Pushing one of these routes while `/notifications` is already
+/// above the shell creates a second copy of the same ShellRoute page key and
+/// can leave both the action and Back navigation unusable.
+bool providerRouteUsesPrimaryShell(String route) => const {
+      '/home',
+      '/earnings',
+      '/trips',
+      '/account',
+    }.contains(Uri.tryParse(route)?.path);
+
+/// A tray tap is a fresh navigation intent. The runtime applies this stack in
+/// two phases so GoRouter has rebuilt the dashboard before the destination is
+/// pushed above it.
+List<String> providerSystemTrayNavigationStack(String destination) {
+  if (providerRouteUsesPrimaryShell(destination)) {
+    return [providerSystemTrayDestinationRoute(destination)];
+  }
+  return [
+    providerDashboardRoute,
+    providerSystemTrayDestinationRoute(destination),
+  ];
+}
+
 /// Returns the only corrective destination accepted for provider-document
 /// lifecycle notifications. Routing is derived from a known event type rather
 /// than an arbitrary server-supplied path.
@@ -260,6 +428,335 @@ String? providerLifecycleNotificationRoute(String rawType) {
       '/account/vehicle',
     _ => null,
   };
+}
+
+/// The small set of operations an inbox notification is allowed to start.
+///
+/// A notification payload is historical, user-controlled network input by the
+/// time it reaches this screen. Keeping the operation semantic (rather than
+/// accepting a remote path) lets the UI re-fetch authoritative booking state
+/// before opening anything that can mutate marketplace state.
+enum ProviderInboxActionKind {
+  route,
+  locationSettings,
+  manualJob,
+  activeJob,
+  rating,
+}
+
+@immutable
+class ProviderInboxAction {
+  const ProviderInboxAction({
+    required this.kind,
+    required this.label,
+    this.route,
+    this.entityId,
+    this.bookingType,
+    this.offerId,
+    this.offerVersion,
+    this.assignmentMode,
+  });
+
+  final ProviderInboxActionKind kind;
+  final String label;
+  final String? route;
+  final String? entityId;
+  final String? bookingType;
+  final String? offerId;
+  final int? offerVersion;
+  final String? assignmentMode;
+
+  bool get requiresExactJobReceipt =>
+      kind == ProviderInboxActionKind.manualJob &&
+      assignmentMode == 'request_quote' &&
+      offerVersion == jobOfferReceiptProtocolVersion &&
+      offerId != null;
+}
+
+final RegExp _providerInboxUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
+
+String? _providerInboxEntityId(
+  Map<String, dynamic> payload,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = payload[key]?.toString().trim();
+    if (value != null && _providerInboxUuidPattern.hasMatch(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+String _canonicalProviderInboxType(String rawType) {
+  final normalized = NotificationPayload.normaliseType(
+    rawType.trim().toLowerCase(),
+  );
+  // The notification table retains the backend eventType while FCM translates
+  // a few of those values before mobile delivery. Accept both names so tray
+  // and inbox behavior cannot drift for the same event.
+  return switch (normalized) {
+    'job_bid_selected' ||
+    'job_bid_accepted' =>
+      NotificationPayload.typeBidAccepted,
+    'job_bid_rejected' => NotificationPayload.typeBidRejected,
+    'job_supplement_approved' => NotificationPayload.typeSupplementApproved,
+    'job_supplement_rejected' => NotificationPayload.typeSupplementRejected,
+    'chat_message' => NotificationPayload.typeNewMessage,
+    _ => normalized,
+  };
+}
+
+ProviderInboxAction _providerInboxRoute(String label, String route) =>
+    ProviderInboxAction(
+      kind: ProviderInboxActionKind.route,
+      label: label,
+      route: route,
+    );
+
+/// Resolves the optional CTA for one provider inbox row.
+///
+/// Security invariants:
+/// - `payload.route` is deliberately ignored.
+/// - dynamic ids must be UUIDs before an action is returned.
+/// - expiring ride/job offers never become historical inbox actions.
+/// - unknown event types are informational and return null.
+ProviderInboxAction? providerInboxActionFor({
+  required String eventType,
+  Map<String, dynamic> payload = const {},
+}) {
+  final type = _canonicalProviderInboxType(eventType);
+
+  if (type == NotificationPayload.typeAnnouncement) {
+    final destination = payload[NotificationPayload.keyDestination]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    return switch (destination) {
+      'activity' => _providerInboxRoute('View activity', '/trips'),
+      'support' => _providerInboxRoute('Get support', '/account/support'),
+      'promotions' => _providerInboxRoute('View earnings', '/earnings'),
+      // The inbox is already open. App-store campaigns remain informational
+      // until a separately validated store URL is part of the mobile contract.
+      'notifications' || 'app_store' => null,
+      _ => null,
+    };
+  }
+
+  if (type == NotificationPayload.typeVerificationRejected ||
+      type == NotificationPayload.typeVerificationDocumentRejected) {
+    return _providerInboxRoute(
+      'Re-upload document',
+      '/account/documents',
+    );
+  }
+
+  if (type == NotificationPayload.typeVerificationDocumentReviewed) {
+    final status = payload['status']?.toString().trim().toLowerCase();
+    if (status == 'rejected' || payload['resubmissionRequired'] == true) {
+      return _providerInboxRoute(
+        'Re-upload document',
+        '/account/documents',
+      );
+    }
+    return null;
+  }
+
+  if (type == NotificationPayload.typeProviderDocumentExpired ||
+      type == NotificationPayload.typeProviderDocumentReplacementGraceExpired) {
+    return _providerInboxRoute('Replace document', '/account/documents');
+  }
+
+  if (type == NotificationPayload.typeProviderDocumentExpiryNotice ||
+      type == NotificationPayload.typeProviderDocumentExpiry72h ||
+      type == NotificationPayload.typeProviderDocumentExpiry24h ||
+      type == NotificationPayload.typeProviderDocumentExpiry2h) {
+    return _providerInboxRoute('Renew document', '/account/documents');
+  }
+
+  if (type == NotificationPayload.typeRideCategoryRejected) {
+    return _providerInboxRoute('Review vehicle', '/account/vehicle');
+  }
+
+  if (type == NotificationPayload.typeProviderLocationDegraded ||
+      type == NotificationPayload.typeProviderLocationDegradedEscalated) {
+    return const ProviderInboxAction(
+      kind: ProviderInboxActionKind.locationSettings,
+      label: 'Fix location',
+    );
+  }
+
+  if (type == NotificationPayload.typeAccountSuspendedLowRating ||
+      type == NotificationPayload.typeProviderCancellationBlockStarted ||
+      type == NotificationPayload.typeProviderResponseBlockStarted) {
+    return _providerInboxRoute('Contact support', '/account/support');
+  }
+  if (type == NotificationPayload.typeProviderResponseBlockWarning) {
+    return _providerInboxRoute('Manage online status', '/home');
+  }
+  if (type == NotificationPayload.typeAccountRatingWarning) {
+    return _providerInboxRoute('View performance', '/earnings');
+  }
+
+  if (type == NotificationPayload.typePaymentDisputeRaised ||
+      type == NotificationPayload.typePaymentClawbackPending ||
+      type == NotificationPayload.typePaymentDisputeResolvedInProviderFavour) {
+    return _providerInboxRoute('View balance', '/earnings');
+  }
+
+  if (type == NotificationPayload.typePayoutMethodRebindRequired) {
+    return _providerInboxRoute('Re-add payout method', '/account/payouts');
+  }
+
+  if (type == NotificationPayload.typeRideDestinationChanged) {
+    final rideId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyRideId, 'ride_id'],
+    );
+    return rideId == null
+        ? null
+        : _providerInboxRoute('View updated ride', '/active-ride');
+  }
+
+  final jobId = _providerInboxEntityId(
+    payload,
+    const [NotificationPayload.keyJobId, 'job_id'],
+  );
+  if (type == NotificationPayload.typeJobManuallyAssigned) {
+    final mode = (payload['mode'] ?? payload['assignmentMode'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (mode == 'confirm') {
+      return jobId == null
+          ? null
+          : ProviderInboxAction(
+              kind: ProviderInboxActionKind.activeJob,
+              label: 'Open job',
+              entityId: jobId,
+            );
+    }
+    final offerVersion = int.tryParse(
+      payload['offerVersion']?.toString() ?? '',
+    );
+    final offerId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyOfferId, 'offer_id'],
+    );
+    // A v2 directed quote is safe to open only after the authenticated exact
+    // receipt succeeds. Reject incomplete/tampered v2 inbox records rather
+    // than silently degrading them to the legacy job-id-only path.
+    if (offerVersion != null &&
+        offerVersion >= jobOfferReceiptProtocolVersion) {
+      if (mode != 'request_quote' || offerId == null) return null;
+    }
+    return jobId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.manualJob,
+            label: 'Review & bid',
+            entityId: jobId,
+            offerId: offerId,
+            offerVersion: offerVersion,
+            assignmentMode: mode,
+          );
+  }
+
+  if (type == NotificationPayload.typeBidAccepted ||
+      type == NotificationPayload.typeSupplementApproved ||
+      type == NotificationPayload.typeSupplementRejected ||
+      type == NotificationPayload.typeJobReminder24h ||
+      type == NotificationPayload.typeJobReminder2h ||
+      type == NotificationPayload.typeJobCheckin8h ||
+      type == NotificationPayload.typeJobStale24h ||
+      type == NotificationPayload.typeJobStale48h ||
+      type == NotificationPayload.typeJobWelfareCheck) {
+    return jobId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.activeJob,
+            label: 'Open job',
+            entityId: jobId,
+          );
+  }
+
+  if (type == NotificationPayload.typeSupportTicketMessage ||
+      type == NotificationPayload.typeSupportTicketStatusChanged) {
+    final ticketId = _providerInboxEntityId(
+      payload,
+      const [NotificationPayload.keyTicketId, 'ticket_id'],
+    );
+    return ticketId == null
+        ? null
+        : _providerInboxRoute(
+            type == NotificationPayload.typeSupportTicketMessage
+                ? 'View & reply'
+                : 'View ticket',
+            '/account/support/tickets/$ticketId',
+          );
+  }
+
+  if (type == NotificationPayload.typeRatingPrompt) {
+    final bookingType = payload[NotificationPayload.keyBookingType]
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (bookingType != 'ride' &&
+        bookingType != 'job' &&
+        bookingType != 'artisan_job') {
+      return null;
+    }
+    final bookingId = _providerInboxEntityId(
+      payload,
+      [
+        NotificationPayload.keyBookingId,
+        'booking_id',
+        if (bookingType == 'ride') NotificationPayload.keyRideId,
+        if (bookingType != 'ride') NotificationPayload.keyJobId,
+      ],
+    );
+    return bookingId == null
+        ? null
+        : ProviderInboxAction(
+            kind: ProviderInboxActionKind.rating,
+            label: 'Rate now',
+            entityId: bookingId,
+            bookingType: bookingType,
+          );
+  }
+
+  if (type == NotificationPayload.typeRideSettled ||
+      type == NotificationPayload.typePaymentReceived ||
+      type == NotificationPayload.typeEarningsUpdated ||
+      type == NotificationPayload.typeJobPaymentReleasing ||
+      type == NotificationPayload.typeJobConfirmedComplete) {
+    return _providerInboxRoute('View earnings', '/earnings');
+  }
+
+  return null;
+}
+
+@visibleForTesting
+String incomingRequestNotificationIdentity({
+  required String type,
+  required String requestId,
+  String? offerId,
+}) {
+  final exact = offerId?.trim();
+  return '$type:${exact == null || exact.isEmpty ? requestId : exact}';
+}
+
+@visibleForTesting
+bool shouldStopIncomingRingtone({
+  required String? ownerOfferId,
+  required String? terminalOfferId,
+}) {
+  final terminal = terminalOfferId?.trim();
+  if (terminal == null || terminal.isEmpty) return true;
+  return ownerOfferId?.trim() == terminal;
 }
 
 /// Wraps `flutter_local_notifications` for the provider app. Responsibilities:
@@ -445,6 +942,7 @@ class LocalNotificationService {
   Future<void> cancelIncomingRequest({
     required String type,
     required String requestId,
+    String? offerId,
   }) async {
     if (requestId.isEmpty) return;
     if (type != NotificationPayload.typeRideRequest &&
@@ -455,7 +953,13 @@ class LocalNotificationService {
     final key = type == NotificationPayload.typeRideRequest
         ? NotificationPayload.keyRideId
         : NotificationPayload.keyJobId;
-    await _plugin.cancel(_dedupeId(type, {key: requestId}));
+    await _plugin.cancel(
+      _dedupeId(type, {
+        key: requestId,
+        if (offerId != null && offerId.isNotEmpty)
+          NotificationPayload.keyOfferId: offerId,
+      }),
+    );
   }
 
   /// Show a persistent banner for an incoming job. Used by FCM background
@@ -661,6 +1165,7 @@ class LocalNotificationService {
   AudioPlayer? _ringtonePlayer;
   Timer? _ringtoneTimer;
   bool _ringtoneActive = false;
+  String? _ringtoneOfferId;
   int _ringtoneGeneration = 0;
 
   bool _isCurrentRingtoneSession(int generation) =>
@@ -669,9 +1174,19 @@ class LocalNotificationService {
   /// Start a continuous "incoming request" ringtone. Idempotent — a second
   /// call while the ringtone is already playing is a no-op. Used by the
   /// foreground job/ride request modal/screen to alert the provider.
-  Future<void> startIncomingRingtone() async {
-    if (_ringtoneActive) return;
+  Future<void> startIncomingRingtone({String? offerId}) async {
+    if (_ringtoneActive) {
+      // A sequential exact offer can reuse the already-visible job surface.
+      // Transfer ringtone ownership without restarting the audio/haptic loop.
+      if (offerId != null && offerId.isNotEmpty) {
+        _ringtoneOfferId = offerId;
+      }
+      return;
+    }
     _ringtoneActive = true;
+    final exactOfferId = offerId?.trim();
+    _ringtoneOfferId =
+        exactOfferId == null || exactOfferId.isEmpty ? null : exactOfferId;
     final generation = ++_ringtoneGeneration;
 
     // Haptic loop fires regardless of audio outcome — it's the
@@ -737,9 +1252,19 @@ class LocalNotificationService {
   /// Stop the incoming-request ringtone. Safe to call when nothing is
   /// playing. Always called from `dispose` of the corresponding screen
   /// so dismissing/accepting/declining/timing-out all silence the alert.
-  Future<void> stopIncomingRingtone() async {
+  Future<void> stopIncomingRingtone({String? offerId}) async {
     if (!_ringtoneActive) return;
+    if (!shouldStopIncomingRingtone(
+      ownerOfferId: _ringtoneOfferId,
+      terminalOfferId: offerId,
+    )) {
+      // A late terminal event for offer A must not silence the ringtone now
+      // owned by sequential offer B. A null argument remains the explicit
+      // unconditional teardown used by widget dispose/logout paths.
+      return;
+    }
     _ringtoneActive = false;
+    _ringtoneOfferId = null;
     _ringtoneGeneration++;
     _ringtoneTimer?.cancel();
     _ringtoneTimer = null;
@@ -759,6 +1284,20 @@ class LocalNotificationService {
       if (callId != null && callId.isNotEmpty) {
         return _incomingCallNotificationId(callId);
       }
+    }
+    final isIncomingRequest = type == NotificationPayload.typeRideRequest ||
+        type == NotificationPayload.typeJobRequest;
+    if (isIncomingRequest) {
+      final requestId = extras[NotificationPayload.keyJobId] ??
+          extras[NotificationPayload.keyRideId] ??
+          type;
+      return _stableNotificationId(
+        incomingRequestNotificationIdentity(
+          type: type,
+          requestId: requestId,
+          offerId: extras[NotificationPayload.keyOfferId],
+        ),
+      );
     }
     final primary = extras[NotificationPayload.keyJobId] ??
         extras[NotificationPayload.keyRideId] ??

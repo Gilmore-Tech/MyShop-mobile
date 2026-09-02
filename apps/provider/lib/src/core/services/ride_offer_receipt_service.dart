@@ -189,9 +189,8 @@ Future<void> clearStoredRideOffer(String offerId) async {
 }
 
 /// Returns only privacy-minimal, exact offer identities previously persisted
-/// by this device. Corrupt/legacy values are ignored and the newest ten are
-/// used so recovery remains bounded without inventing a server-side time
-/// window.
+/// by this device. Corrupt/legacy values are ignored and only the newest
+/// bounded set is used, without inventing a server-side time window.
 Future<List<StoredRideOfferIdentity>> readStoredRideOfferIdentities({
   int limit = maxKnownProviderOfferIds,
 }) async {

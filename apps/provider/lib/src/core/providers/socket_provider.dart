@@ -29,6 +29,7 @@ import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
 import '../services/incoming_request_overlay_presenter.dart';
+import '../services/job_offer_receipt_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/ride_cancellation_notice.dart';
 import '../services/ride_offer_receipt_service.dart';
@@ -89,6 +90,96 @@ String? rideCancellationIdFromEvent(
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
+/// Exact invitation identity for each surfaced artisan job. Version-2 decline
+/// calls must include this id so the server can distinguish sequential offers
+/// for the same job. Legacy invitations remain absent from this map.
+final jobOfferIdByJobProvider =
+    StateProvider<Map<String, String>>((_) => <String, String>{});
+
+/// Latest exact offer identity seen for each job during this authenticated
+/// session. Unlike [jobOfferIdByJobProvider], terminal cleanup deliberately
+/// keeps this history so a repeated copy of offer A stays deduped while a
+/// later offer B for the same job is allowed to surface again.
+final lastJobOfferIdByJobProvider =
+    StateProvider<Map<String, String>>((_) => <String, String>{});
+
+/// Handset-clock projection of the current exact offer's server deadline.
+/// Poller-created widgets watch this map so a later authoritative receipt can
+/// replace their legacy/global deadline without stacking a second modal.
+final jobOfferDeadlineByJobProvider =
+    StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
+
+enum JobOfferSurfaceDisposition { surface, enrichExisting, ignoreDuplicate }
+
+JobOfferSurfaceDisposition jobOfferSurfaceDisposition({
+  required bool jobAlreadySurfaced,
+  required String? lastExactOfferId,
+  required String? incomingOfferId,
+}) {
+  if (!jobAlreadySurfaced) return JobOfferSurfaceDisposition.surface;
+  final exact = incomingOfferId?.trim();
+  if (exact == null || exact.isEmpty || exact == lastExactOfferId) {
+    return JobOfferSurfaceDisposition.ignoreDuplicate;
+  }
+  // A poller can surface the job before its directed v2 delivery arrives.
+  // The first exact copy enriches that UI rather than opening it twice.
+  if (lastExactOfferId == null || lastExactOfferId.isEmpty) {
+    return JobOfferSurfaceDisposition.enrichExisting;
+  }
+  // A genuinely new exact offer for the same job gets a fresh response UI.
+  return JobOfferSurfaceDisposition.surface;
+}
+
+/// Exact terminal events may mutate UI only when they refer to the currently
+/// active offer. Legacy state (no current exact identity) keeps the historical
+/// job-id fallback for backwards compatibility.
+bool jobOfferTerminalMatchesCurrent({
+  required String? currentOfferId,
+  required String? terminalOfferId,
+}) {
+  final current = currentOfferId?.trim();
+  if (current == null || current.isEmpty) return true;
+  final terminal = terminalOfferId?.trim();
+  return terminal != null && terminal.isNotEmpty && terminal == current;
+}
+
+/// Whether an async action that started for [capturedOfferId] may still mutate
+/// the job-id keyed UI after its REST response arrives.
+///
+/// [lastExactOfferId] lets a terminal event remove the active map before the
+/// action response returns without stranding the old screen. A genuinely newer
+/// exact offer always changes that lineage and therefore wins.
+bool jobOfferActionStillOwnsCurrent({
+  required String? capturedOfferId,
+  required String? currentOfferId,
+  required String? lastExactOfferId,
+}) {
+  final captured = capturedOfferId?.trim();
+  final current = currentOfferId?.trim();
+  final last = lastExactOfferId?.trim();
+  if (captured == null || captured.isEmpty) {
+    return current == null || current.isEmpty;
+  }
+  return current == captured ||
+      ((current == null || current.isEmpty) && last == captured);
+}
+
+class JobOfferDismissal {
+  const JobOfferDismissal({
+    required this.jobId,
+    required this.reason,
+    this.offerId,
+  });
+
+  final String jobId;
+  final String reason;
+  final String? offerId;
+}
+
+/// Terminal server resolution for an invitation already visible in Flutter.
+final jobOfferDismissalProvider =
+    StateProvider<JobOfferDismissal?>((_) => null);
+
 /// Job id currently visible on the full `/job-request` details route.
 ///
 /// Mirrors [visibleRideRequestIdProvider] on the driver side: FCM taps,
@@ -98,6 +189,11 @@ final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 /// and re-pushing a stub that re-fetches the same job (which reads as
 /// details → loading → details to the artisan).
 final visibleJobRequestIdProvider = StateProvider<String?>((_) => null);
+
+/// Job currently owned by the incoming bottom sheet. Sequential exact offers
+/// for that same job update this sheet in place instead of stacking another
+/// modal on top of it.
+final visibleJobModalIdProvider = StateProvider<String?>((_) => null);
 
 /// True while the Socket.IO connection is open.
 /// Useful for showing a live indicator on the home screen.
@@ -509,7 +605,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('ride:dismissed', handleRideDismissed);
 
     // Listen for incoming job requests (artisan) — new + legacy event names
-    void handleJob(dynamic data) {
+    Future<void> receiveJob(dynamic data) async {
       // Never print the full request: it can contain the customer's name,
       // exact address, description and photo URLs. Keep only routing metadata
       // in release/device logs.
@@ -521,19 +617,77 @@ void _connectAndListen(Ref ref, SocketService socket) {
       } else {
         debugPrint('[WS] Received job event type=${data.runtimeType}');
       }
-      if (data is Map<String, dynamic>) {
+      if (data is Map) {
         try {
-          final job = Job.fromJson(data);
-          // Dedupe against the poller — if the REST fallback already
-          // surfaced this job, skip the duplicate modal.
-          final surfaced = ref.container.read(surfacedJobIdsProvider);
-          if (surfaced.contains(job.id)) {
+          final expectedSession =
+              ref.container.read(currentAuthSessionIdentityProvider);
+          if (expectedSession == null) return;
+          final raw = Map<String, dynamic>.from(data);
+          final received = await acknowledgeJobOffer(
+            payload: raw,
+            jobs: ref.container.read(jobServiceProvider),
+          );
+          if (received == null) {
+            debugPrint('[WS] Job offer receipt failed; request not surfaced');
+            return;
+          }
+          if (ref.container.read(currentAuthSessionIdentityProvider) !=
+              expectedSession) {
+            debugPrint('[WS] Dropped job offer after account/session change');
+            return;
+          }
+          final job = Job.fromJson(received.payload);
+          // Read dedupe state after the async receipt. Socket and FCM copies
+          // can race through that await; the winner must be visible here so
+          // the second copy does not independently surface the same offer.
+          final previouslySurfaced = ref.container
+              .read(surfacedJobIdsProvider)
+              .contains(received.jobId);
+          final previousExact =
+              ref.container.read(lastJobOfferIdByJobProvider)[received.jobId];
+          final disposition = jobOfferSurfaceDisposition(
+            jobAlreadySurfaced: previouslySurfaced,
+            lastExactOfferId: previousExact,
+            incomingOfferId: received.offerId,
+          );
+          if (received.hasExactReceipt) {
+            ref.container.read(jobOfferIdByJobProvider.notifier).update(
+                  (offers) => {...offers, job.id: received.offerId!},
+                );
+            ref.container.read(lastJobOfferIdByJobProvider.notifier).update(
+                  (offers) => {...offers, job.id: received.offerId!},
+                );
+            final deadline = received.decisionExpiresAt;
+            if (deadline != null) {
+              ref.container
+                  .read(jobOfferDeadlineByJobProvider.notifier)
+                  .update((deadlines) => {...deadlines, job.id: deadline});
+            }
+            if (previousExact != received.offerId) {
+              ref.container.read(jobOfferDismissalProvider.notifier).state =
+                  null;
+            }
+          }
+          if (disposition == JobOfferSurfaceDisposition.ignoreDuplicate) {
             debugPrint('[WS] Job ${job.id} already surfaced — skipping');
+            return;
+          }
+          if (disposition == JobOfferSurfaceDisposition.enrichExisting) {
+            ref.container
+                .read(pendingIncomingJobsProvider.notifier)
+                .enqueue(job);
+            debugPrint('[WS] Job ${job.id} enriched with exact offer receipt');
             return;
           }
           ref.container.read(surfacedJobIdsProvider.notifier).update(
                 (s) => {...s, job.id},
               );
+          if (ref.container.read(visibleJobModalIdProvider) == job.id) {
+            ref.container
+                .read(pendingIncomingJobsProvider.notifier)
+                .enqueue(job);
+            return;
+          }
           // Force a state transition even if an identical Job instance is
           // somehow already in the provider (defensive — Job doesn't
           // override ==, but the clear-then-set guarantees the listener
@@ -548,6 +702,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       } else {
         debugPrint('[WS] Job payload not a Map — got ${data.runtimeType}');
       }
+    }
+
+    void handleJob(dynamic data) {
+      unawaited(receiveJob(data));
     }
 
     socket
@@ -607,7 +765,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // anyway in case the backend rooms ever cross-talk.
         final active = ref.container.read(activeRideProvider).ride;
         if (active != null && active.id != ride.id) return;
-        ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
+        final notifier = ref.container.read(activeRideProvider.notifier);
+        if (active != null && ride.routeRevision > active.routeRevision) {
+          notifier.applyDestinationChanged(ride);
+        } else {
+          notifier.applySnapshot(ride);
+        }
       } catch (e) {
         debugPrint('[WS] Failed to apply ride:state snapshot: $e');
       }
@@ -650,33 +813,101 @@ void _connectAndListen(Ref ref, SocketService socket) {
         (data) => applyRideCancellation(data, requireStatus: true),
       );
 
-    // Backend fires `ride:route_updated` when the rider adds or declines
-    // a stop. The event itself only carries a thin `{rideId, …}` shape,
-    // not the new stops list, so we re-fetch the full ride via REST and
-    // hand it to applySnapshot — which now preserves the stops list
-    // through subsequent stops-less `ride:state` snapshots.
-    void handleRouteUpdated(dynamic data) {
-      String? rideId;
-      if (data is Map<String, dynamic>) {
-        rideId = data['rideId'] as String? ?? data['id'] as String?;
+    // Destination changes carry a monotonic revision, while the legacy
+    // route_updated event remains as a thin compatibility wake-up for stop
+    // changes and older apps. Both refetch the authoritative Ride snapshot.
+    Future<void> refetchRoute(
+      String rideId, {
+      int? advertisedRevision,
+      RideDestinationPoint? previousDestination,
+      DateTime? changedAt,
+      bool destinationSpecific = false,
+    }) async {
+      final current = ref.container.read(activeRideProvider).ride;
+      if (current == null || current.id != rideId) return;
+      if (advertisedRevision != null &&
+          advertisedRevision < current.routeRevision) {
+        return;
       }
-      rideId ??= ref.container.read(activeRideProvider).ride?.id;
-      if (rideId == null) return;
-      final svc = ref.container.read(rideServiceProvider);
-      svc.getRide(rideId).then((json) {
-        try {
-          final ride = Ride.fromJson(json);
-          ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
-        } catch (e) {
-          debugPrint('[WS] route_updated parse failed: $e');
+      try {
+        final json =
+            await ref.container.read(rideServiceProvider).getRide(rideId);
+        final fresh = Ride.fromJson(json);
+        final latest = ref.container.read(activeRideProvider).ride;
+        if (latest == null || latest.id != rideId) return;
+        if (advertisedRevision != null &&
+            fresh.routeRevision < advertisedRevision) {
+          debugPrint(
+            '[WS] route refetch lagged destination revision '
+            '$advertisedRevision (snapshot=${fresh.routeRevision})',
+          );
+          return;
         }
-      }).catchError((Object e) {
-        debugPrint('[WS] route_updated refetch failed: $e');
-      });
+        final revisionAdvanced = fresh.routeRevision > latest.routeRevision;
+        if (destinationSpecific || revisionAdvanced) {
+          final changed = ref.container
+              .read(activeRideProvider.notifier)
+              .applyDestinationChanged(
+                fresh,
+                previousDestination: previousDestination,
+                changedAt: changedAt,
+              );
+          if (changed) return;
+        }
+        // A same-revision legacy event can still add an intermediate stop.
+        // Apply it as a normal ride snapshot rather than falsely presenting a
+        // destination-change banner.
+        ref.container.read(activeRideProvider.notifier).applySnapshot(fresh);
+      } catch (error) {
+        debugPrint('[WS] route update refetch failed: $error');
+      }
+    }
+
+    void handleDestinationChanged(dynamic data) {
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+      final rideId = (map['rideId'] ?? map['id'])?.toString();
+      if (rideId == null || rideId.isEmpty) return;
+      final rawRevision = map['routeRevision'] ?? map['route_revision'];
+      final revision = rawRevision is num
+          ? rawRevision.toInt()
+          : int.tryParse(rawRevision?.toString() ?? '');
+      RideDestinationPoint? previous;
+      DateTime? changedAt;
+      try {
+        final event = RideRouteUpdate.fromJson(map);
+        previous = event.previousDestination;
+        changedAt = event.changedAt;
+      } on FormatException {
+        // Thin destination event: REST supplies the complete route.
+      }
+      unawaited(
+        refetchRoute(
+          rideId,
+          advertisedRevision: revision,
+          previousDestination: previous,
+          changedAt: changedAt,
+          destinationSpecific: true,
+        ),
+      );
+    }
+
+    void handleRouteUpdated(dynamic data) {
+      final map = data is Map ? Map<String, dynamic>.from(data) : const {};
+      final rideId = (map['rideId'] ?? map['id'])?.toString() ??
+          ref.container.read(activeRideProvider).ride?.id;
+      if (rideId == null || rideId.isEmpty) return;
+      final rawRevision = map['routeRevision'] ?? map['route_revision'];
+      final revision = rawRevision is num
+          ? rawRevision.toInt()
+          : int.tryParse(rawRevision?.toString() ?? '');
+      unawaited(refetchRoute(rideId, advertisedRevision: revision));
     }
 
     socket
+      ..off('ride:destination_changed')
       ..off('ride:route_updated')
+      ..on('ride:destination_changed', handleDestinationChanged)
       ..on('ride:route_updated', handleRouteUpdated);
 
     // Listen for job status updates — emitted to the artisan's room when
@@ -707,6 +938,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
             clearIncomingRequestAlert(
               type: NotificationPayload.typeJobRequest,
               requestId: jobId,
+              offerId: data['offerId']?.toString() ??
+                  ref.container.read(jobOfferIdByJobProvider)[jobId],
             ),
           );
         }

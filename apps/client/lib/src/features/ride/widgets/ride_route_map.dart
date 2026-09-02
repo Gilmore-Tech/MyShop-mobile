@@ -26,12 +26,14 @@ class RideRouteMap extends ConsumerStatefulWidget {
   final String destination;
   final int etaMinutes;
   final RideTrackingPhase phase;
+  final VoidCallback? onChangeDropoff;
 
   const RideRouteMap({
     super.key,
     required this.destination,
     required this.etaMinutes,
     this.phase = RideTrackingPhase.enRoute,
+    this.onChangeDropoff,
   });
 
   @override
@@ -63,8 +65,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// position+rotation and (after first fix) the follow-camera.
   LiveDriverPosition? _lastDriverPos;
 
-  /// Captured once — pickup/destination don't change during a single ride.
-  late final RideSearchState _searchState;
+  /// Current authoritative route endpoints. Destination changes replace this
+  /// state live; the previous captured-once behavior left the rider map aimed
+  /// at the old drop-off after a successful reprice.
+  late RideSearchState _searchState;
 
   /// Debug bus driving the on-screen diagnostic strip — toggled on every
   /// pipeline state change. Stripped from release via `kDebugMode`.
@@ -84,7 +88,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   LatLng? _lastRoutedFrom;
   RideTrackingPhase? _lastRoutedPhase;
   DateTime? _lastRouteFetchAt;
-  bool _routeFetchInFlight = false;
+  int _routeGeneration = 0;
+  int? _routeFetchGeneration;
 
   /// Throttle constants — route refreshes still hit a paid backend Google
   /// Routes call, so avoid refreshing on every GPS bump. 100 m of driver drift
@@ -130,8 +135,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // waypoint — force-refresh the route so the line doesn't keep
     // pointing at pickup after the trip starts.
     if (oldWidget.phase != widget.phase) {
+      _invalidateRoute();
       final pos = _lastDriverPos;
-      if (pos != null) _syncRoute(pos);
+      if (pos != null) unawaited(_syncRoute(pos));
     }
   }
 
@@ -156,6 +162,31 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     }
   }
 
+  void _onRouteEndpointsChanged(RideSearchState next) {
+    final oldPickup = _searchState.pickup;
+    final oldDestination = _searchState.destination;
+    final changed = oldPickup?.lat != next.pickup?.lat ||
+        oldPickup?.lng != next.pickup?.lng ||
+        oldDestination?.lat != next.destination?.lat ||
+        oldDestination?.lng != next.destination?.lng;
+    _searchState = next;
+    if (!changed || !mounted) return;
+
+    setState(_invalidateRoute);
+    _initialBoundsFit = false;
+    final driver = _lastDriverPos;
+    if (driver != null) unawaited(_syncRoute(driver));
+    unawaited(_fitInitialBounds());
+  }
+
+  void _invalidateRoute() {
+    _routeGeneration += 1;
+    _lastRoutedFrom = null;
+    _lastRoutedPhase = null;
+    _lastRouteFetchAt = null;
+    _routePolyline = const [];
+  }
+
   /// Fetch a driving route from the driver's current position to the
   /// phase-appropriate waypoint (pickup while en-route/arrived, dropoff while
   /// in-progress) through the authenticated backend route proxy and store the
@@ -165,6 +196,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// skips if the driver hasn't moved 100 m since the last fetch AND
   /// less than 30 s has passed AND the phase target hasn't flipped.
   Future<void> _syncRoute(LiveDriverPosition pos) async {
+    final generation = _routeGeneration;
     final target = _targetForPhase();
     if (target == null) return;
     final origin = LatLng(pos.latitude, pos.longitude);
@@ -181,16 +213,20 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
         return;
       }
     }
-    if (_routeFetchInFlight) return;
+    if (_routeFetchGeneration == generation) return;
 
-    _routeFetchInFlight = true;
+    _routeFetchGeneration = generation;
     _lastRouteFetchAt = DateTime.now();
     try {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: target,
           );
-      if (!mounted || route.polyline.length < 2) return;
+      if (!mounted ||
+          generation != _routeGeneration ||
+          route.polyline.length < 2) {
+        return;
+      }
       if (route.isFallback) {
         debugPrint(
           '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
@@ -211,7 +247,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     } catch (e) {
       debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
     } finally {
-      _routeFetchInFlight = false;
+      if (_routeFetchGeneration == generation) {
+        _routeFetchGeneration = null;
+      }
     }
   }
 
@@ -396,6 +434,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<RideSearchState>(
+      rideSearchProvider,
+      (_, next) => _onRouteEndpointsChanged(next),
+    );
     // Re-sync on every driver-position tick. ref.listen survives rebuilds.
     ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
       _onDriverPosition(next);
@@ -446,7 +488,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           top: statusBarHeight + 62,
           left: 16,
           right: 16,
-          child: _DestinationOverlay(destination: widget.destination),
+          child: RideDestinationOverlay(
+            destination: widget.destination,
+            onChangeDropoff: widget.phase == RideTrackingPhase.inProgress
+                ? widget.onChangeDropoff
+                : null,
+          ),
         ),
         if (kDebugMode)
           Positioned(
@@ -542,51 +589,87 @@ class _LiveTrackDebugBanner extends StatelessWidget {
   }
 }
 
-class _DestinationOverlay extends StatelessWidget {
+@visibleForTesting
+class RideDestinationOverlay extends StatelessWidget {
   final String destination;
-  const _DestinationOverlay({required this.destination});
+  final VoidCallback? onChangeDropoff;
+
+  const RideDestinationOverlay({
+    super.key,
+    required this.destination,
+    this.onChangeDropoff,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-      decoration: _cardDecoration(),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _RouteRail(),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'HEADING TO',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textSecondary,
-                      letterSpacing: 1.4,
-                    ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('map-change-dropoff-card'),
+        onTap: onChangeDropoff,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+          decoration: _cardDecoration(),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _RouteRail(),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'HEADING TO',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textSecondary,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        destination,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textPrimary,
+                          height: 1.25,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (onChangeDropoff != null) ...[
+                        const SizedBox(height: 10),
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.edit_location_alt_outlined,
+                              size: 18,
+                              color: MyShopColors.primaryGoldDark,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Change drop-off',
+                              style: TextStyle(
+                                color: MyShopColors.primaryGoldDark,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    destination,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary,
-                      height: 1.25,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

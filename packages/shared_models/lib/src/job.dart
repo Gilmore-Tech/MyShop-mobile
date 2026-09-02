@@ -1,3 +1,50 @@
+/// Server-authored phase for a directed admin assignment.
+enum JobAssignmentPhase {
+  awaitingQuote,
+  awaitingAdminReview,
+  awaitingClientAccept;
+
+  static JobAssignmentPhase? fromString(String? value) => switch (value) {
+        'awaiting_quote' => JobAssignmentPhase.awaitingQuote,
+        'awaiting_admin_review' => JobAssignmentPhase.awaitingAdminReview,
+        'awaiting_client_accept' => JobAssignmentPhase.awaitingClientAccept,
+        _ => null,
+      };
+}
+
+/// Additive assignment envelope returned by newer backend versions.
+///
+/// All fields remain nullable so older app builds and legacy records continue
+/// to parse even when the envelope is absent or partially populated.
+class JobAssignment {
+  const JobAssignment({
+    this.attemptId,
+    this.revision,
+    this.phase,
+    this.quoteDeadlineAt,
+    this.acceptDeadlineAt,
+  });
+
+  factory JobAssignment.fromJson(Map<String, dynamic> json) => JobAssignment(
+        attemptId: json['attemptId'] as String?,
+        revision: (json['revision'] as num?)?.toInt(),
+        phase: JobAssignmentPhase.fromString(json['phase'] as String?),
+        quoteDeadlineAt: json['quoteDeadlineAt'] as String?,
+        acceptDeadlineAt: json['acceptDeadlineAt'] as String?,
+      );
+
+  final String? attemptId;
+  final int? revision;
+  final JobAssignmentPhase? phase;
+  final String? quoteDeadlineAt;
+  final String? acceptDeadlineAt;
+
+  DateTime? get quoteDeadline =>
+      quoteDeadlineAt == null ? null : DateTime.tryParse(quoteDeadlineAt!);
+  DateTime? get acceptDeadline =>
+      acceptDeadlineAt == null ? null : DateTime.tryParse(acceptDeadlineAt!);
+}
+
 /// A service job request created by a client for an artisan.
 ///
 /// Standard status flow:
@@ -32,6 +79,7 @@ class Job {
     this.assignedArtisanId,
     this.assignedByAdmin,
     this.assignedAt,
+    this.assignment,
     this.startedAt,
     this.completedAt,
     this.clientPaymentAcknowledgedAt,
@@ -83,6 +131,8 @@ class Job {
       );
     }
 
+    final assignmentJson = json['assignment'];
+
     return Job(
       id: json['jobId'] as String? ?? json['id'] as String,
       status: JobStatus.fromString(json['status'] as String),
@@ -108,6 +158,9 @@ class Job {
           (json['assignedArtisanId'] ?? json['artisanId']) as String?,
       assignedByAdmin: json['assignedByAdmin'] as String?,
       assignedAt: json['assignedAt'] as String?,
+      assignment: assignmentJson is Map<String, dynamic>
+          ? JobAssignment.fromJson(assignmentJson)
+          : null,
       // Backend may serialise either camelCase (startedAt) or snake_case
       // (started_at) depending on the endpoint — accept both so the
       // mobile keeps working as the API converges.
@@ -151,6 +204,10 @@ class Job {
   /// When the admin / client assigned the artisan.
   final String? assignedAt;
 
+  /// Server-authored directed-assignment state. Null for normal marketplace
+  /// jobs and for responses produced by backend versions before this envelope.
+  final JobAssignment? assignment;
+
   /// ISO timestamp set by the backend when the artisan flips the job to
   /// `in_progress`. Used by the active-job screens (provider + client) to
   /// drive a live elapsed-time ticker. Null until the job has actually
@@ -193,7 +250,10 @@ class Job {
       clientPaymentAcknowledgedAt != null && clientPaymentMethod == 'cash';
 
   /// Whether this job reached the admin-assignment fallback path.
-  bool get isAdminAssigned => assignedByAdmin != null;
+  bool get isAdminAssigned =>
+      assignment != null ||
+      assignedByAdmin != null ||
+      status == JobStatus.adminAssigned;
 
   bool get isOpen => status == JobStatus.open;
   bool get isActive => status.isActive;
@@ -221,6 +281,7 @@ class Job {
     String? assignedArtisanId,
     String? assignedByAdmin,
     String? assignedAt,
+    JobAssignment? assignment,
     String? startedAt,
     String? completedAt,
     String? clientPaymentAcknowledgedAt,
@@ -248,6 +309,7 @@ class Job {
       assignedArtisanId: assignedArtisanId ?? this.assignedArtisanId,
       assignedByAdmin: assignedByAdmin ?? this.assignedByAdmin,
       assignedAt: assignedAt ?? this.assignedAt,
+      assignment: assignment ?? this.assignment,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
       clientPaymentAcknowledgedAt:

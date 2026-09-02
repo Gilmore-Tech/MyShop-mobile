@@ -287,10 +287,18 @@ class AppCallSocketService {
     required String type,
     required Map<String, dynamic> data,
   }) async {
-    await connect();
-    final socket = _socket;
-    final owner = _socketOwner;
-    final generation = _connectionGeneration;
+    var socket = _socket;
+    var owner = _socketOwner;
+    var generation = _connectionGeneration;
+    // The connected fast path still verifies the exact persisted session below.
+    // Avoid calling connect() first because it performs another serialized
+    // secure-storage snapshot for every offer/answer/ICE candidate.
+    if (socket == null || owner == null || socket.connected != true) {
+      await connect();
+      socket = _socket;
+      owner = _socketOwner;
+      generation = _connectionGeneration;
+    }
     if (socket == null ||
         owner == null ||
         !await _ownsSocketAndStorage(socket, owner, generation)) {

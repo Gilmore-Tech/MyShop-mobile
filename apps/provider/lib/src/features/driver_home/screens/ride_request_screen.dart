@@ -317,10 +317,32 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       widget.ride.id,
       reason: reason,
     );
-    if (!acknowledged) {
+    final confirmed = acknowledged ||
+        await notifier.declineRide(
+          widget.ride.id,
+          reason: reason,
+        );
+    if (!mounted) return;
+    if (!confirmed) {
       // Socket fallback keeps older backends/builds functional. The backend
-      // matcher timeout remains the final safety net if both paths are down.
-      notifier.declineRide(widget.ride.id, reason: reason);
+      // matcher timeout remains the final safety net if both paths are down,
+      // but the offer must stay visible until one path is acknowledged.
+      setState(() => _isDeclining = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "We couldn't confirm that the request was declined. Please try again.",
+          ),
+        ),
+      );
+      if (_secondsUntil(_expiresAt) <= 0) {
+        _handleExpiry();
+        return;
+      }
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _syncRemaining();
+      });
+      return;
     }
     await clearIncomingRequestAlert(
       type: NotificationPayload.typeRideRequest,
@@ -408,7 +430,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                   ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => context.push('/notifications'),
+                    onTap: () => context.push(
+                      providerInAppNotificationInboxRoute(
+                        GoRouterState.of(context).uri,
+                      ),
+                    ),
                     child: const Icon(Icons.notifications_outlined,
                         color: MyShopColors.textSecondary),
                   ),
@@ -533,7 +559,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                           Text(
                             _expired
                                 ? 'This request has expired. Looking for another driver…'
-                                : 'Accepting this trip confirms the service terms. Cancellations may affect your rating.',
+                                : 'Repeated declines or missed requests may temporarily pause new requests. They do not change your customer rating.',
                             textAlign: TextAlign.center,
                             style:
                                 MyShopTypography.caption.copyWith(fontSize: 11),

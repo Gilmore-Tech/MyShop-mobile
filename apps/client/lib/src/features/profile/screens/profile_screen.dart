@@ -9,6 +9,8 @@ import '../providers/my_ratings_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../account_deletion_policy.dart';
 import '../../../app/router.dart' show AppRoutes;
+import '../../../core/services/local_notification_service.dart';
+import '../../notifications/widgets/client_notification_bell.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 4.9 — Profile tab: masked identity, KYC badge, settings navigation.
@@ -59,7 +61,6 @@ class _ProfileBody extends StatelessWidget {
           w: w,
           h: h,
           topPad: topPad,
-          hasUnread: notifCount > 0,
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -90,7 +91,11 @@ class _ProfileBody extends StatelessWidget {
                       title: 'Notifications',
                       subtitle: 'Alerts, messages, and task updates',
                       badgeCount: notifCount > 0 ? notifCount : null,
-                      onTap: () => context.push(AppRoutes.notifications),
+                      onTap: () => context.push(
+                        clientInAppNotificationInboxRoute(
+                          GoRouterState.of(context).uri,
+                        ),
+                      ),
                       w: w,
                       h: h,
                     ),
@@ -205,12 +210,10 @@ class _AppBar extends StatelessWidget {
   final double w;
   final double h;
   final double topPad;
-  final bool hasUnread;
   const _AppBar({
     required this.w,
     required this.h,
     required this.topPad,
-    required this.hasUnread,
   });
 
   @override
@@ -234,38 +237,7 @@ class _AppBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          // Bell with optional unread dot
-          GestureDetector(
-            onTap: () => context.push(AppRoutes.notifications),
-            behavior: HitTestBehavior.opaque,
-            child: SizedBox(
-              width: w * 0.082,
-              height: w * 0.082,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_outlined,
-                    size: w * 0.056,
-                    color: MyShopColors.textPrimary,
-                  ),
-                  if (hasUnread)
-                    Positioned(
-                      top: w * 0.010,
-                      right: w * 0.010,
-                      child: Container(
-                        width: w * 0.021,
-                        height: w * 0.021,
-                        decoration: const BoxDecoration(
-                          color: MyShopColors.error,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          const ClientNotificationBell(),
         ],
       ),
     );

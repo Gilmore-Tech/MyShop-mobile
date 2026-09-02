@@ -125,6 +125,13 @@ final providerRequestServiceProvider = Provider<ProviderRequestService>((ref) {
   return ProviderRequestService(ref.watch(dioProvider));
 });
 
+/// Server-authored acceptance/response metrics. Null is a valid compatibility
+/// result while the summary endpoint is rolling out.
+final providerRequestResponseSummaryProvider =
+    FutureProvider.autoDispose<ProviderRequestResponseSummary?>((ref) {
+  return ref.watch(providerRequestServiceProvider).getRequestResponseSummary();
+});
+
 /// Server-authoritative online/offline snapshot used during lifecycle/socket
 /// reconciliation.
 final providerAvailabilityServiceProvider =

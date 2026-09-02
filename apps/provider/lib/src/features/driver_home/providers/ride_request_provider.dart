@@ -12,6 +12,7 @@ import '../../../core/providers/location_degradation_provider.dart';
 import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/ride_offer_receipt_service.dart';
+import '../../../core/services/provider_request_policy.dart';
 import '../../../core/services/lifecycle_location_service.dart';
 import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
@@ -83,6 +84,11 @@ bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
 /// `ride.createdAt + 30s` when no explicit deadline is available.
 final rideRequestDeadlineByIdProvider =
     StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
+
+/// Latest destination change the driver has not dismissed. The payload is
+/// server-authored and revision-fenced by [ActiveRideNotifier].
+final driverDestinationChangeNoticeProvider =
+    StateProvider<RideRouteUpdate?>((_) => null);
 
 /// Active-ride snapshot plus the in-flight flag used to disable buttons
 /// while the backend round-trip is pending.
@@ -159,13 +165,53 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   ActiveRideNotifier(this._ref) : super(const ActiveRideState());
 
   final Ref _ref;
+  String? _acceptingRideId;
+  Future<bool>? _acceptanceInFlight;
+
+  /// Coalesce the in-app request button and native notification/overlay
+  /// action when both deliver the same acceptance intent. Android can resume
+  /// Flutter while the overlay action is still being forwarded, so without a
+  /// shared operation the second path used to clear an already-confirmed ride
+  /// back to an empty loading state.
+  Future<bool> _coordinateAcceptance(
+    String rideId,
+    Future<bool> Function() accept,
+  ) {
+    final inFlight = _acceptanceInFlight;
+    if (inFlight != null) {
+      return _acceptingRideId == rideId ? inFlight : Future<bool>.value(false);
+    }
+
+    final completer = Completer<bool>();
+    final operation = completer.future;
+    _acceptingRideId = rideId;
+    _acceptanceInFlight = operation;
+    unawaited(() async {
+      try {
+        completer.complete(await accept());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      } finally {
+        if (identical(_acceptanceInFlight, operation)) {
+          _acceptanceInFlight = null;
+          _acceptingRideId = null;
+        }
+      }
+    }());
+    return operation;
+  }
 
   /// Accept an incoming ride. Sends the `ride:accept` socket event and
   /// awaits the backend's ack. The full ride entity arrives over the
   /// `ride:state` socket event shortly after — until then the slim ride
   /// payload from the request modal is good enough to render the screen.
-  Future<bool> acceptRide(Ride ride) async {
+  Future<bool> acceptRide(Ride ride) =>
+      _coordinateAcceptance(ride.id, () => _acceptRide(ride));
+
+  Future<bool> _acceptRide(Ride ride) async {
+    if (_finishAcceptedRideIfPresent(ride.id)) return true;
     if (state.isUpdating) return false;
+    if (state.ride != null) return false;
     _ref.read(systemTelemetryProvider).trackAction(
           'driver_accept_ride_requested',
           correlationId: ride.id,
@@ -249,14 +295,19 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } on ApiException catch (e) {
       developer.log('acceptRide API error: $e', name: 'ActiveRide', level: 900);
       state = ActiveRideState(
-        errorMessage: e.errorCode == null
-            ? userSafeApiErrorMessage(
+        errorMessage: isProviderRequestBlock(e)
+            ? providerRequestBlockMessage(
                 e,
-                fallback: "Couldn't accept the ride. Please try again.",
-                conflictMessage:
-                    'This ride offer changed. Refresh and try again.',
+                requestLabel: 'ride requests',
               )
-            : _friendlyAckError(e.errorCode!),
+            : e.errorCode == null
+                ? userSafeApiErrorMessage(
+                    e,
+                    fallback: "Couldn't accept the ride. Please try again.",
+                    conflictMessage:
+                        'This ride offer changed. Refresh and try again.',
+                  )
+                : _friendlyAckError(e.errorCode!),
       );
       return false;
     } catch (e) {
@@ -276,8 +327,22 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   Future<bool> acceptRideFromNotification(
     String rideId, {
     String? offerId,
+  }) =>
+      _coordinateAcceptance(
+        rideId,
+        () => _acceptRideFromNotification(rideId, offerId: offerId),
+      );
+
+  Future<bool> _acceptRideFromNotification(
+    String rideId, {
+    String? offerId,
   }) async {
-    if (state.isUpdating || rideId.isEmpty) return false;
+    if (rideId.isEmpty) return false;
+    if (_finishAcceptedRideIfPresent(rideId, offerId: offerId)) return true;
+    if (state.isUpdating) return false;
+    // A delayed action for an older offer must never erase a different active
+    // ride. Treat it as non-actionable and leave the authoritative slot alone.
+    if (state.ride != null) return false;
     state = const ActiveRideState(isUpdating: true);
     try {
       final activeOfferId =
@@ -290,8 +355,25 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       }
       final service = _ref.read(rideServiceProvider);
       await service.acceptRideRequest(rideId, offerId: activeOfferId);
+      // The socket can publish the full accepted ride before this REST call
+      // completes. Reuse that authoritative snapshot instead of issuing a
+      // second read whose transient null/error used to blank the map.
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: activeOfferId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       final raw = await service.getMyActiveRide();
       if (raw == null) {
+        if (_finishAcceptedRideIfPresent(
+          rideId,
+          offerId: activeOfferId,
+          settleAcceptance: true,
+        )) {
+          return true;
+        }
         state = const ActiveRideState(
           errorMessage: 'Ride accepted, but its details are still loading.',
         );
@@ -299,6 +381,13 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       }
       final ride = Ride.fromJson(raw);
       if (ride.id != rideId || !ride.status.isActive) {
+        if (_finishAcceptedRideIfPresent(
+          rideId,
+          offerId: activeOfferId,
+          settleAcceptance: true,
+        )) {
+          return true;
+        }
         state = const ActiveRideState(
           errorMessage: 'This ride is no longer available.',
         );
@@ -309,16 +398,35 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       unawaited(markEnRoute());
       return true;
     } on ApiException catch (e) {
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: offerId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       developer.log(
         'notification ride accept failed: ${e.errorCode} — ${e.message}',
         name: 'ActiveRide',
         level: 900,
       );
       state = ActiveRideState(
-        errorMessage: _friendlyAckError(e.errorCode ?? ''),
+        errorMessage: isProviderRequestBlock(e)
+            ? providerRequestBlockMessage(
+                e,
+                requestLabel: 'ride requests',
+              )
+            : _friendlyAckError(e.errorCode ?? ''),
       );
       return false;
     } catch (e) {
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: offerId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       developer.log(
         'notification ride accept crashed: $e',
         name: 'ActiveRide',
@@ -329,6 +437,30 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     }
+  }
+
+  /// Completes a duplicate acceptance from the ride already committed by the
+  /// socket/recovery path. Never fabricates assignment: the id must match and
+  /// the snapshot must already be in a server-active lifecycle state.
+  bool _finishAcceptedRideIfPresent(
+    String rideId, {
+    String? offerId,
+    bool settleAcceptance = false,
+  }) {
+    final active = state.ride;
+    if (active == null || active.id != rideId || !active.status.isActive) {
+      return false;
+    }
+    if (settleAcceptance) restore(active);
+    final exactOfferId =
+        offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
+    if (exactOfferId != null && exactOfferId.isNotEmpty) {
+      _clearOfferIdentity(rideId, exactOfferId);
+    }
+    if (settleAcceptance && active.status == RideStatus.accepted) {
+      unawaited(markEnRoute());
+    }
+    return true;
   }
 
   /// Skip an offer from a native notification/overlay action. REST is used so
@@ -369,22 +501,27 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
 
   /// Decline an incoming ride. Fires `ride:decline` to the backend so the
   /// matcher immediately moves on to the next driver instead of waiting
-  /// for the acceptance window to expire. The screen can pop immediately,
-  /// while this reconciles a lost socket acknowledgement over idempotent REST.
-  void declineRide(String rideId, {String? reason, String? offerId}) {
+  /// for the acceptance window to expire.
+  ///
+  /// The caller must keep the request actionable until this returns `true`.
+  /// Closing the request optimistically can leave the durable offer open when
+  /// the offer identity is still syncing or both acknowledgement paths fail.
+  Future<bool> declineRide(
+    String rideId, {
+    String? reason,
+    String? offerId,
+  }) async {
     final activeOfferId =
         offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
-    if (activeOfferId == null || activeOfferId.isEmpty) return;
-    unawaited(
-      _declineRideAuthoritatively(
-        rideId,
-        activeOfferId,
-        reason,
-      ),
+    if (activeOfferId == null || activeOfferId.isEmpty) return false;
+    return _declineRideAuthoritatively(
+      rideId,
+      activeOfferId,
+      reason,
     );
   }
 
-  Future<void> _declineRideAuthoritatively(
+  Future<bool> _declineRideAuthoritatively(
     String rideId,
     String offerId,
     String? reason,
@@ -399,11 +536,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             if (reason != null) 'reason': reason,
           },
           timeout: const Duration(seconds: 3));
-      if (ack is Map && ack['error'] != null) return;
       if (ack is Map && ack['acknowledged'] == true) {
         _clearOfferIdentity(rideId, offerId);
-        return;
+        return true;
       }
+      // An exception-shaped or malformed socket acknowledgement is not
+      // terminal proof. Reconcile through the idempotent REST endpoint.
     } catch (error) {
       developer.log(
         'ride:decline socket path failed; reconciling over REST: $error',
@@ -418,12 +556,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             reason: reason,
           );
       _clearOfferIdentity(rideId, offerId);
+      return true;
     } catch (error) {
       developer.log(
         'ride:decline REST fallback failed: $error',
         name: 'ActiveRide',
         level: 900,
       );
+      return false;
     }
   }
 
@@ -447,6 +587,16 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return 'This ride request was not sent to you.';
       case 'DRIVER_PROFILE_REQUIRED':
         return 'Your driver profile is incomplete — finish verification to accept rides.';
+      case 'PROVIDER_CANCELLATION_BLOCK':
+      case 'PROVIDER_REQUEST_BLOCK':
+        return providerRequestBlockMessage(
+          ApiException(
+            message: 'Provider request pause',
+            statusCode: 429,
+            errorCode: code,
+          ),
+          requestLabel: 'ride requests',
+        );
       default:
         return 'Could not accept the ride. Please try again.';
     }
@@ -721,15 +871,87 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve
     // whatever we already have locally so a snapshot doesn't blow away
     // stops that arrived via `ride:route_updated` REST refetch.
-    final preserved =
+    var preserved =
         snapshot.stops.isEmpty && current != null && current.stops.isNotEmpty
             ? snapshot.copyWith(stops: current.stops)
             : snapshot;
+    if (current != null && snapshot.routeRevision < current.routeRevision) {
+      // Status/location snapshots from an older app/server projection may
+      // arrive after the destination event. Preserve the newer route while
+      // still applying the lifecycle status carried by this snapshot.
+      preserved = preserved.copyWith(
+        dropoffAddress: current.dropoffAddress,
+        dropoffLat: current.dropoffLat,
+        dropoffLng: current.dropoffLng,
+        estimatedFarePesewas: current.estimatedFarePesewas,
+        clientPayableEstimatePesewas: current.clientPayableEstimatePesewas,
+        promoDiscountPesewas: current.promoDiscountPesewas,
+        promoApplied: current.promoApplied,
+        toll: current.toll,
+        replaceRouteAdjustments: true,
+        estimatedDistanceKm: current.estimatedDistanceKm,
+        estimatedDurationMins: current.estimatedDurationMins,
+        routeRevision: current.routeRevision,
+      );
+    }
     state = state.copyWith(ride: preserved);
     if (preserved.status == RideStatus.completed ||
         preserved.status == RideStatus.cancelled) {
       _resumeOnline();
     }
+  }
+
+  /// Applies a destination-specific REST snapshot and emits the driver banner.
+  /// Returns false for a different ride or a duplicate/stale revision.
+  bool applyDestinationChanged(
+    Ride snapshot, {
+    RideDestinationPoint? previousDestination,
+    DateTime? changedAt,
+  }) {
+    final current = state.ride;
+    if (current == null ||
+        current.id != snapshot.id ||
+        snapshot.routeRevision < current.routeRevision) {
+      return false;
+    }
+    final existingNotice = _ref.read(driverDestinationChangeNoticeProvider);
+    if (snapshot.routeRevision == current.routeRevision &&
+        existingNotice?.rideId == snapshot.id &&
+        existingNotice?.routeRevision == snapshot.routeRevision) {
+      return false;
+    }
+    final previous = previousDestination ??
+        RideDestinationPoint(
+          address: current.dropoffAddress,
+          lat: current.dropoffLat,
+          lng: current.dropoffLng,
+        );
+    if (snapshot.routeRevision > current.routeRevision) {
+      applySnapshot(snapshot);
+    }
+    _ref.read(driverDestinationChangeNoticeProvider.notifier).state =
+        RideRouteUpdate(
+      rideId: snapshot.id,
+      routeRevision: snapshot.routeRevision,
+      previousDestination: previous,
+      destination: RideDestinationPoint(
+        address: snapshot.dropoffAddress,
+        lat: snapshot.dropoffLat,
+        lng: snapshot.dropoffLng,
+      ),
+      estimatedFarePesewas: snapshot.estimatedFarePesewas,
+      clientPayableEstimatePesewas: snapshot.clientPayableEstimatePesewas,
+      projectedDistanceMeters: (snapshot.estimatedDistanceKm * 1000).round(),
+      projectedDurationSeconds: snapshot.estimatedDurationMins * 60,
+      promo: snapshot.promoDiscountPesewas == null
+          ? null
+          : RideDestinationPromo(
+              discountPesewas: snapshot.promoDiscountPesewas!,
+            ),
+      toll: snapshot.toll,
+      changedAt: changedAt,
+    );
+    return true;
   }
 
   /// Apply a slim remote cancellation event when the full `ride:state`
@@ -771,7 +993,11 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       final current = state.ride;
       if (current == null || current.id != tracked.id) return;
       if (snapshot.status == RideStatus.requested) return;
-      applySnapshot(snapshot);
+      if (snapshot.routeRevision > current.routeRevision) {
+        applyDestinationChanged(snapshot);
+      } else {
+        applySnapshot(snapshot);
+      }
     } on ApiException catch (error) {
       developer.log(
         'active ride reconcile failed: ${error.errorCode} — ${error.message}',
@@ -820,6 +1046,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// ride completes, is cancelled, or the user backs out of the flow.
   void clearRide() {
     state = const ActiveRideState();
+    _ref.read(driverDestinationChangeNoticeProvider.notifier).state = null;
     _resumeOnline();
   }
 

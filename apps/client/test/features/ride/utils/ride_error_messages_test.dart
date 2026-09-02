@@ -44,6 +44,39 @@ void main() {
     );
   });
 
+  test('only definitive 4xx no-driver responses prove no ride was created', () {
+    const definitive = ApiException(
+      message: 'No drivers',
+      statusCode: 400,
+      errorCode: 'NO_DRIVERS_AVAILABLE',
+    );
+
+    expect(isDefinitiveNoDriversPreCreateFailure(definitive), isTrue);
+    for (final status in <int?>[null, 408, 409, 425, 429, 500, 503]) {
+      expect(
+        isDefinitiveNoDriversPreCreateFailure(
+          ApiException(
+            message: 'Ambiguous response',
+            statusCode: status,
+            errorCode: 'NO_DRIVERS_AVAILABLE',
+          ),
+        ),
+        isFalse,
+        reason: 'status $status must remain fail-closed',
+      );
+    }
+    expect(
+      isDefinitiveNoDriversPreCreateFailure(
+        const ApiException(
+          message: 'Different failure',
+          statusCode: 400,
+          errorCode: 'VALIDATION_ERROR',
+        ),
+      ),
+      isFalse,
+    );
+  });
+
   test('keeps genuine server failures distinct from no-driver results', () {
     const error = ServerException(
       message: 'Internal provider failure text',

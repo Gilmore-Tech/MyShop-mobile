@@ -12,6 +12,7 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../di/providers.dart';
 import '../services/incoming_request_overlay_presenter.dart';
+import '../services/job_offer_receipt_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/ride_cancellation_notice.dart';
 import '../services/ride_offer_receipt_service.dart';
@@ -234,17 +235,33 @@ Future<Ride?> _recoverPendingRideRequest({
 
 Future<void> _recoverPendingRequests(Ref ref) async {
   try {
+    final expectedSession = ref.read(currentAuthSessionIdentityProvider);
+    if (expectedSession == null) return;
     final recovery = await fetchProviderRequestRecovery(
       readStoredOffers: readStoredRideOfferIdentities,
+      readStoredJobOffers: readStoredJobOfferIdentities,
       recover: (knownOfferIds) => ref
           .read(providerRequestServiceProvider)
           .recoverPendingRequests(knownOfferIds: knownOfferIds)
           .timeout(const Duration(seconds: 10)),
     );
     if (recovery == null) return;
+    if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) return;
     final resolvedRideIds =
         await _applyRideOfferResolutions(ref, recovery.resolutions);
     final requests = recovery.requests;
+    final freshJobOfferIds = <String, String>{
+      for (final request in requests)
+        if (request.kind == ProviderRequestKind.job &&
+            request.offerId != null &&
+            request.offerId!.isNotEmpty)
+          request.id: request.offerId!,
+    };
+    await _applyJobOfferResolutions(
+      ref,
+      recovery.resolutions,
+      freshJobOfferIds: freshJobOfferIds,
+    );
     if (requests.isEmpty) {
       final visibleRideId = ref.read(visibleRideRequestIdProvider);
       if (shouldApplyGenericPendingRideDismissal(
@@ -272,8 +289,24 @@ Future<void> _recoverPendingRequests(Ref ref) async {
           await _surfaceRideRequest(ref, request);
           return;
         case ProviderRequestKind.job:
-          if (onJobRequest) continue;
-          await _surfaceJobRequest(ref, request);
+          if (onJobRequest) {
+            final currentOfferId =
+                ref.read(jobOfferIdByJobProvider)[request.id];
+            final recoveredOfferId = request.offerId;
+            // Keep the already-open exact offer. A different exact identity
+            // for the same job is a new directed opportunity and must be
+            // allowed through so it can replace the terminal older screen.
+            if (recoveredOfferId == null ||
+                recoveredOfferId.isEmpty ||
+                recoveredOfferId == currentOfferId) {
+              continue;
+            }
+          }
+          await _surfaceJobRequest(
+            ref,
+            request,
+            expectedSession: expectedSession,
+          );
           return;
       }
     }
@@ -282,19 +315,93 @@ Future<void> _recoverPendingRequests(Ref ref) async {
   }
 }
 
+Future<void> _applyJobOfferResolutions(
+  Ref ref,
+  List<ProviderRequestResolution> resolutions, {
+  required Map<String, String> freshJobOfferIds,
+}) async {
+  for (final resolution in resolutions) {
+    if (resolution.kind != ProviderRequestKind.job) continue;
+    final jobId = resolution.jobId;
+    if (jobId.isEmpty) continue;
+    final currentOfferId = ref.read(jobOfferIdByJobProvider)[jobId];
+    final hasFreshReplacement = terminalJobOfferHasFreshReplacement(
+      terminalOfferId: resolution.offerId,
+      freshOfferId: freshJobOfferIds[jobId],
+    );
+    if (jobOfferTerminalMatchesCurrent(
+      currentOfferId: currentOfferId,
+      terminalOfferId: resolution.offerId,
+    )) {
+      if (!hasFreshReplacement) {
+        ref.read(jobOfferDismissalProvider.notifier).state = JobOfferDismissal(
+          jobId: jobId,
+          reason: resolution.resolutionReason ?? 'resolved',
+          offerId: resolution.offerId,
+        );
+        ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+        if (ref.read(incomingJobRequestProvider)?.id == jobId) {
+          ref.read(incomingJobRequestProvider.notifier).state = null;
+        }
+      }
+      ref
+          .read(jobOfferIdByJobProvider.notifier)
+          .update((offers) => {...offers}..remove(jobId));
+      ref
+          .read(jobOfferDeadlineByJobProvider.notifier)
+          .update((deadlines) => {...deadlines}..remove(jobId));
+    }
+    await clearIncomingRequestAlert(
+      type: NotificationPayload.typeJobRequest,
+      requestId: jobId,
+      offerId: resolution.offerId,
+      reason: resolution.resolutionReason ?? 'resolved',
+    );
+    await clearStoredJobOffer(resolution.offerId);
+  }
+}
+
+@visibleForTesting
+bool terminalJobOfferHasFreshReplacement({
+  required String terminalOfferId,
+  required String? freshOfferId,
+}) {
+  final fresh = freshOfferId?.trim();
+  return fresh != null && fresh.isNotEmpty && fresh != terminalOfferId.trim();
+}
+
 /// Reads durable identities and asks the server for their exact state without
 /// consuming any local identity on a transient fetch failure.
 @visibleForTesting
 Future<ProviderRequestRecoveryResult?> fetchProviderRequestRecovery({
   required Future<List<StoredRideOfferIdentity>> Function() readStoredOffers,
+  Future<List<StoredJobOfferIdentity>> Function()? readStoredJobOffers,
   required Future<ProviderRequestRecoveryResult> Function(
     List<String> knownOfferIds,
   ) recover,
 }) async {
   try {
     final storedOffers = await readStoredOffers();
+    final storedJobOffers =
+        await readStoredJobOffers?.call() ?? const <StoredJobOfferIdentity>[];
+    final exactOffers = <({String offerId, DateTime handoffAt})>[
+      for (final identity in storedOffers)
+        (
+          offerId: identity.offerId,
+          handoffAt: identity.localHandoffAt,
+        ),
+      for (final identity in storedJobOffers)
+        (
+          offerId: identity.offerId,
+          handoffAt: identity.localHandoffAt,
+        ),
+    ]..sort((left, right) => right.handoffAt.compareTo(left.handoffAt));
     return await recover(
-      storedOffers.map((identity) => identity.offerId).toList(growable: false),
+      exactOffers
+          .map((identity) => identity.offerId)
+          .toSet()
+          .take(maxKnownProviderOfferIds)
+          .toList(growable: false),
     );
   } catch (error) {
     debugPrint('[PendingRequestRecovery] request fetch failed: $error');
@@ -482,22 +589,141 @@ Future<Ride?> _readPendingRide(
   return ride;
 }
 
-Future<void> _surfaceJobRequest(Ref ref, ProviderPendingRequest request) async {
+Future<void> _surfaceJobRequest(
+  Ref ref,
+  ProviderPendingRequest request, {
+  required AuthSessionIdentity expectedSession,
+}) async {
   try {
-    final payload = request.payload.isNotEmpty
-        ? request.payload
-        : await ref.read(jobServiceProvider).getJob(request.id);
-    final job = Job.fromJson(payload);
+    final resolved = await resolvePendingJobRequestForSurface(
+      request: request,
+      acknowledge: (payload) => acknowledgeJobOffer(
+        payload: payload,
+        jobs: ref.read(jobServiceProvider),
+      ),
+      fetchJob: ref.read(jobServiceProvider).getJob,
+    );
+    if (resolved == null) return;
+    if (ref.read(currentAuthSessionIdentityProvider) != expectedSession) return;
+    final job = resolved.job;
+    final offerId = resolved.offerId;
     if (job.status != JobStatus.open && job.status != JobStatus.adminAssigned) {
       return;
     }
 
+    // Receipt/hydration yields to socket and FCM. Use the state that exists
+    // after that await so recovery cannot double-surface their winning copy.
+    final previouslySurfaced =
+        ref.read(surfacedJobIdsProvider).contains(job.id);
+    final previousExact = ref.read(lastJobOfferIdByJobProvider)[job.id];
+    final disposition = jobOfferSurfaceDisposition(
+      jobAlreadySurfaced: previouslySurfaced,
+      lastExactOfferId: previousExact,
+      incomingOfferId: offerId,
+    );
+    if (offerId != null && offerId.isNotEmpty) {
+      ref.read(jobOfferIdByJobProvider.notifier).update(
+            (offers) => {...offers, job.id: offerId},
+          );
+      ref.read(lastJobOfferIdByJobProvider.notifier).update(
+            (offers) => {...offers, job.id: offerId},
+          );
+    }
+    final deadline = resolved.decisionExpiresAt;
+    if (deadline != null) {
+      ref.read(jobOfferDeadlineByJobProvider.notifier).update(
+            (deadlines) => {...deadlines, job.id: deadline},
+          );
+    }
+    if (previousExact != offerId) {
+      // A terminal tombstone for offer A may have published a dismissal
+      // immediately before this recovery response's fresh offer B. Clear it
+      // before exposing B so the old screen's deferred pop cannot win.
+      ref.read(jobOfferDismissalProvider.notifier).state = null;
+    }
     ref.read(surfacedJobIdsProvider.notifier).update((s) => {...s, job.id});
     ref.read(pendingIncomingJobsProvider.notifier).enqueue(job);
+    if (ref.read(visibleJobRequestIdProvider) == job.id ||
+        ref.read(visibleJobModalIdProvider) == job.id) {
+      return;
+    }
+    if (disposition != JobOfferSurfaceDisposition.surface) return;
     ref.read(incomingJobRequestProvider.notifier).state = null;
     ref.read(incomingJobRequestProvider.notifier).state = job;
     ref.read(navBadgeProvider.notifier).increment('/trips');
   } catch (e) {
     debugPrint('[PendingRequestRecovery] job ${request.id} failed: $e');
+  }
+}
+
+@visibleForTesting
+class PendingJobForSurface {
+  const PendingJobForSurface({
+    required this.job,
+    this.offerId,
+    this.decisionExpiresAt,
+  });
+
+  final Job job;
+  final String? offerId;
+  final DateTime? decisionExpiresAt;
+}
+
+/// Resolves one recovered job through the same durable v2 receipt gate used
+/// by socket and FCM delivery. Receipt failures return null without calling a
+/// decline endpoint; the persisted identity remains available for a later
+/// recovery attempt or exact terminal tombstone.
+@visibleForTesting
+Future<PendingJobForSurface?> resolvePendingJobRequestForSurface({
+  required ProviderPendingRequest request,
+  required Future<ReceivedJobOffer?> Function(Map<String, dynamic> payload)
+      acknowledge,
+  required Future<Map<String, dynamic>> Function(String jobId) fetchJob,
+}) async {
+  var authoritativeDeadline = request.expiresAt;
+  var offerId = request.offerId;
+  var serverPayload = request.payload;
+  final receiptPayload = <String, dynamic>{
+    ...serverPayload,
+    'jobId': request.id,
+    if (offerId != null) 'offerId': offerId,
+    if (request.offerVersion != null)
+      'offerVersion': request.offerVersion.toString(),
+    if (authoritativeDeadline != null)
+      'expiresAt': authoritativeDeadline.toIso8601String(),
+  };
+  if (isReceiptJobOffer(receiptPayload)) {
+    final received = await acknowledge(receiptPayload);
+    if (received == null || !received.hasExactReceipt) return null;
+    serverPayload = received.payload;
+    offerId = received.offerId;
+    authoritativeDeadline = received.decisionExpiresAt;
+  }
+
+  Map<String, dynamic> payloadWithDeadline(Map<String, dynamic> payload) => {
+        ...payload,
+        'jobId': request.id,
+        if (authoritativeDeadline != null)
+          'expiresAt': authoritativeDeadline.toIso8601String(),
+      };
+
+  try {
+    return PendingJobForSurface(
+      job: Job.fromJson(payloadWithDeadline(serverPayload)),
+      offerId: offerId,
+      decisionExpiresAt: authoritativeDeadline,
+    );
+  } catch (_) {
+    final hydrated = await fetchJob(request.id);
+    return PendingJobForSurface(
+      job: Job.fromJson(
+        payloadWithDeadline(<String, dynamic>{
+          ...hydrated,
+          ...serverPayload,
+        }),
+      ),
+      offerId: offerId,
+      decisionExpiresAt: authoritativeDeadline,
+    );
   }
 }

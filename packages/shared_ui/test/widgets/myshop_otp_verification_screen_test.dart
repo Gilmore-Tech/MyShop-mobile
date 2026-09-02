@@ -30,4 +30,30 @@ void main() {
     expect(backCalls, 1);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('failed result-aware resend does not start a false cooldown',
+      (tester) async {
+    var resendCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MyShopOtpVerificationScreen(
+          phone: '+233 •••• •• 67',
+          onVerify: (_) {},
+          onResendAttempt: () async {
+            resendCalls += 1;
+            return false;
+          },
+          resendCooldown: 0,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.text('Resend SMS'));
+    await tester.pumpAndSettle();
+
+    expect(resendCalls, 1);
+    expect(find.text('Resend SMS'), findsOneWidget);
+    expect(find.textContaining('Resend code in'), findsNothing);
+  });
 }

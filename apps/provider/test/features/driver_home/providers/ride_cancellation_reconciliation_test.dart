@@ -13,6 +13,8 @@ class _FakeRideService extends RideService {
 
   late Map<String, dynamic> rideResponse;
   Object? cancelError;
+  Object? declineError;
+  int declineCalls = 0;
   Map<String, dynamic> cancelResponse = const <String, dynamic>{};
   Map<String, dynamic> statusResponse = const <String, dynamic>{};
 
@@ -27,6 +29,17 @@ class _FakeRideService extends RideService {
     final error = cancelError;
     if (error != null) throw error;
     return cancelResponse;
+  }
+
+  @override
+  Future<void> declineRideRequest(
+    String rideId, {
+    required String offerId,
+    String? reason,
+  }) async {
+    declineCalls += 1;
+    final error = declineError;
+    if (error != null) throw error;
   }
 
   @override
@@ -79,6 +92,67 @@ Map<String, dynamic> _rideJson(String id, String status) => {
     };
 
 void main() {
+  test('notification decline requires an exact offer identity', () async {
+    final service = _FakeRideService();
+    final container = ProviderContainer(
+      overrides: [rideServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+
+    final declined = await container
+        .read(activeRideProvider.notifier)
+        .declineRideFromNotification('ride-current');
+
+    expect(declined, isFalse);
+    expect(service.declineCalls, 0);
+  });
+
+  test('failed REST decline keeps the exact offer actionable locally',
+      () async {
+    final service = _FakeRideService()
+      ..declineError = const NetworkException(message: 'offline');
+    final container = ProviderContainer(
+      overrides: [rideServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+    container.read(rideOfferIdByRideProvider.notifier).state = const {
+      'ride-current': 'offer-current',
+    };
+
+    final declined = await container
+        .read(activeRideProvider.notifier)
+        .declineRideFromNotification('ride-current');
+
+    expect(declined, isFalse);
+    expect(service.declineCalls, 1);
+    expect(
+      container.read(rideOfferIdByRideProvider)['ride-current'],
+      'offer-current',
+    );
+  });
+
+  test('acknowledged REST decline consumes the exact offer identity', () async {
+    final service = _FakeRideService();
+    final container = ProviderContainer(
+      overrides: [rideServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+    container.read(rideOfferIdByRideProvider.notifier).state = const {
+      'ride-current': 'offer-current',
+    };
+
+    final declined = await container
+        .read(activeRideProvider.notifier)
+        .declineRideFromNotification('ride-current');
+
+    expect(declined, isTrue);
+    expect(service.declineCalls, 1);
+    expect(
+      container.read(rideOfferIdByRideProvider).containsKey('ride-current'),
+      isFalse,
+    );
+  });
+
   test('remote cancellation only terminates the matching active ride', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

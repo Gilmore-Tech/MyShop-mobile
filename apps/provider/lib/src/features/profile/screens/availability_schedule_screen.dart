@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../../core/di/providers.dart';
+import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/services/provider_request_policy.dart';
 
 /// Availability & Schedule — artisan weekly availability, shift hours,
 /// and smart dispatching preferences.
 ///
 /// PRD Reference: PRD 5.3 — provider availability & dispatch settings.
-class AvailabilityScheduleScreen extends StatefulWidget {
+class AvailabilityScheduleScreen extends ConsumerStatefulWidget {
   const AvailabilityScheduleScreen({super.key});
 
   @override
-  State<AvailabilityScheduleScreen> createState() =>
+  ConsumerState<AvailabilityScheduleScreen> createState() =>
       _AvailabilityScheduleScreenState();
 }
 
 class _AvailabilityScheduleScreenState
-    extends State<AvailabilityScheduleScreen> {
+    extends ConsumerState<AvailabilityScheduleScreen> {
   bool _systemOnline = true;
   bool _autoAccept = true;
   bool _shiftReminders = false;
@@ -84,6 +89,19 @@ class _AvailabilityScheduleScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isReceivingRequests = ref.watch(providerStatusProvider).isOnline;
+    final responseSummary = ref.watch(providerRequestResponseSummaryProvider);
+    final responseActivityCopy = responseSummary.when(
+      loading: () => 'Loading your recent request activity…',
+      error: (_, __) =>
+          'Request activity is unavailable right now. Your customer rating is not affected.',
+      data: (summary) {
+        return providerRequestResponseSummaryMessage(
+          summary,
+          isOnline: isReceivingRequests,
+        );
+      },
+    );
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -102,6 +120,7 @@ class _AvailabilityScheduleScreenState
                   _CurrentStatusCard(
                     online: _systemOnline,
                     onChanged: (v) => setState(() => _systemOnline = v),
+                    responseActivityCopy: responseActivityCopy,
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                   Row(
@@ -241,10 +260,15 @@ class _Header extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CurrentStatusCard extends StatelessWidget {
-  const _CurrentStatusCard({required this.online, required this.onChanged});
+  const _CurrentStatusCard({
+    required this.online,
+    required this.onChanged,
+    required this.responseActivityCopy,
+  });
 
   final bool online;
   final ValueChanged<bool> onChanged;
+  final String responseActivityCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -353,7 +377,7 @@ class _CurrentStatusCard extends StatelessWidget {
                 const SizedBox(width: MyShopSpacing.sm),
                 Expanded(
                   child: Text(
-                    'You are currently receiving job requests. Your response rate is 98.4%.',
+                    responseActivityCopy,
                     style: MyShopTypography.body2.copyWith(height: 1.5),
                   ),
                 ),

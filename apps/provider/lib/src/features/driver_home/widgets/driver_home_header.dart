@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/widgets/provider_status_dot.dart';
 import '../../auth/providers/current_user_provider.dart';
+import '../../notifications/widgets/provider_notification_bell.dart';
 import '../../profile/providers/verification_provider.dart';
 
 /// Frosted-glass header with welcome text and avatar.
@@ -70,6 +71,9 @@ class DriverHomeHeader extends ConsumerWidget {
                   ],
                 ),
               ),
+
+              const ProviderNotificationBell(contained: true),
+              const SizedBox(width: MyShopSpacing.sm),
 
               // Avatar with online dot
               Stack(

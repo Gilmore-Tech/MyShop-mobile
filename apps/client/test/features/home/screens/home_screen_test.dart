@@ -16,6 +16,7 @@ import 'package:myshop_client/src/core/services/google_places_service.dart';
 import 'package:myshop_client/src/features/home/providers/home_provider.dart';
 import 'package:myshop_client/src/features/home/providers/promo_campaigns_provider.dart';
 import 'package:myshop_client/src/features/home/screens/home_screen.dart';
+import 'package:myshop_client/src/features/notifications/providers/notifications_provider.dart';
 import 'package:myshop_client/src/features/profile/providers/profile_provider.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_search_provider.dart';
 
@@ -82,6 +83,7 @@ void main() {
     CurrentLocationService? locationService,
     GooglePlacesService? placesService,
     bool useRealCurrentLocationLabel = false,
+    int unreadNotificationCount = 0,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -99,6 +101,10 @@ void main() {
           path: AppRoutes.rideEstimate,
           builder: (_, __) => const Scaffold(body: Text('Ride estimate')),
         ),
+        GoRoute(
+          path: AppRoutes.notifications,
+          builder: (_, __) => const Scaffold(body: Text('Notification inbox')),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -107,6 +113,9 @@ void main() {
       ProviderScope(
         overrides: [
           accountScreenProvider.overrideWith(_FakeAccountNotifier.new),
+          clientUnreadNotificationCountProvider.overrideWithValue(
+            unreadNotificationCount,
+          ),
           if (!useRealCurrentLocationLabel)
             currentLocationLabelProvider.overrideWith(
               (_) async => 'Prempeh II Street, Adum, Kumasi, Ghana',
@@ -146,6 +155,22 @@ void main() {
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.text('Your activity will appear here'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows the shared exact notification badge on Home',
+      (tester) async {
+    await pumpHome(tester, unreadNotificationCount: 3);
+
+    expect(find.byKey(const Key('client-notification-bell')), findsOneWidget);
+    expect(
+      find.byKey(const Key('client-notification-unread-dot')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Notifications, 3 unread'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('client-notification-bell')));
+    await tester.pumpAndSettle();
+    expect(find.text('Notification inbox'), findsOneWidget);
   });
 
   testWidgets('renders the approved combined recent activity cards',

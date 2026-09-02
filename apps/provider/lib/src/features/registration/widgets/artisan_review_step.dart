@@ -30,9 +30,6 @@ class ArtisanReviewStep extends ConsumerWidget {
     final services = draft.serviceCategories.isEmpty
         ? ''
         : draft.serviceCategories.map((id) => nameMap[id] ?? id).join(', ');
-    final experience = draft.yearsOfExperience == 0
-        ? 'Less than a year'
-        : '${draft.yearsOfExperience} years';
     final radius = '${draft.serviceRadiusKm.toStringAsFixed(0)} km';
 
     // Resolve the home-region id to its display name.
@@ -94,8 +91,12 @@ class ArtisanReviewStep extends ConsumerWidget {
             onEdit: () => onEditStep(0),
             rows: [
               ReviewRow(label: 'Full name', value: draft.fullName),
-              ReviewRow(label: 'Email', value: draft.email),
-              ReviewRow(label: 'Ghana Card', value: draft.ghanaCardNumber),
+              ReviewRow(
+                label: 'Email',
+                value: draft.email.trim().isEmpty
+                    ? 'Not provided'
+                    : draft.email.trim(),
+              ),
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),
@@ -105,8 +106,6 @@ class ArtisanReviewStep extends ConsumerWidget {
             onEdit: () => onEditStep(1),
             rows: [
               ReviewRow(label: 'Business', value: draft.businessName),
-              ReviewRow(label: 'Primary trade', value: draft.tradeCategory),
-              ReviewRow(label: 'Experience', value: experience),
               ReviewRow(label: 'Services', value: services),
               ReviewRow(label: 'Service radius', value: radius),
             ],
