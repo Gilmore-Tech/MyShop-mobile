@@ -3,6 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/router.dart';
+import '../core/services/local_notification_service.dart';
 import '../features/ride/providers/ride_provider.dart' show MatchedDriver;
 
 // ── Mock objects needed by screens that require route extras ───────────────────
@@ -198,8 +199,13 @@ class DevMenuScreen extends StatelessWidget {
                     () => context.push(AppRoutes.safetyEmergency)),
                 _Tile('Share Tracking',
                     () => context.push(AppRoutes.safetyShare)),
-                _Tile('Notifications List',
-                    () => context.push(AppRoutes.notifications)),
+                _Tile(
+                    'Notifications List',
+                    () => context.push(
+                          clientInAppNotificationInboxRoute(
+                            GoRouterState.of(context).uri,
+                          ),
+                        )),
               ]),
 
           const SizedBox(height: 32),

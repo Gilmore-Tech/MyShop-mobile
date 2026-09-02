@@ -30,9 +30,53 @@ void main() {
       clientTrayNavigationStack(clientDashboardRoute),
       [clientDashboardRoute],
     );
+    expect(
+      clientTrayNavigationStack('/activity'),
+      ['/activity?source=tray'],
+    );
+    expect(clientRouteUsesPrimaryShell('/activity'), isTrue);
+    expect(clientRouteUsesPrimaryShell('/activity/ride/123'), isFalse);
+    expect(
+      clientInAppNotificationInboxRoute(Uri.parse('/profile')),
+      '/notifications?origin=profile',
+    );
+    expect(
+      clientInboxShellActionRoute('/activity'),
+      '/activity?source=notification_action',
+    );
+    expect(
+      clientInboxShellActionRoute('/home'),
+      '/home?source=notification_action',
+    );
+    expect(
+      clientPrimaryShellOpenedFromNotification(
+        Uri.parse('/home?source=notification_action'),
+      ),
+      isTrue,
+    );
+    expect(
+      clientPrimaryShellOpenedFromNotification(Uri.parse('/home')),
+      isFalse,
+    );
+    expect(
+      clientInboxShellActionRoute('/home', returnTo: '/profile'),
+      '/home?source=notification_action&origin=profile',
+    );
+    expect(
+      clientNotificationShellBackRoute(
+        Uri.parse('/home?source=notification_action&origin=profile'),
+      ),
+      '/notifications?origin=profile',
+    );
+    expect(
+      clientNotificationShellBackRoute(
+        Uri.parse('/activity?source=notification_action'),
+      ),
+      clientNotificationInboxRoute,
+    );
   });
 
-  test('only the inbox receives an explicit tray-origin marker', () {
+  test('detail routes do not receive a tray-origin marker', () {
     expect(
       clientNotificationOpenedFromTray(
         Uri.parse('/notifications?source=tray'),

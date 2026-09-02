@@ -271,14 +271,46 @@ String providerAnnouncementRoute(Object? rawDestination) {
 
 const _providerTraySourceParameter = 'source';
 const _providerTraySourceValue = 'tray';
+const _providerInboxActionSourceValue = 'notification_action';
+const _providerInboxOriginParameter = 'origin';
 const providerDashboardRoute = '/home';
+
+String? _providerPrimaryShellRouteForToken(String? token) {
+  final route = token == null || token.isEmpty ? null : '/$token';
+  return route != null && providerRouteUsesPrimaryShell(route) ? route : null;
+}
+
+/// Builds an in-app inbox route that remembers the primary tab underneath it.
+/// Only local shell-route tokens are retained; arbitrary payload routes never
+/// enter the navigation stack.
+String providerInAppNotificationInboxRoute(Uri origin) {
+  final returnRoute = providerRouteUsesPrimaryShell(origin.path)
+      ? origin.path
+      : providerDashboardRoute;
+  return Uri(
+    path: '/notifications',
+    queryParameters: {
+      _providerInboxOriginParameter: returnRoute.substring(1),
+    },
+  ).toString();
+}
+
+String? providerNotificationInboxOrigin(Uri uri) =>
+    _providerPrimaryShellRouteForToken(
+      uri.queryParameters[_providerInboxOriginParameter],
+    );
 
 /// Tags the inbox route with its navigation origin. The inbox uses this
 /// marker to make Back deterministic even if iOS/Android reports the same
 /// physical tray tap through more than one plugin callback.
 String providerSystemTrayDestinationRoute(String destination) {
   final uri = Uri.tryParse(destination);
-  if (uri == null || uri.path != '/notifications') return destination;
+  if (uri == null ||
+      (uri.path != '/notifications' &&
+          !providerRouteUsesPrimaryShell(destination)) ||
+      uri.path == providerDashboardRoute) {
+    return destination;
+  }
   return uri.replace(
     queryParameters: {
       ...uri.queryParameters,
@@ -292,12 +324,67 @@ bool providerNotificationOpenedFromSystemTray(Uri uri) =>
     uri.queryParameters[_providerTraySourceParameter] ==
         _providerTraySourceValue;
 
+/// Tags a primary-tab action selected from inside the inbox. The shell uses
+/// this marker to make system Back return to the inbox instead of closing the
+/// app after the safe `go()` branch selection.
+String providerInboxShellActionRoute(
+  String destination, {
+  String? returnTo,
+}) {
+  final uri = Uri.tryParse(destination);
+  if (uri == null || !providerRouteUsesPrimaryShell(destination)) {
+    return destination;
+  }
+  final returnRoute = Uri.tryParse(returnTo ?? '')?.path;
+  final returnToken =
+      returnRoute != null && providerRouteUsesPrimaryShell(returnRoute)
+          ? returnRoute.substring(1)
+          : null;
+  return uri.replace(
+    queryParameters: {
+      ...uri.queryParameters,
+      _providerTraySourceParameter: _providerInboxActionSourceValue,
+      if (returnToken != null) _providerInboxOriginParameter: returnToken,
+    },
+  ).toString();
+}
+
+bool providerPrimaryShellOpenedFromNotification(Uri uri) {
+  if (!providerRouteUsesPrimaryShell(uri.path)) return false;
+  final source = uri.queryParameters[_providerTraySourceParameter];
+  if (source == _providerInboxActionSourceValue) return true;
+  return source == _providerTraySourceValue &&
+      uri.path != providerDashboardRoute;
+}
+
+String providerNotificationShellBackRoute(Uri uri) {
+  if (uri.queryParameters[_providerTraySourceParameter] !=
+      _providerInboxActionSourceValue) {
+    return providerDashboardRoute;
+  }
+  final origin = providerNotificationInboxOrigin(uri);
+  return origin == null
+      ? '/notifications'
+      : providerInAppNotificationInboxRoute(Uri(path: origin));
+}
+
+/// Routes owned by the provider bottom-tab shell must replace the current
+/// location. Pushing one of these routes while `/notifications` is already
+/// above the shell creates a second copy of the same ShellRoute page key and
+/// can leave both the action and Back navigation unusable.
+bool providerRouteUsesPrimaryShell(String route) => const {
+      '/home',
+      '/earnings',
+      '/trips',
+      '/account',
+    }.contains(Uri.tryParse(route)?.path);
+
 /// A tray tap is a fresh navigation intent. The runtime applies this stack in
 /// two phases so GoRouter has rebuilt the dashboard before the destination is
 /// pushed above it.
 List<String> providerSystemTrayNavigationStack(String destination) {
-  if (destination == providerDashboardRoute) {
-    return const [providerDashboardRoute];
+  if (providerRouteUsesPrimaryShell(destination)) {
+    return [providerSystemTrayDestinationRoute(destination)];
   }
   return [
     providerDashboardRoute,

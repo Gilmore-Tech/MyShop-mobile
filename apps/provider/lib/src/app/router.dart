@@ -11,6 +11,7 @@ import '../core/providers/background_location_sync_provider.dart';
 import '../core/di/providers.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
+import '../core/services/local_notification_service.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
 import '../features/artisan_home/providers/active_job_provider.dart';
@@ -1519,14 +1520,17 @@ class _DriverShellState extends ConsumerState<_DriverShell>
     // home-screen "HOURS" stat reflects today's real total.
     ref.watch(onlineSessionRecorderProvider);
 
-    final location = GoRouterState.of(context).uri.path;
+    final uri = GoRouterState.of(context).uri;
+    final location = uri.path;
     _scheduleVerificationRefresh(location: location);
 
     final currentIndex = _currentIndex(location);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final badges = ref.watch(navBadgeProvider);
 
-    return Scaffold(
+    final openedFromNotification =
+        providerPrimaryShellOpenedFromNotification(uri);
+    final shell = Scaffold(
       body: IncomingRequestListener(child: widget.child),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -1612,6 +1616,15 @@ class _DriverShellState extends ConsumerState<_DriverShell>
           ),
         ),
       ),
+    );
+    return PopScope(
+      canPop: !openedFromNotification,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && openedFromNotification) {
+          context.go(providerNotificationShellBackRoute(uri));
+        }
+      },
+      child: shell,
     );
   }
 }

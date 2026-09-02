@@ -17,14 +17,54 @@ void main() {
     expect(providerAnnouncementRoute(null), '/notifications');
   });
 
-  test('tray destination seeds home before pushing the allowlisted route', () {
+  test('tray shell destination selects the existing provider tab', () {
     expect(
       providerSystemTrayNavigationStack(
         providerAnnouncementRoute('promotions'),
       ),
-      ['/home', '/earnings'],
+      ['/earnings?source=tray'],
     );
     expect(providerSystemTrayNavigationStack('/home'), ['/home']);
+    expect(providerRouteUsesPrimaryShell('/trips'), isTrue);
+    expect(providerRouteUsesPrimaryShell('/account/support'), isFalse);
+    expect(
+      providerInAppNotificationInboxRoute(Uri.parse('/trips')),
+      '/notifications?origin=trips',
+    );
+    expect(
+      providerInboxShellActionRoute('/earnings'),
+      '/earnings?source=notification_action',
+    );
+    expect(
+      providerInboxShellActionRoute('/home'),
+      '/home?source=notification_action',
+    );
+    expect(
+      providerPrimaryShellOpenedFromNotification(
+        Uri.parse('/home?source=notification_action'),
+      ),
+      isTrue,
+    );
+    expect(
+      providerPrimaryShellOpenedFromNotification(Uri.parse('/home')),
+      isFalse,
+    );
+    expect(
+      providerInboxShellActionRoute('/home', returnTo: '/trips'),
+      '/home?source=notification_action&origin=trips',
+    );
+    expect(
+      providerNotificationShellBackRoute(
+        Uri.parse('/home?source=notification_action&origin=trips'),
+      ),
+      '/notifications?origin=trips',
+    );
+    expect(
+      providerNotificationShellBackRoute(
+        Uri.parse('/earnings?source=notification_action'),
+      ),
+      '/notifications',
+    );
   });
 
   test('tray inbox destination carries an explicit navigation origin', () {
