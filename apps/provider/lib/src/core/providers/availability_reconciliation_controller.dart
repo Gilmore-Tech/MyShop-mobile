@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
 import '../services/fcm_service.dart';
+import '../services/provider_request_policy.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
 import 'location_degradation_provider.dart';
@@ -163,6 +164,44 @@ class AvailabilityReconciliationController {
       return;
     }
 
+    // Enforcement and other server fences can close an idle Online epoch while
+    // this device still has a durable Online preference. The server snapshot is
+    // authoritative: never leave the toggle visually Online merely because the
+    // preference is true. When the dedicated response summary confirms an
+    // active restriction, consume that preference and preserve the exact safe
+    // provider-facing reason instead of allowing a later GPS/rate-limit error
+    // to replace it.
+    if (snapshot.status == ProviderAvailabilityStatus.offline &&
+        localStatus != DriverStatus.offline &&
+        hasOnlineIntent) {
+      final restrictionMessage = await _activeRequestRestrictionMessage();
+      if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+        debugPrint(
+          '[AvailabilityReconcile] $trigger ignored authoritative offline '
+          'after a newer local transition',
+        );
+        return;
+      }
+      if (restrictionMessage != null) {
+        await _consumeOnlineIntent(intentIdentity);
+        if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+          return;
+        }
+      }
+      statusNotifier.goOffline();
+      _ref.read(providerLocationSessionProvider.notifier).clear();
+      clearOnlineLocationPostAt();
+      _ref.read(availabilityRestoreNoticeProvider.notifier).state =
+          restrictionMessage ??
+              'MyShop ended the previous Online session. You are now offline. '
+                  'Tap Go Online when you are ready to receive requests.';
+      debugPrint(
+        '[AvailabilityReconcile] $trigger applied authoritative offline '
+        '(requestRestricted=${restrictionMessage != null})',
+      );
+      return;
+    }
+
     if (!hasOnlineIntent) {
       if (snapshot.status == ProviderAvailabilityStatus.online) {
         await _forceOfflineAfterRecovery(
@@ -240,6 +279,29 @@ class AvailabilityReconciliationController {
           );
     } catch (error) {
       debugPrint('[AvailabilityReconcile] intent clear failed: $error');
+    }
+  }
+
+  Future<String?> _activeRequestRestrictionMessage() async {
+    try {
+      final summary = await _ref
+          .read(providerRequestServiceProvider)
+          .getRequestResponseSummary();
+      final restriction = summary?.activeRestriction;
+      return restriction == null
+          ? null
+          : providerActiveRestrictionMessage(restriction);
+    } on ApiException catch (error) {
+      debugPrint(
+        '[AvailabilityReconcile] restriction lookup failed: '
+        '${error.errorCode ?? error.message}',
+      );
+      return null;
+    } on FormatException catch (error) {
+      debugPrint(
+        '[AvailabilityReconcile] restriction lookup malformed: $error',
+      );
+      return null;
     }
   }
 

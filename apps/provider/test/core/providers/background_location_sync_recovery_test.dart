@@ -197,6 +197,68 @@ void main() {
     },
   );
 
+  test('request block retires visual Online state with the exact reason',
+      () async {
+    final positions = StreamController<Position>.broadcast();
+    final location = _FakeLocationService()
+      ..outcomes.add(
+        const ApiException(
+          message: 'raw backend restriction',
+          statusCode: 429,
+          errorCode: 'PROVIDER_REQUEST_BLOCK',
+          details: <String, dynamic>{
+            'policyKind': 'offer_response',
+            'blockedUntil': '2099-09-02T22:15:00.000Z',
+            'retryAfterSeconds': 900,
+          },
+        ),
+      );
+    final intentStore = _FakeOnlineIntentStore();
+    late ProviderContainer container;
+    var offlineCalls = 0;
+    container = _container(
+      positions: positions.stream,
+      location: location,
+      intentStore: intentStore,
+      recovery: ProviderLocationRecoveryActions(
+        forceOffline: (_) async {
+          offlineCalls += 1;
+          // Enforcement already fenced the server epoch, so the old exact
+          // session can no longer be closed a second time.
+          return const ProviderRecoveryOfflineResult.authorityChanged();
+        },
+        reconcile: (_) async {},
+      ),
+    );
+    addTearDown(() async {
+      await positions.close();
+      container.dispose();
+    });
+    container.read(providerStatusProvider.notifier).goOnline();
+    container
+        .read(providerLocationSessionProvider.notifier)
+        .install(_epochA, 0);
+    container.read(backgroundLocationSyncProvider);
+
+    final timestamp =
+        DateTime.now().toUtc().subtract(const Duration(seconds: 8));
+    positions.add(_position(timestamp));
+    await _settle();
+
+    expect(location.batches, hasLength(1));
+    expect(offlineCalls, 1);
+    expect(container.read(providerStatusProvider), DriverStatus.offline);
+    expect(container.read(providerLocationSessionProvider), isNull);
+    expect(
+      container.read(availabilityRestoreNoticeProvider),
+      contains('repeated declines or missed requests'),
+    );
+    expect(
+      container.read(availabilityRestoreNoticeProvider),
+      isNot(contains('raw backend')),
+    );
+  });
+
   test('failed Offline CAS keeps current authority and reports uncertainty',
       () async {
     final positions = StreamController<Position>.broadcast();
