@@ -13,6 +13,22 @@ class _MockAuthRepository extends Mock implements AuthRepository {}
 
 class _MockTokenStorage extends Mock implements TokenStorage {}
 
+class _SignupAuthController extends AuthController {
+  _SignupAuthController(
+    super.repository, {
+    required super.tokenStorage,
+    super.onRegistrationAuthenticated,
+  });
+
+  void beginSignupOtp(ProviderType role) {
+    state = AuthOtpSent(
+      phone: '+233241234567',
+      isNewUser: true,
+      role: role,
+    );
+  }
+}
+
 void main() {
   test('bootstrap waits for authenticated side effects before publishing state',
       () async {
@@ -190,6 +206,142 @@ void main() {
     ).called(1);
     verify(() => repository.fetchProfile(activeRole: AuthRole.driver))
         .called(1);
+  });
+
+  test(
+      'successful signup OTP finalizes once after deferred profile restoration',
+      () async {
+    const phone = '+233241234567';
+    final repository = _MockAuthRepository();
+    final storage = _MockTokenStorage();
+    final session = _session('artisan-1', role: 'artisan', sid: 'session-1');
+    var finalizationCalls = 0;
+    var draftCleared = false;
+    when(() => repository.verifyOtp(phone: phone, code: '123456')).thenAnswer(
+      (_) async => const TokenResponse(
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      ),
+    );
+    when(
+      () => repository.fetchProfile(activeRole: AuthRole.artisan),
+    ).thenThrow(
+      const ServerException(
+        message: 'temporarily unavailable',
+        statusCode: 503,
+      ),
+    );
+    when(() => storage.readTokenSnapshot()).thenAnswer((_) async => session);
+    final controller = _SignupAuthController(
+      repository,
+      tokenStorage: storage,
+      onRegistrationAuthenticated: (user, role) async {
+        finalizationCalls += 1;
+        draftCleared = true;
+        return user;
+      },
+    )..beginSignupOtp(ProviderType.artisan);
+
+    await controller.verifyOtp('123456');
+
+    expect(controller.state, isA<AuthSessionRestorePending>());
+    expect(finalizationCalls, 0);
+    expect(draftCleared, isFalse);
+
+    when(
+      () => repository.bootstrap(activeRole: AuthRole.artisan),
+    ).thenAnswer(
+      (_) async => ProviderBootstrapReady(_artisan, session.identity!),
+    );
+    when(() => repository.refreshProfileQuiet()).thenAnswer((_) async => null);
+
+    await controller.retrySessionRestore();
+
+    expect(controller.state, isA<AuthAuthenticated>());
+    expect(finalizationCalls, 1);
+    expect(draftCleared, isTrue);
+    verify(() => repository.verifyOtp(phone: phone, code: '123456')).called(1);
+  });
+
+  test('failed signup finalization stays retryable and later completes',
+      () async {
+    const phone = '+233241234567';
+    final repository = _MockAuthRepository();
+    final storage = _MockTokenStorage();
+    final session = _session('artisan-1', role: 'artisan', sid: 'session-1');
+    var finalizationCalls = 0;
+    when(() => repository.verifyOtp(phone: phone, code: '123456')).thenAnswer(
+      (_) async => const TokenResponse(
+        accessToken: 'access',
+        refreshToken: 'refresh',
+      ),
+    );
+    when(
+      () => repository.fetchProfile(activeRole: AuthRole.artisan),
+    ).thenAnswer((_) async => _artisan);
+    when(() => storage.readTokenSnapshot()).thenAnswer((_) async => session);
+    final controller = _SignupAuthController(
+      repository,
+      tokenStorage: storage,
+      onRegistrationAuthenticated: (user, role) async {
+        finalizationCalls += 1;
+        return finalizationCalls == 1 ? null : user;
+      },
+    )..beginSignupOtp(ProviderType.artisan);
+
+    await controller.verifyOtp('123456');
+
+    expect(controller.state, isA<AuthSessionRestorePending>());
+    expect(finalizationCalls, 1);
+
+    when(
+      () => repository.bootstrap(activeRole: AuthRole.artisan),
+    ).thenAnswer(
+      (_) async => ProviderBootstrapReady(_artisan, session.identity!),
+    );
+    when(() => repository.refreshProfileQuiet()).thenAnswer((_) async => null);
+
+    await controller.retrySessionRestore();
+
+    expect(controller.state, isA<AuthAuthenticated>());
+    expect(finalizationCalls, 2);
+  });
+
+  test('normal provider sign-in never runs registration finalization',
+      () async {
+    const phone = '+233241234567';
+    final repository = _MockAuthRepository();
+    final storage = _MockTokenStorage();
+    final session = _session('driver-1', role: 'driver', sid: 'session-1');
+    var finalizationCalls = 0;
+    when(() => repository.providerLogin(phone)).thenAnswer((_) async {});
+    when(
+      () => repository.providerVerifyOtp(phone: phone, code: '123456'),
+    ).thenAnswer(
+      (_) async => const ProviderSession(
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        role: 'driver',
+      ),
+    );
+    when(
+      () => repository.fetchProfile(activeRole: AuthRole.driver),
+    ).thenAnswer((_) async => _driver);
+    when(() => storage.readTokenSnapshot()).thenAnswer((_) async => session);
+    final controller = AuthController(
+      repository,
+      tokenStorage: storage,
+      onRegistrationAuthenticated: (user, role) async {
+        finalizationCalls += 1;
+        return user;
+      },
+    );
+
+    await controller.checkPhoneAndLogin(phone: phone);
+    await controller.verifyOtp('123456');
+
+    expect(controller.state, isA<AuthAuthenticated>());
+    expect(finalizationCalls, 0);
   });
 
   test('same-principal replacement SID suppresses a late bootstrap result',
@@ -375,6 +527,13 @@ final _driver2 = AuthUser(
   phone: '+233241234568',
   fullName: 'Driver Two',
   role: AuthRole.driver,
+);
+
+final _artisan = AuthUser(
+  id: 'artisan-1',
+  phone: '+233241234567',
+  fullName: 'Artisan One',
+  role: AuthRole.artisan,
 );
 
 AuthTokenSnapshot _session(

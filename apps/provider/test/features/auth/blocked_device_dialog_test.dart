@@ -53,6 +53,7 @@ class _TestAuthController extends AuthController {
   final bool retainOnRegistration;
   final String? referralErrorOnFirstRegistrationCode;
   final List<String?> submittedReferralCodes = [];
+  final List<String?> submittedEmails = [];
   bool _returnedReferralError = false;
 
   @override
@@ -80,6 +81,7 @@ class _TestAuthController extends AuthController {
     String? vehicleColor,
   }) async {
     submittedReferralCodes.add(referralCode);
+    submittedEmails.add(email);
     if (retainOnRegistration) {
       state = const AuthUnauthenticated(
         error:
@@ -208,15 +210,15 @@ void main() {
           registrationLegalDocumentsProvider.overrideWith(
             (_, __) async => _requiredDriverLegalDocuments,
           ),
-          termsAcceptedProvider.overrideWith((_) => true),
-          privacyAcceptedProvider.overrideWith((_) => true),
+          termsAcceptedProvider(ProviderType.driver).overrideWith((_) => true),
+          privacyAcceptedProvider(ProviderType.driver)
+              .overrideWith((_) => true),
           driverRegistrationProvider.overrideWith((_) {
             final draft = DriverRegistrationController();
             draft.update(
               DriverRegistrationDraft(
                 fullName: 'Kofi Mensah',
                 email: 'kofi@example.com',
-                ghanaCardNumber: 'GHA-123456789-0',
                 vehicleMake: 'Toyota',
                 vehicleModel: 'Corolla',
                 vehicleYear: '2020',
@@ -272,15 +274,16 @@ void main() {
             registrationLegalDocumentsProvider.overrideWith(
               (_, __) async => _requiredDriverLegalDocuments,
             ),
-            termsAcceptedProvider.overrideWith((_) => true),
-            privacyAcceptedProvider.overrideWith((_) => true),
+            termsAcceptedProvider(ProviderType.driver)
+                .overrideWith((_) => true),
+            privacyAcceptedProvider(ProviderType.driver)
+                .overrideWith((_) => true),
             driverRegistrationProvider.overrideWith((_) {
               final draft = DriverRegistrationController();
               draft.update(
                 DriverRegistrationDraft(
                   fullName: 'Kofi Mensah',
-                  email: 'kofi@example.com',
-                  ghanaCardNumber: 'GHA-123456789-0',
+                  email: '  kofi@example.com  ',
                   vehicleMake: 'Toyota',
                   vehicleModel: 'Corolla',
                   vehicleYear: '2020',
@@ -309,6 +312,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.submittedReferralCodes, ['MYSHOP-ABC123']);
+      expect(controller.submittedEmails, ['kofi@example.com']);
       expect(
         find.textContaining(
           'Promotional signup codes are temporarily unavailable',

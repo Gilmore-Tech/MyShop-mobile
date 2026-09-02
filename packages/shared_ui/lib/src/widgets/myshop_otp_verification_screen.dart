@@ -16,24 +16,39 @@ class MyShopOtpVerificationScreen extends StatefulWidget {
     super.key,
     required this.phone,
     required this.onVerify,
-    required this.onResend,
+    this.onResend,
+    this.onResendAttempt,
     this.onResendWhatsApp,
+    this.onResendWhatsAppAttempt,
     this.onBack,
     this.isVerifying = false,
     this.errorText,
     this.onErrorCleared,
+    this.bottomAction,
     this.resendCooldown = 30,
     this.buttonLabel = 'Verify',
-  });
+  }) : assert(
+          onResend != null || onResendAttempt != null,
+          'Provide an SMS resend callback.',
+        );
 
   final String phone;
   final ValueChanged<String> onVerify;
-  final VoidCallback onResend;
+
+  /// Legacy fire-and-forget resend callback. Its existing behaviour starts
+  /// the local cooldown immediately after the tap.
+  final VoidCallback? onResend;
+
+  /// Result-aware resend callback. When supplied, the cooldown starts only
+  /// after the host confirms that the resend succeeded.
+  final Future<bool> Function()? onResendAttempt;
   final VoidCallback? onResendWhatsApp;
+  final Future<bool> Function()? onResendWhatsAppAttempt;
   final VoidCallback? onBack;
   final bool isVerifying;
   final String? errorText;
   final VoidCallback? onErrorCleared;
+  final Widget? bottomAction;
   final int resendCooldown;
   final String buttonLabel;
 
@@ -47,6 +62,7 @@ class _MyShopOtpVerificationScreenState
   String _code = '';
   late int _resendIn;
   Timer? _timer;
+  bool _resendPending = false;
 
   @override
   void initState() {
@@ -78,14 +94,41 @@ class _MyShopOtpVerificationScreenState
     widget.onVerify(_code);
   }
 
-  void _resend() {
-    widget.onResend();
-    _startResendTimer();
+  Future<void> _resend() async {
+    await _requestResend(
+      fallback: widget.onResend,
+      attempt: widget.onResendAttempt,
+    );
   }
 
-  void _resendViaWhatsApp() {
-    widget.onResendWhatsApp?.call();
-    _startResendTimer();
+  Future<void> _resendViaWhatsApp() async {
+    await _requestResend(
+      fallback: widget.onResendWhatsApp,
+      attempt: widget.onResendWhatsAppAttempt,
+    );
+  }
+
+  Future<void> _requestResend({
+    required VoidCallback? fallback,
+    required Future<bool> Function()? attempt,
+  }) async {
+    if (_resendPending) return;
+    if (attempt == null) {
+      fallback?.call();
+      _startResendTimer();
+      return;
+    }
+
+    setState(() => _resendPending = true);
+    var succeeded = false;
+    try {
+      succeeded = await attempt();
+    } catch (_) {
+      succeeded = false;
+    } finally {
+      if (mounted) setState(() => _resendPending = false);
+    }
+    if (mounted && succeeded) _startResendTimer();
   }
 
   @override
@@ -161,18 +204,24 @@ class _MyShopOtpVerificationScreenState
                           runSpacing: 4,
                           children: [
                             TextButton(
-                              onPressed: _resend,
+                              onPressed: _resendPending ? null : _resend,
                               child: const Text('Resend SMS'),
                             ),
-                            if (widget.onResendWhatsApp != null)
+                            if (widget.onResendWhatsApp != null ||
+                                widget.onResendWhatsAppAttempt != null)
                               TextButton.icon(
-                                onPressed: _resendViaWhatsApp,
+                                onPressed:
+                                    _resendPending ? null : _resendViaWhatsApp,
                                 icon: const Icon(Icons.chat_outlined, size: 18),
                                 label: const Text('Send via WhatsApp'),
                               ),
                           ],
                         ),
                 ),
+                if (widget.bottomAction != null) ...[
+                  const SizedBox(height: 8),
+                  widget.bottomAction!,
+                ],
                 const Spacer(),
                 MyShopPrimaryButton(
                   label: widget.buttonLabel,

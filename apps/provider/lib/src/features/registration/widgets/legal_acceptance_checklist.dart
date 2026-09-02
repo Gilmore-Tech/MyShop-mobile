@@ -53,22 +53,23 @@ class LegalAcceptanceChecklist extends ConsumerWidget {
             _row(
               context: context,
               ref: ref,
-              value: ref.watch(termsAcceptedProvider),
+              value: ref.watch(termsAcceptedProvider(role)),
               label: 'I accept the Terms of Service v${terms.version}',
               slug: terms.slug,
               onChanged: (value) =>
-                  ref.read(termsAcceptedProvider.notifier).state = value,
+                  ref.read(termsAcceptedProvider(role).notifier).state = value,
             ),
             _row(
               context: context,
               ref: ref,
-              value: ref.watch(privacyAcceptedProvider),
+              value: ref.watch(privacyAcceptedProvider(role)),
               label: 'I acknowledge the Privacy Notice v${privacy.version}',
               slug: privacy.slug,
-              onChanged: (value) =>
-                  ref.read(privacyAcceptedProvider.notifier).state = value,
+              onChanged: (value) => ref
+                  .read(privacyAcceptedProvider(role).notifier)
+                  .state = value,
             ),
-            if (showErrors && !ref.watch(policyAcceptedProvider)) ...[
+            if (showErrors && !ref.watch(policyAcceptedProvider(role))) ...[
               const SizedBox(height: MyShopSpacing.xs),
               Text(
                 'Accept both current documents to continue.',

@@ -165,13 +165,53 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   ActiveRideNotifier(this._ref) : super(const ActiveRideState());
 
   final Ref _ref;
+  String? _acceptingRideId;
+  Future<bool>? _acceptanceInFlight;
+
+  /// Coalesce the in-app request button and native notification/overlay
+  /// action when both deliver the same acceptance intent. Android can resume
+  /// Flutter while the overlay action is still being forwarded, so without a
+  /// shared operation the second path used to clear an already-confirmed ride
+  /// back to an empty loading state.
+  Future<bool> _coordinateAcceptance(
+    String rideId,
+    Future<bool> Function() accept,
+  ) {
+    final inFlight = _acceptanceInFlight;
+    if (inFlight != null) {
+      return _acceptingRideId == rideId ? inFlight : Future<bool>.value(false);
+    }
+
+    final completer = Completer<bool>();
+    final operation = completer.future;
+    _acceptingRideId = rideId;
+    _acceptanceInFlight = operation;
+    unawaited(() async {
+      try {
+        completer.complete(await accept());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      } finally {
+        if (identical(_acceptanceInFlight, operation)) {
+          _acceptanceInFlight = null;
+          _acceptingRideId = null;
+        }
+      }
+    }());
+    return operation;
+  }
 
   /// Accept an incoming ride. Sends the `ride:accept` socket event and
   /// awaits the backend's ack. The full ride entity arrives over the
   /// `ride:state` socket event shortly after — until then the slim ride
   /// payload from the request modal is good enough to render the screen.
-  Future<bool> acceptRide(Ride ride) async {
+  Future<bool> acceptRide(Ride ride) =>
+      _coordinateAcceptance(ride.id, () => _acceptRide(ride));
+
+  Future<bool> _acceptRide(Ride ride) async {
+    if (_finishAcceptedRideIfPresent(ride.id)) return true;
     if (state.isUpdating) return false;
+    if (state.ride != null) return false;
     _ref.read(systemTelemetryProvider).trackAction(
           'driver_accept_ride_requested',
           correlationId: ride.id,
@@ -287,8 +327,22 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   Future<bool> acceptRideFromNotification(
     String rideId, {
     String? offerId,
+  }) =>
+      _coordinateAcceptance(
+        rideId,
+        () => _acceptRideFromNotification(rideId, offerId: offerId),
+      );
+
+  Future<bool> _acceptRideFromNotification(
+    String rideId, {
+    String? offerId,
   }) async {
-    if (state.isUpdating || rideId.isEmpty) return false;
+    if (rideId.isEmpty) return false;
+    if (_finishAcceptedRideIfPresent(rideId, offerId: offerId)) return true;
+    if (state.isUpdating) return false;
+    // A delayed action for an older offer must never erase a different active
+    // ride. Treat it as non-actionable and leave the authoritative slot alone.
+    if (state.ride != null) return false;
     state = const ActiveRideState(isUpdating: true);
     try {
       final activeOfferId =
@@ -301,8 +355,25 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       }
       final service = _ref.read(rideServiceProvider);
       await service.acceptRideRequest(rideId, offerId: activeOfferId);
+      // The socket can publish the full accepted ride before this REST call
+      // completes. Reuse that authoritative snapshot instead of issuing a
+      // second read whose transient null/error used to blank the map.
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: activeOfferId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       final raw = await service.getMyActiveRide();
       if (raw == null) {
+        if (_finishAcceptedRideIfPresent(
+          rideId,
+          offerId: activeOfferId,
+          settleAcceptance: true,
+        )) {
+          return true;
+        }
         state = const ActiveRideState(
           errorMessage: 'Ride accepted, but its details are still loading.',
         );
@@ -310,6 +381,13 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       }
       final ride = Ride.fromJson(raw);
       if (ride.id != rideId || !ride.status.isActive) {
+        if (_finishAcceptedRideIfPresent(
+          rideId,
+          offerId: activeOfferId,
+          settleAcceptance: true,
+        )) {
+          return true;
+        }
         state = const ActiveRideState(
           errorMessage: 'This ride is no longer available.',
         );
@@ -320,6 +398,13 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       unawaited(markEnRoute());
       return true;
     } on ApiException catch (e) {
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: offerId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       developer.log(
         'notification ride accept failed: ${e.errorCode} — ${e.message}',
         name: 'ActiveRide',
@@ -335,6 +420,13 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     } catch (e) {
+      if (_finishAcceptedRideIfPresent(
+        rideId,
+        offerId: offerId,
+        settleAcceptance: true,
+      )) {
+        return true;
+      }
       developer.log(
         'notification ride accept crashed: $e',
         name: 'ActiveRide',
@@ -345,6 +437,30 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     }
+  }
+
+  /// Completes a duplicate acceptance from the ride already committed by the
+  /// socket/recovery path. Never fabricates assignment: the id must match and
+  /// the snapshot must already be in a server-active lifecycle state.
+  bool _finishAcceptedRideIfPresent(
+    String rideId, {
+    String? offerId,
+    bool settleAcceptance = false,
+  }) {
+    final active = state.ride;
+    if (active == null || active.id != rideId || !active.status.isActive) {
+      return false;
+    }
+    if (settleAcceptance) restore(active);
+    final exactOfferId =
+        offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
+    if (exactOfferId != null && exactOfferId.isNotEmpty) {
+      _clearOfferIdentity(rideId, exactOfferId);
+    }
+    if (settleAcceptance && active.status == RideStatus.accepted) {
+      unawaited(markEnRoute());
+    }
+    return true;
   }
 
   /// Skip an offer from a native notification/overlay action. REST is used so

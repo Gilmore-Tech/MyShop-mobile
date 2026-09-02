@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
+import '../services/provider_request_policy.dart';
 
 enum ProviderLocationRejectionKind { locationSession, eligibility }
 
@@ -12,11 +13,17 @@ class ProviderLocationRejection {
     required this.kind,
     required this.reasonCodes,
     this.hasUnrecognizedReason = false,
+    this.requestBlockMessage,
   });
 
   final ProviderLocationRejectionKind kind;
   final List<String> reasonCodes;
   final bool hasUnrecognizedReason;
+
+  /// Safe app-authored copy retained from an exact server request-block code.
+  /// This lets terminal Online-session recovery explain the real enforcement
+  /// reason instead of replacing it with a generic location-session warning.
+  final String? requestBlockMessage;
 }
 
 /// In-memory fence for a terminal rejection of one exact auth SID and Online
@@ -126,6 +133,13 @@ ProviderLocationRejection? classifyProviderLocationRejection(
   ApiException error,
 ) {
   final directCode = error.errorCode;
+  if (isProviderRequestBlock(error)) {
+    return ProviderLocationRejection(
+      kind: ProviderLocationRejectionKind.eligibility,
+      reasonCodes: <String>[directCode!],
+      requestBlockMessage: providerRequestBlockMessage(error),
+    );
+  }
   if (_directLocationSessionErrors.contains(directCode)) {
     return ProviderLocationRejection(
       kind: ProviderLocationRejectionKind.locationSession,

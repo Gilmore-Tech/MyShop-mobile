@@ -64,6 +64,15 @@ class AuthErrorCodes {
   /// Returned when a personal/legal/display name contains digits, emoji, or
   /// unsupported punctuation. Business names are governed separately.
   static const invalidPersonName = 'INVALID_PERSON_NAME';
+
+  /// Stable registration-finalization states returned after a valid signup
+  /// OTP. These are recoverable workflow signals, not existing-account login
+  /// conflicts.
+  static const registrationVerificationInProgress =
+      'REGISTRATION_VERIFICATION_IN_PROGRESS';
+  static const registrationVerificationRetry =
+      'REGISTRATION_VERIFICATION_RETRY';
+  static const registrationStateChanged = 'REGISTRATION_STATE_CHANGED';
 }
 
 /// Maps [ApiException] instances to user-friendly, actionable error messages
@@ -106,10 +115,20 @@ class AuthErrorMapper {
     }
     final result = <String, String>{};
     for (final entry in error.details!.entries) {
-      // Operational correlation and the canonical class-validator summary
-      // are metadata, not form fields. Treating either as a field can put a
-      // UUID (or a generic pseudo-field error) beneath the phone input.
-      if (entry.key == 'supportReference' || entry.key == 'validation') {
+      // Operational correlation is metadata, never a form field.
+      if (entry.key == 'supportReference') {
+        continue;
+      }
+      // Nest class-validator uses a canonical list of messages. Derive only a
+      // whitelisted property name from those strings; never display or copy
+      // the backend prose itself.
+      if (entry.key == 'validation' && entry.value is List) {
+        for (final message in (entry.value as List).whereType<String>()) {
+          final field = _knownRegistrationField(message);
+          if (field != null) {
+            result[field] = _safeFieldValidationMessage(field);
+          }
+        }
         continue;
       }
       final hasValidationValue = entry.value is String ||
@@ -119,6 +138,40 @@ class AuthErrorMapper {
       }
     }
     return result;
+  }
+
+  static String? _knownRegistrationField(String validationMessage) {
+    final message = validationMessage.trim().toLowerCase();
+    for (final field in const [
+      'legalAcceptances',
+      'maxConcurrentJobs',
+      'rideCategories',
+      'serviceRadiusKm',
+      'vehicleMake',
+      'vehicleModel',
+      'vehicleYear',
+      'vehiclePlate',
+      'vehicleColor',
+      'businessName',
+      'displayName',
+      'referralCode',
+      'shopCapacity',
+      'fullName',
+      'regionId',
+      'categories',
+      'email',
+      'phone',
+      'deviceId',
+      'type',
+    ]) {
+      final key = field.toLowerCase();
+      if (message.startsWith('$key ') ||
+          message.startsWith('$key.') ||
+          message.contains('in $key ')) {
+        return field;
+      }
+    }
+    return null;
   }
 
   /// True when the backend is telling us another device currently owns the
@@ -181,6 +234,7 @@ class AuthErrorMapper {
       'INVALID_PLATFORM_REFERRAL_CODE',
       'PLATFORM_REFERRAL_CODE_INACTIVE',
       'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
+      'SIGNUP_ATTRIBUTION_ALREADY_LINKED',
     }.contains(code?.toUpperCase());
   }
 
@@ -272,6 +326,7 @@ class AuthErrorMapper {
         return 'Referrals are temporarily unavailable. Remove the optional referral code to continue.';
 
       case 'REFERRAL_ALREADY_LINKED':
+      case 'SIGNUP_ATTRIBUTION_ALREADY_LINKED':
         return 'A referral is already linked to this account. Remove the code or contact support.';
 
       case 'INVALID_PLATFORM_REFERRAL_CODE':
@@ -403,6 +458,15 @@ class AuthErrorMapper {
 
       case 'REGISTRATION_RESTART_REQUIRED':
         return 'Your registration details need to be entered again. Return to account creation and try again.';
+
+      case AuthErrorCodes.registrationVerificationInProgress:
+        return 'We are finishing your registration. Wait a moment, then enter the same code again.';
+
+      case AuthErrorCodes.registrationVerificationRetry:
+        return 'Your registration was saved, but sign-in did not finish. Wait a moment, then enter the same code again.';
+
+      case AuthErrorCodes.registrationStateChanged:
+        return 'Your registration details changed. Return to account creation and request a new code.';
 
       // ── Validation (422) ────────────────────────────────────────────
       case 'VALIDATION_ERROR':

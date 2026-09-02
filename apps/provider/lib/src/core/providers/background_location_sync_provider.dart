@@ -182,6 +182,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
     lastQueuedDriverPosition = null;
     final transitionRevision =
         container.read(providerStatusProvider.notifier).transitionRevision;
+    final requestBlockMessage = rejection.requestBlockMessage;
     final offlineResult = await recoveryActions.forceOffline(
       ProviderRecoveryOfflineAuthority(
         authSession: authSession,
@@ -201,8 +202,9 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
         container.read(providerLocationSessionProvider.notifier).clear();
         clearOnlineLocationPostAt();
         container.read(availabilityRestoreNoticeProvider.notifier).state =
-            'MyShop kept you offline because the previous Online session is '
-            'no longer current. Tap Go Online to start a fresh session.';
+            requestBlockMessage ??
+                'MyShop kept you offline because the previous Online session '
+                    'is no longer current. Tap Go Online to start a fresh session.';
       }
       return;
     }
@@ -210,8 +212,9 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
         ProviderRecoveryOfflineDisposition.confirmed) {
       if (container.read(currentAuthSessionIdentityProvider) == authSession) {
         container.read(availabilityRestoreNoticeProvider.notifier).state =
-            'MyShop kept you offline because the previous Online session was '
-            'rejected. Review your provider requirements, then tap Go Online.';
+            requestBlockMessage ??
+                'MyShop kept you offline because the previous Online session '
+                    'was rejected. Review your provider requirements, then tap Go Online.';
       }
       return;
     }
@@ -219,9 +222,12 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
     if (sessionCurrent(attemptedSessionId) &&
         container.read(providerStatusProvider).isOnline) {
       container.read(availabilityRestoreNoticeProvider.notifier).state =
-          'Location reporting was paused because MyShop could not confirm '
-          'that this rejected Online session is offline. Check your '
-          'connection, reopen the app, and try again.';
+          requestBlockMessage == null
+              ? 'Location reporting was paused because MyShop could not '
+                  'confirm that this rejected Online session is offline. Check '
+                  'your connection, reopen the app, and try again.'
+              : '$requestBlockMessage MyShop could not confirm the Offline '
+                  'switch on this device; reopen the app to refresh its status.';
     }
   }
 

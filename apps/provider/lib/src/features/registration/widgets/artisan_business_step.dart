@@ -1,6 +1,5 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -26,12 +25,8 @@ class ArtisanBusinessStep extends ConsumerStatefulWidget {
 class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
     with AutomaticKeepAliveClientMixin {
   late final TextEditingController _businessCtrl;
-  late final TextEditingController _tradeCtrl;
-  late final TextEditingController _experienceCtrl;
 
   bool _businessTouched = false;
-  bool _tradeTouched = false;
-  bool _experienceTouched = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -41,19 +36,11 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
     super.initState();
     final draft = ref.read(artisanRegistrationProvider);
     _businessCtrl = TextEditingController(text: draft.businessName);
-    _tradeCtrl = TextEditingController(text: draft.tradeCategory);
-    _experienceCtrl = TextEditingController(
-      text: draft.yearsOfExperience == 0
-          ? ''
-          : draft.yearsOfExperience.toString(),
-    );
   }
 
   @override
   void dispose() {
     _businessCtrl.dispose();
-    _tradeCtrl.dispose();
-    _experienceCtrl.dispose();
     super.dispose();
   }
 
@@ -62,15 +49,6 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
   ) {
     final notifier = ref.read(artisanRegistrationProvider.notifier);
     notifier.update(update(ref.read(artisanRegistrationProvider)));
-  }
-
-  String? _validateExperience(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return null; // optional field
-    final years = int.tryParse(trimmed);
-    if (years == null) return 'Enter a number.';
-    if (years < 0 || years > 60) return 'Must be between 0 and 60.';
-    return null;
   }
 
   @override
@@ -96,41 +74,6 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
               if (_businessTouched || showAll) setState(() {});
             },
             onSubmitted: (_) => setState(() => _businessTouched = true),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          MyShopTextField(
-            label: 'Primary trade',
-            hint: 'e.g. Plumber',
-            controller: _tradeCtrl,
-            errorText: (_tradeTouched || showAll)
-                ? Validators.required(_tradeCtrl.text, 'Primary trade')
-                : null,
-            onChanged: (v) {
-              _apply((d) => d.copyWith(tradeCategory: v));
-              if (_tradeTouched || showAll) setState(() {});
-            },
-            onSubmitted: (_) => setState(() => _tradeTouched = true),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          MyShopTextField(
-            label: 'Years of experience',
-            hint: '0',
-            keyboardType: TextInputType.number,
-            controller: _experienceCtrl,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(2),
-            ],
-            errorText: (_experienceTouched || showAll)
-                ? _validateExperience(_experienceCtrl.text)
-                : null,
-            onChanged: (v) {
-              _apply(
-                (d) => d.copyWith(yearsOfExperience: int.tryParse(v) ?? 0),
-              );
-              if (_experienceTouched || showAll) setState(() {});
-            },
-            onSubmitted: (_) => setState(() => _experienceTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.lg),
           Text('Services you offer', style: MyShopTypography.body1),

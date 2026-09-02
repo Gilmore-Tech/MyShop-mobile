@@ -57,6 +57,32 @@ void main() {
       );
     });
 
+    test('request enforcement is terminal and retains exact safe copy', () {
+      const error = ApiException(
+        message: 'raw backend message',
+        statusCode: 429,
+        errorCode: 'PROVIDER_CANCELLATION_BLOCK',
+        details: <String, dynamic>{
+          'policyKind': 'accepted_cancellation',
+          'blockedUntil': '2026-09-02T22:15:00.000Z',
+          'retryAfterSeconds': 900,
+        },
+      );
+
+      final rejection = classifyProviderLocationRejection(error);
+
+      expect(rejection?.kind, ProviderLocationRejectionKind.eligibility);
+      expect(
+        rejection?.reasonCodes,
+        const <String>['PROVIDER_CANCELLATION_BLOCK'],
+      );
+      expect(
+        rejection?.requestBlockMessage,
+        contains('repeated accepted-work cancellations'),
+      );
+      expect(rejection?.requestBlockMessage, isNot(contains('raw backend')));
+    });
+
     test('a mixed session and persistent reason uses the stricter fence', () {
       final rejection = classifyProviderLocationRejection(
         _eligibility(<Object?>[

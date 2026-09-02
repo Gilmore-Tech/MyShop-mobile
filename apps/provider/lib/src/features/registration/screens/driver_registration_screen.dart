@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../profile/providers/provider_type_provider.dart';
 import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
 import '../widgets/driver_categories_step.dart';
@@ -65,8 +66,7 @@ class _DriverRegistrationScreenState
     switch (_currentStep) {
       case 0:
         return Validators.fullName(d.fullName) == null &&
-            Validators.email(d.email) == null &&
-            Validators.ghanaCard(d.ghanaCardNumber) == null &&
+            validateRegistrationEmail(d.email) == null &&
             validateOptionalReferralCode(d.referralCode) == null;
       case 1:
         return d.vehicleMake.isNotEmpty &&
@@ -117,7 +117,9 @@ class _DriverRegistrationScreenState
 
   void _finish() {
     final draft = ref.read(driverRegistrationProvider);
-    final policyAccepted = ref.read(policyAcceptedProvider);
+    final policyAccepted = ref.read(
+      policyAcceptedProvider(ProviderType.driver),
+    );
     if (_canAdvance(draft) && policyAccepted) {
       ref.read(showRegistrationErrorsProvider.notifier).state = false;
       context.go('/signup/phone');
@@ -137,7 +139,9 @@ class _DriverRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(driverRegistrationProvider);
-    final policyAccepted = ref.watch(policyAcceptedProvider);
+    final policyAccepted = ref.watch(
+      policyAcceptedProvider(ProviderType.driver),
+    );
     final isLast = _currentStep == _steps.length - 1;
 
     return PopScope(

@@ -69,10 +69,12 @@ class _ProviderPhoneInputScreenState
     bool isLoading = false;
     bool requiresRoleRecoverySupport = false;
     String? remoteErrorCode;
+    Map<String, String> remoteFieldErrors = const {};
 
     if (state is AuthUnauthenticated) {
       remoteError = state.error;
       remoteErrorCode = state.errorCode;
+      remoteFieldErrors = state.fieldErrors;
       isLoading = state.isLoading;
       requiresRoleRecoverySupport = state.requiresRoleRecoverySupport;
       if (state.requiresLegalRefresh && !_legalRefreshHandled) {
@@ -80,8 +82,8 @@ class _ProviderPhoneInputScreenState
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           final role = signUpRole ?? ProviderType.driver;
-          ref.read(termsAcceptedProvider.notifier).state = false;
-          ref.read(privacyAcceptedProvider.notifier).state = false;
+          ref.read(termsAcceptedProvider(role).notifier).state = false;
+          ref.read(privacyAcceptedProvider(role).notifier).state = false;
           ref.invalidate(registrationLegalDocumentsProvider(role));
           MyShopToast.show(
             context,
@@ -94,13 +96,11 @@ class _ProviderPhoneInputScreenState
         });
       }
     }
-    final correction = mode == PhoneInputMode.signUp
-        ? registrationCorrectionForErrorCode(
-            remoteErrorCode,
-            signUpRole ?? ProviderType.driver,
-          )
-        : null;
     final role = signUpRole ?? ProviderType.driver;
+    final correction = mode == PhoneInputMode.signUp
+        ? registrationCorrectionForErrorCode(remoteErrorCode, role) ??
+            registrationCorrectionForFieldErrors(remoteFieldErrors, role)
+        : null;
     final canRemoveReferral = mode == PhoneInputMode.signUp &&
         AuthErrorMapper.isReferralRegistrationErrorCode(remoteErrorCode) &&
         _currentReferralCode(role).isNotEmpty;
@@ -249,7 +249,7 @@ class _ProviderPhoneInputScreenState
       if (!mounted) return;
       if (legal == null ||
           legal.documents.length != 2 ||
-          !ref.read(policyAcceptedProvider)) {
+          !ref.read(policyAcceptedProvider(role))) {
         _returnToRegistration(
           role,
           RegistrationDraftIssue(
@@ -268,7 +268,7 @@ class _ProviderPhoneInputScreenState
           type: 'driver',
           legalAcceptances: legal.selections,
           role: role,
-          email: draft.email.isNotEmpty ? draft.email : null,
+          email: draft.email.trim(),
           rideCategories:
               draft.rideCategories.isNotEmpty ? draft.rideCategories : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
@@ -297,9 +297,10 @@ class _ProviderPhoneInputScreenState
           type: 'artisan',
           legalAcceptances: legal.selections,
           role: role,
-          businessName:
-              draft.businessName.isNotEmpty ? draft.businessName : null,
-          email: draft.email.isNotEmpty ? draft.email : null,
+          businessName: draft.businessName.trim().isNotEmpty
+              ? draft.businessName.trim()
+              : null,
+          email: draft.email.trim(),
           categories: draft.serviceCategories.isNotEmpty
               ? draft.serviceCategories
               : null,

@@ -18,6 +18,7 @@ void main() {
       'INVALID_REFERRAL_CODE': 'referral code is not valid',
       'SELF_REFERRAL_NOT_ALLOWED': 'cannot use a referral code owned',
       'REFERRAL_ALREADY_LINKED': 'already linked to this account',
+      'SIGNUP_ATTRIBUTION_ALREADY_LINKED': 'already linked to this account',
       'ROLE_ACCOUNT_REFERRALS_SUSPENDED': 'Remove the optional referral code',
       'INVALID_PLATFORM_REFERRAL_CODE': 'promotional code is not valid',
       'PLATFORM_REFERRAL_CODE_INACTIVE': 'promotional code is no longer active',
@@ -30,6 +31,10 @@ void main() {
       'INVALID_PERSON_NAME': 'Names cannot contain numbers or emojis',
       'REGISTRATION_RESTART_REQUIRED':
           'Return to account creation and try again',
+      'REGISTRATION_VERIFICATION_IN_PROGRESS': 'finishing your registration',
+      'REGISTRATION_VERIFICATION_RETRY':
+          'registration was saved, but sign-in did not finish',
+      'REGISTRATION_STATE_CHANGED': 'registration details changed',
     };
 
     for (final entry in expectations.entries) {
@@ -59,6 +64,7 @@ void main() {
       'INVALID_PLATFORM_REFERRAL_CODE',
       'PLATFORM_REFERRAL_CODE_INACTIVE',
       'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
+      'SIGNUP_ATTRIBUTION_ALREADY_LINKED',
     ]) {
       expect(
         AuthErrorMapper.isReferralRegistrationErrorCode(code),
@@ -74,6 +80,37 @@ void main() {
     expect(
       AuthErrorMapper.isReferralRegistrationErrorCode(null),
       isFalse,
+    );
+  });
+
+  test('derives safe registration fields from validation summaries', () {
+    const error = ValidationException(
+      message: 'raw class-validator detail',
+      details: {
+        'validation': [
+          'email must be an email',
+          'each value in rideCategories must match the required format',
+        ],
+      },
+    );
+
+    expect(
+      AuthErrorMapper.fieldErrors(error),
+      const {
+        'email': 'Enter a valid email address.',
+        'rideCategories': 'Check this field and try again.',
+      },
+    );
+    expect(
+      AuthErrorMapper.fieldErrors(
+        const ValidationException(
+          message: 'raw',
+          details: {
+            'validation': ['attackerControlledField contains invalid data'],
+          },
+        ),
+      ),
+      isEmpty,
     );
   });
 
