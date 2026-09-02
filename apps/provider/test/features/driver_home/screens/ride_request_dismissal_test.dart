@@ -29,7 +29,73 @@ Ride _pendingRide({
       createdAt: DateTime.now(),
     );
 
+class _DeclineControlledNotifier extends ActiveRideNotifier {
+  _DeclineControlledNotifier(
+    super.ref, {
+    required this.restAcknowledged,
+    required this.socketAcknowledged,
+  });
+
+  final bool restAcknowledged;
+  final bool socketAcknowledged;
+
+  @override
+  Future<bool> declineRideFromNotification(
+    String rideId, {
+    String? offerId,
+    String reason = 'notification_skip',
+  }) async =>
+      restAcknowledged;
+
+  @override
+  Future<bool> declineRide(
+    String rideId, {
+    String? reason,
+    String? offerId,
+  }) async =>
+      socketAcknowledged;
+}
+
 void main() {
+  testWidgets('failed decline acknowledgement keeps the request open',
+      (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeRideProvider.overrideWith(
+            (ref) => _DeclineControlledNotifier(
+              ref,
+              restAcknowledged: false,
+              socketAcknowledged: false,
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: RideRequestScreen(ride: _pendingRide(id: 'ride-open')),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Decline'));
+    await tester.pump();
+
+    expect(find.byType(RideRequestScreen), findsOneWidget);
+    expect(
+      find.text(
+        "We couldn't confirm that the request was declined. Please try again.",
+      ),
+      findsOneWidget,
+    );
+    final declineButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Decline'),
+    );
+    expect(declineButton.onPressed, isNotNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 11));
+  });
+
   testWidgets('promo request renders the authoritative three-price breakdown',
       (tester) async {
     final ride = Ride(

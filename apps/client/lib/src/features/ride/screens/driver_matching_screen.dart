@@ -112,6 +112,24 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     context.go(AppRoutes.home);
   }
 
+  Future<void> _dismissFailure() async {
+    if (_cancelling) return;
+    setState(() => _cancelling = true);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final dismissed = await dismissFailedRideRequest(container);
+    if (!mounted) return;
+    if (!dismissed) {
+      setState(() => _cancelling = false);
+      final message = container.read(bookingFailureMessageProvider) ??
+          "We couldn't confirm whether the ride was cancelled.";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return;
+    }
+    context.go(AppRoutes.home);
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<BookingPhase>(bookingPhaseProvider, (previous, next) {
@@ -133,13 +151,17 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !failed) unawaited(_confirmAndCancel());
+        if (didPop) return;
+        unawaited(failed ? _dismissFailure() : _confirmAndCancel());
       },
       child: Scaffold(
         backgroundColor: MyShopColors.offWhite,
         body: SafeArea(
           child: failed
-              ? const _FailureView()
+              ? _FailureView(
+                  isDismissing: _cancelling,
+                  onDismiss: _dismissFailure,
+                )
               : Column(
                   children: [
                     const _MatchingHeader(),
@@ -484,28 +506,18 @@ class _StatusAction extends StatelessWidget {
 }
 
 class _FailureView extends ConsumerWidget {
-  const _FailureView();
+  const _FailureView({
+    required this.isDismissing,
+    required this.onDismiss,
+  });
+
+  final bool isDismissing;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final message = ref.watch(bookingFailureMessageProvider) ??
         "We couldn't request your ride.";
-
-    Future<void> dismiss() async {
-      final container = ProviderScope.containerOf(context, listen: false);
-      final cancelled = await cancelInFlightRideRequest(container);
-      if (!context.mounted) return;
-      if (!cancelled) {
-        final failure = container.read(bookingFailureMessageProvider) ??
-            "We couldn't confirm whether the ride was cancelled.";
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(failure)),
-        );
-        return;
-      }
-      resetRideRequestDraft(container.read);
-      context.go(AppRoutes.home);
-    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -519,7 +531,7 @@ class _FailureView extends ConsumerWidget {
                 Icons.close_rounded,
                 color: MyShopColors.textPrimary,
               ),
-              onPressed: dismiss,
+              onPressed: isDismissing ? null : onDismiss,
             ),
           ),
           const Spacer(),
@@ -558,7 +570,7 @@ class _FailureView extends ConsumerWidget {
           ),
           const Spacer(),
           ElevatedButton(
-            onPressed: dismiss,
+            onPressed: isDismissing ? null : onDismiss,
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.primaryGold,
               foregroundColor: Colors.white,
@@ -567,7 +579,13 @@ class _FailureView extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(28),
               ),
             ),
-            child: const Text('Back to home'),
+            child: isDismissing
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  )
+                : const Text('Back to home'),
           ),
           const SizedBox(height: 24),
         ],

@@ -385,22 +385,27 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
 
   /// Decline an incoming ride. Fires `ride:decline` to the backend so the
   /// matcher immediately moves on to the next driver instead of waiting
-  /// for the acceptance window to expire. The screen can pop immediately,
-  /// while this reconciles a lost socket acknowledgement over idempotent REST.
-  void declineRide(String rideId, {String? reason, String? offerId}) {
+  /// for the acceptance window to expire.
+  ///
+  /// The caller must keep the request actionable until this returns `true`.
+  /// Closing the request optimistically can leave the durable offer open when
+  /// the offer identity is still syncing or both acknowledgement paths fail.
+  Future<bool> declineRide(
+    String rideId, {
+    String? reason,
+    String? offerId,
+  }) async {
     final activeOfferId =
         offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
-    if (activeOfferId == null || activeOfferId.isEmpty) return;
-    unawaited(
-      _declineRideAuthoritatively(
-        rideId,
-        activeOfferId,
-        reason,
-      ),
+    if (activeOfferId == null || activeOfferId.isEmpty) return false;
+    return _declineRideAuthoritatively(
+      rideId,
+      activeOfferId,
+      reason,
     );
   }
 
-  Future<void> _declineRideAuthoritatively(
+  Future<bool> _declineRideAuthoritatively(
     String rideId,
     String offerId,
     String? reason,
@@ -415,11 +420,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             if (reason != null) 'reason': reason,
           },
           timeout: const Duration(seconds: 3));
-      if (ack is Map && ack['error'] != null) return;
       if (ack is Map && ack['acknowledged'] == true) {
         _clearOfferIdentity(rideId, offerId);
-        return;
+        return true;
       }
+      // An exception-shaped or malformed socket acknowledgement is not
+      // terminal proof. Reconcile through the idempotent REST endpoint.
     } catch (error) {
       developer.log(
         'ride:decline socket path failed; reconciling over REST: $error',
@@ -434,12 +440,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             reason: reason,
           );
       _clearOfferIdentity(rideId, offerId);
+      return true;
     } catch (error) {
       developer.log(
         'ride:decline REST fallback failed: $error',
         name: 'ActiveRide',
         level: 900,
       );
+      return false;
     }
   }
 

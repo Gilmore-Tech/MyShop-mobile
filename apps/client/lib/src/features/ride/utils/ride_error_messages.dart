@@ -77,6 +77,19 @@ bool isPromoCampaignUnavailableError(ApiException error) {
   return error.errorCode?.toUpperCase() == 'PROMO_CAMPAIGN_UNAVAILABLE';
 }
 
+/// True only when the server conclusively rejected a ride before creating it
+/// because no eligible driver was available.
+///
+/// Timeout, conflict, too-early and rate-limit responses are deliberately
+/// excluded: each can race a request that the server is still processing, so
+/// the client must continue to fail closed and reconcile/cancel by ride id.
+bool isDefinitiveNoDriversPreCreateFailure(ApiException error) {
+  if (error.errorCode?.toUpperCase() != 'NO_DRIVERS_AVAILABLE') return false;
+  final status = error.statusCode;
+  if (status == null || status < 400 || status >= 500) return false;
+  return status != 408 && status != 409 && status != 425 && status != 429;
+}
+
 String rideRequestErrorMessage(ApiException error) {
   if (error.errorCode?.toUpperCase() == 'NO_DRIVERS_AVAILABLE') {
     return noDriversAvailableMessage;
