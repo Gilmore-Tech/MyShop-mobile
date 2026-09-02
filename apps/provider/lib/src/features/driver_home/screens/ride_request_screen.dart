@@ -317,10 +317,32 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       widget.ride.id,
       reason: reason,
     );
-    if (!acknowledged) {
+    final confirmed = acknowledged ||
+        await notifier.declineRide(
+          widget.ride.id,
+          reason: reason,
+        );
+    if (!mounted) return;
+    if (!confirmed) {
       // Socket fallback keeps older backends/builds functional. The backend
-      // matcher timeout remains the final safety net if both paths are down.
-      notifier.declineRide(widget.ride.id, reason: reason);
+      // matcher timeout remains the final safety net if both paths are down,
+      // but the offer must stay visible until one path is acknowledged.
+      setState(() => _isDeclining = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "We couldn't confirm that the request was declined. Please try again.",
+          ),
+        ),
+      );
+      if (_secondsUntil(_expiresAt) <= 0) {
+        _handleExpiry();
+        return;
+      }
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _syncRemaining();
+      });
+      return;
     }
     await clearIncomingRequestAlert(
       type: NotificationPayload.typeRideRequest,

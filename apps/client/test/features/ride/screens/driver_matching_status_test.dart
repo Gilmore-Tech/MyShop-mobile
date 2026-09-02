@@ -1,8 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:myshop_client/src/app/router.dart';
+import 'package:myshop_client/src/core/di/providers.dart';
+import 'package:myshop_client/src/features/ride/data/ride_booking_attempt_store.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_provider.dart';
 import 'package:myshop_client/src/features/ride/screens/driver_matching_screen.dart';
+
+class _RecordingRideBookingAttemptStore extends RideBookingAttemptStore {
+  int clearCalls = 0;
+
+  @override
+  Future<void> clear({String? bookingKey}) async {
+    clearCalls++;
+  }
+}
+
+ProviderContainer _failedPreCreateContainer(
+  _RecordingRideBookingAttemptStore store,
+) {
+  final container = ProviderContainer(
+    overrides: [rideBookingAttemptStoreProvider.overrideWithValue(store)],
+  );
+  container.read(bookingPhaseProvider.notifier).fail();
+  container.read(bookingFailureExitModeProvider.notifier).state =
+      BookingFailureExitMode.noRideCreated;
+  container.read(bookingFailureMessageProvider.notifier).state =
+      'All nearby drivers are busy or offline. Please try again.';
+  return container;
+}
+
+GoRouter _matchingRouter() => GoRouter(
+      initialLocation: AppRoutes.rideMatching,
+      routes: [
+        GoRoute(
+          path: AppRoutes.rideMatching,
+          builder: (_, __) => const DriverMatchingScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (_, __) => const Scaffold(body: Text('Client home')),
+        ),
+      ],
+    );
 
 void main() {
   test('shows searching before any driver is notified', () {
@@ -230,6 +271,58 @@ void main() {
 
     expect(find.text('Searching for a driver'), findsOneWidget);
     expect(find.text('Cancel ride'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Back to home dismisses a definitive no-driver pre-create failure',
+      (tester) async {
+    final store = _RecordingRideBookingAttemptStore();
+    final container = _failedPreCreateContainer(store);
+    final router = _matchingRouter();
+    addTearDown(container.dispose);
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No available drivers found'), findsOneWidget);
+    await tester.tap(find.text('Back to home'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client home'), findsOneWidget);
+    expect(store.clearCalls, 1);
+    expect(container.read(bookingPhaseProvider), BookingPhase.idle);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('system back dismisses a definitive no-driver failure to home',
+      (tester) async {
+    final store = _RecordingRideBookingAttemptStore();
+    final container = _failedPreCreateContainer(store);
+    final router = _matchingRouter();
+    addTearDown(container.dispose);
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client home'), findsOneWidget);
+    expect(store.clearCalls, 1);
+    expect(container.read(bookingPhaseProvider), BookingPhase.idle);
     expect(tester.takeException(), isNull);
   });
 }
