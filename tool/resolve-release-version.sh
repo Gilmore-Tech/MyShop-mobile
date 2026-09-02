@@ -22,7 +22,7 @@ APPROVED_MARKETING_VERSION=1.4.8
 # Builds through 40 are occupied by retained release artifacts, store uploads,
 # or delivery attempts. They remain unavailable even if a console later hides
 # an old or failed artifact.
-LOCAL_BUILD_NUMBER_FLOOR=40
+LOCAL_BUILD_NUMBER_FLOOR=41
 MAX_PORTABLE_BUILD_NUMBER=2100000000
 
 PUBSPEC_VERSION=$(awk '$1 == "version:" { print $2; exit }' "$PUBSPEC")
