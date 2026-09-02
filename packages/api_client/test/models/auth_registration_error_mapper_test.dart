@@ -9,6 +9,7 @@ void main() {
       'VEHICLE_DETAILS_REQUIRED': 'Complete all vehicle details',
       'INVALID_VEHICLE_PLATE': 'valid Ghana vehicle plate',
       'VEHICLE_PLATE_IN_USE': 'vehicle plate is already registered',
+      'VEHICLE_CREATION_FAILED': 'contact support for help',
       'RIDE_CATEGORIES_REQUIRED': 'Select at least one ride category',
       'INVALID_RIDE_CATEGORY': 'ride categories is no longer available',
       'EMAIL_ALREADY_EXISTS': 'email is already used',
@@ -76,7 +77,7 @@ void main() {
     );
   });
 
-  test('appends only a valid backend support UUID', () {
+  test('keeps only a valid backend support UUID available for diagnostics', () {
     const valid = ApiException(
       message: 'database internals',
       statusCode: 400,
@@ -93,11 +94,13 @@ void main() {
     );
 
     expect(
-      AuthErrorMapper.messageWithSupportReference(valid),
-      contains('Reference: 15286d11-fceb-43e6-ac0e-41f96d9a1b77'),
+      AuthErrorMapper.supportReference(valid),
+      '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
     );
+    expect(AuthErrorMapper.supportReference(attackerControlled), isNull);
+    expect(AuthErrorMapper.message(valid), isNot(contains('15286d11')));
     expect(
-      AuthErrorMapper.messageWithSupportReference(attackerControlled),
+      AuthErrorMapper.message(attackerControlled),
       isNot(contains('paste-the-database-password')),
     );
   });

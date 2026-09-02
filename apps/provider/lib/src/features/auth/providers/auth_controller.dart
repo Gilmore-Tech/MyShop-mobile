@@ -526,11 +526,14 @@ class AuthController extends StateNotifier<AuthState> {
           phone: phone,
           isNewUser: true,
           role: role,
-          error: AuthErrorMapper.messageWithSupportReference(e),
+          error: AuthErrorMapper.message(e),
         );
       } else {
         state = AuthUnauthenticated(
-          error: AuthErrorMapper.messageWithSupportReference(e),
+          // Support references remain in the structured ApiException and in
+          // server logs. They are not form validation copy and must never be
+          // rendered as the phone field's error.
+          error: AuthErrorMapper.message(e),
           errorCode: e.errorCode,
           fieldErrors: AuthErrorMapper.fieldErrors(e),
           requiresRoleRecoverySupport:

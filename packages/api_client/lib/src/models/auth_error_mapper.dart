@@ -84,15 +84,8 @@ class AuthErrorMapper {
     return 'Something went wrong. Please try again.';
   }
 
-  /// Adds only the server-generated UUID used to correlate support logs.
-  static String messageWithSupportReference(Object error) {
-    final safeMessage = message(error);
-    final reference = supportReference(error);
-    return reference == null
-        ? safeMessage
-        : '$safeMessage\nReference: $reference';
-  }
-
+  /// Reads the server-generated UUID for structured diagnostics. This value is
+  /// deliberately kept separate from [message] so it cannot become form copy.
   static String? supportReference(Object error) {
     if (error is! ApiException) return null;
     final raw = error.details?['supportReference'];
@@ -113,6 +106,12 @@ class AuthErrorMapper {
     }
     final result = <String, String>{};
     for (final entry in error.details!.entries) {
+      // Operational correlation and the canonical class-validator summary
+      // are metadata, not form fields. Treating either as a field can put a
+      // UUID (or a generic pseudo-field error) beneath the phone input.
+      if (entry.key == 'supportReference' || entry.key == 'validation') {
+        continue;
+      }
       final hasValidationValue = entry.value is String ||
           (entry.value is List && (entry.value as List).isNotEmpty);
       if (hasValidationValue) {
@@ -255,7 +254,7 @@ class AuthErrorMapper {
         return 'That vehicle plate is already registered. Check it or contact support.';
 
       case 'VEHICLE_CREATION_FAILED':
-        return 'We could not finish creating the vehicle. Please contact support with the reference below.';
+        return 'We could not finish creating the vehicle. Please contact support for help.';
 
       case 'RIDE_CATEGORIES_REQUIRED':
         return 'Select at least one ride category before continuing.';
@@ -342,10 +341,11 @@ class AuthErrorMapper {
         return 'We couldn\'t deliver the code. Please try again.';
 
       case 'OTP_DELIVERY_RATE_LIMITED':
+      case 'RATE_LIMIT_EXCEEDED':
         if (hasActiveOtp(e)) {
           return 'SMS delivery is busy right now. Your code is still active. Wait a moment or use resend.';
         }
-        return 'Too many code delivery attempts. Please wait before trying again.';
+        return 'Too many code requests. Please wait before trying again.';
 
       case 'OTP_COOLDOWN':
         return 'Please wait before requesting another code.';
