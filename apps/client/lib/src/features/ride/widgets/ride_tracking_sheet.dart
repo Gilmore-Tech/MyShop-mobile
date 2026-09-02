@@ -35,6 +35,7 @@ class RideTrackingSheet extends StatelessWidget {
   /// brief frame before navigation away, which surprised users into
   /// thinking the ride was still cancellable.
   final bool canCancel;
+  final VoidCallback? onChangeDropoff;
 
   const RideTrackingSheet({
     super.key,
@@ -44,6 +45,7 @@ class RideTrackingSheet extends StatelessWidget {
     this.waitingSeconds,
     this.isInProgress = false,
     this.canCancel = false,
+    this.onChangeDropoff,
   });
 
   @override
@@ -95,6 +97,8 @@ class RideTrackingSheet extends StatelessWidget {
                     const Divider(
                         height: 1, thickness: 1, color: MyShopColors.divider),
                     SizedBox(height: h * 0.017),
+                    _ChangeDropoffButton(onTap: onChangeDropoff),
+                    SizedBox(height: h * 0.010),
                     const _AddStopButton(),
                     SizedBox(height: h * 0.017),
                   ],
@@ -634,6 +638,36 @@ class _SafetyNotice extends StatelessWidget {
 }
 
 // ── Add stop ─────────────────────────────────────────────────────────────────
+
+class _ChangeDropoffButton extends StatelessWidget {
+  const _ChangeDropoffButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: FilledButton.icon(
+        key: const Key('sheet-change-dropoff-button'),
+        onPressed: onTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: MyShopColors.primaryGold,
+          foregroundColor: MyShopColors.darkSlate,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+        label: const Text(
+          'Change drop-off',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
 
 class _AddStopButton extends StatelessWidget {
   const _AddStopButton();

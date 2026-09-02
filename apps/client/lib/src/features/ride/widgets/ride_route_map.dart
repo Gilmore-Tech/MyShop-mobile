@@ -26,12 +26,14 @@ class RideRouteMap extends ConsumerStatefulWidget {
   final String destination;
   final int etaMinutes;
   final RideTrackingPhase phase;
+  final VoidCallback? onChangeDropoff;
 
   const RideRouteMap({
     super.key,
     required this.destination,
     required this.etaMinutes,
     this.phase = RideTrackingPhase.enRoute,
+    this.onChangeDropoff,
   });
 
   @override
@@ -486,7 +488,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           top: statusBarHeight + 62,
           left: 16,
           right: 16,
-          child: _DestinationOverlay(destination: widget.destination),
+          child: RideDestinationOverlay(
+            destination: widget.destination,
+            onChangeDropoff: widget.phase == RideTrackingPhase.inProgress
+                ? widget.onChangeDropoff
+                : null,
+          ),
         ),
         if (kDebugMode)
           Positioned(
@@ -582,51 +589,87 @@ class _LiveTrackDebugBanner extends StatelessWidget {
   }
 }
 
-class _DestinationOverlay extends StatelessWidget {
+@visibleForTesting
+class RideDestinationOverlay extends StatelessWidget {
   final String destination;
-  const _DestinationOverlay({required this.destination});
+  final VoidCallback? onChangeDropoff;
+
+  const RideDestinationOverlay({
+    super.key,
+    required this.destination,
+    this.onChangeDropoff,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-      decoration: _cardDecoration(),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _RouteRail(),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'HEADING TO',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textSecondary,
-                      letterSpacing: 1.4,
-                    ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('map-change-dropoff-card'),
+        onTap: onChangeDropoff,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+          decoration: _cardDecoration(),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _RouteRail(),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'HEADING TO',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textSecondary,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        destination,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textPrimary,
+                          height: 1.25,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (onChangeDropoff != null) ...[
+                        const SizedBox(height: 10),
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.edit_location_alt_outlined,
+                              size: 18,
+                              color: MyShopColors.primaryGoldDark,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Change drop-off',
+                              style: TextStyle(
+                                color: MyShopColors.primaryGoldDark,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    destination,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary,
-                      height: 1.25,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -17,13 +17,19 @@ import '../providers/ride_provider.dart'
         applyActiveRideRouteUpdate;
 import '../providers/ride_search_provider.dart';
 import '../screens/destination_search_screen.dart' show kNewStopSentinel;
+import '../utils/ride_destination_change_error.dart';
 import '../widgets/fare_recalculation_card.dart';
 import '../widgets/route_stop_list.dart';
 
 /// PRD 4.4 — Edit Your Trip / Add Stop Screen
 /// Reorder stops, add intermediate stops, view fare recalculation + surge.
 class AddStopScreen extends ConsumerStatefulWidget {
-  const AddStopScreen({super.key});
+  const AddStopScreen({
+    super.key,
+    this.startWithDestinationSearch = false,
+  });
+
+  final bool startWithDestinationSearch;
 
   @override
   ConsumerState<AddStopScreen> createState() => _AddStopScreenState();
@@ -36,6 +42,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
   models.RideDestinationChangePreview? _destinationPreview;
   int _routeRevision = 0;
   String? _commitIdempotencyKey;
+  bool _openedInitialDestinationSearch = false;
 
   @override
   void initState() {
@@ -43,9 +50,18 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
     // Seed from the rider's actual route. Without this the screen would
     // open with the hardcoded mock stops, and a "Confirm Changes" tap
     // would PATCH bogus addresses to the backend.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _seedStops();
+      await _seedStops();
+      if (!mounted ||
+          !widget.startWithDestinationSearch ||
+          _openedInitialDestinationSearch) {
+        return;
+      }
+      final destination = _selectedDestinationStop(ref.read(tripStopsProvider));
+      if (destination == null) return;
+      _openedInitialDestinationSearch = true;
+      await _openSearch(context, stop: destination);
     });
   }
 
@@ -154,10 +170,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
   }
 
   models.RideDestinationPoint? _selectedDestination(List<TripStop> stops) {
-    final row = stops.cast<TripStop?>().firstWhere(
-          (stop) => stop?.type == StopType.destination,
-          orElse: () => null,
-        );
+    final row = _selectedDestinationStop(stops);
     if (row?.lat == null || row?.lng == null || row!.address.trim().isEmpty) {
       return null;
     }
@@ -166,6 +179,13 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
       lat: row.lat!,
       lng: row.lng!,
     );
+  }
+
+  TripStop? _selectedDestinationStop(List<TripStop> stops) {
+    return stops.cast<TripStop?>().firstWhere(
+          (stop) => stop?.type == StopType.destination,
+          orElse: () => null,
+        );
   }
 
   bool _destinationChanged(models.RideDestinationPoint? selected) {
@@ -207,7 +227,9 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
       });
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _submitError = _friendlyDestinationError(error));
+      setState(
+        () => _submitError = friendlyRideDestinationChangeError(error),
+      );
     } on FormatException {
       if (!mounted) return;
       setState(() {
@@ -271,8 +293,8 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _submitError = _friendlyDestinationError(error);
-        if (_destinationPreviewNoLongerUsable(error.errorCode)) {
+        _submitError = friendlyRideDestinationChangeError(error);
+        if (destinationPreviewNoLongerUsable(error.errorCode)) {
           _destinationPreview = null;
           _commitIdempotencyKey = null;
         }
@@ -292,40 +314,6 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
       });
     } finally {
       if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  bool _destinationPreviewNoLongerUsable(String? code) => const {
-        'DESTINATION_CHANGE_PREVIEW_EXPIRED',
-        'DESTINATION_CHANGE_TOKEN_EXPIRED',
-        'PREVIEW_TOKEN_EXPIRED',
-        'ROUTE_REVISION_MISMATCH',
-        'STALE_ROUTE_REVISION',
-      }.contains(code);
-
-  String _friendlyDestinationError(ApiException error) {
-    switch (error.errorCode) {
-      case 'DESTINATION_CHANGE_PREVIEW_EXPIRED':
-      case 'DESTINATION_CHANGE_TOKEN_EXPIRED':
-      case 'PREVIEW_TOKEN_EXPIRED':
-        return 'The fare preview expired. Review the fare again.';
-      case 'ROUTE_REVISION_MISMATCH':
-      case 'STALE_ROUTE_REVISION':
-        return 'The route changed on another device. Refresh and try again.';
-      case 'DESTINATION_OUT_OF_PILOT_REGION':
-      case 'STOP_OUT_OF_PILOT_REGION':
-        return 'That destination is outside the pilot service area.';
-      case 'RIDE_DESTINATION_CHANGE_NOT_ALLOWED':
-      case 'INVALID_STATUS_TRANSITION':
-      case 'RIDE_NOT_ACTIVE':
-        return "The destination can't be changed at this stage of the ride.";
-      default:
-        return userSafeApiErrorMessage(
-          error,
-          fallback: "Couldn't change the destination. Please try again.",
-          conflictMessage:
-              'The route changed before confirmation. Review the fare again.',
-        );
     }
   }
 

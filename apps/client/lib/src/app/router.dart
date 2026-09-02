@@ -137,6 +137,9 @@ abstract final class AppRoutes {
   static const rideDispute = '/ride/:rideId/dispute';
 
   static String rideSearchPath(String field) => '/ride/search/$field';
+  static String get rideDestinationChangePath =>
+      Uri(path: rideStops, queryParameters: const {'mode': 'destination'})
+          .toString();
   static String ridePinPickerPath(String field) => '/ride/pin-picker/$field';
   static String ridePaymentPath(String rideId) => '/ride/$rideId/payment';
   static String rideReceiptPath(String rideId) => '/ride/$rideId/receipt';
@@ -502,7 +505,10 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideStops,
-        builder: (_, __) => const AddStopScreen(),
+        builder: (_, state) => AddStopScreen(
+          startWithDestinationSearch:
+              state.uri.queryParameters['mode'] == 'destination',
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

@@ -97,6 +97,10 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     _waitingTimer?.cancel();
   }
 
+  void _openDestinationEditor() {
+    unawaited(context.push(AppRoutes.rideDestinationChangePath));
+  }
+
   void _handleSheetChange() {
     if (!_sheetController.isAttached || !mounted) return;
     setState(() => _sheetSize = _sheetController.size);
@@ -342,6 +346,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
               destination: destinationLabel,
               etaMinutes: mapEta,
               phase: phase,
+              onChangeDropoff: phase == RideTrackingPhase.inProgress
+                  ? _openDestinationEditor
+                  : null,
             ),
           ),
           DraggableScrollableSheet(
@@ -357,6 +364,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
               onCancel: _onCancel,
               waitingSeconds: waitingSeconds,
               isInProgress: phase == RideTrackingPhase.inProgress,
+              onChangeDropoff: phase == RideTrackingPhase.inProgress
+                  ? _openDestinationEditor
+                  : null,
               // Only show Cancel Request while a cancel is still
               // semantically meaningful — driver en-route to pickup
               // or waiting at pickup. After trip start / completion /
