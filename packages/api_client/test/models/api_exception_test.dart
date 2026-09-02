@@ -47,6 +47,55 @@ void main() {
     expect(AuthErrorMapper.message(exception), fields['phone']);
   });
 
+  test('auth field errors ignore support and validation metadata', () {
+    const exception = ValidationException(
+      message: 'Validation failed',
+      errorCode: 'VALIDATION_ERROR',
+      details: <String, dynamic>{
+        'supportReference': '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
+        'validation': <String>['private validator detail'],
+      },
+    );
+
+    expect(AuthErrorMapper.fieldErrors(exception), isEmpty);
+    expect(
+      AuthErrorMapper.message(exception),
+      'Check the information you entered and try again.',
+    );
+  });
+
+  test(
+      'canonical validation envelope cannot turn its support UUID into field copy',
+      () {
+    final exception = ApiException.fromDioException(
+      DioException(
+        requestOptions: RequestOptions(path: '/auth/register'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/auth/register'),
+          statusCode: 400,
+          data: const {
+            'success': false,
+            'error': {
+              'code': 'VALIDATION_ERROR',
+              'message': 'Validation failed',
+              'details': {
+                'validation': <String>['private class-validator detail'],
+              },
+              'supportReference': 'cf539e20-e5a6-4e8c-a281-da24848bd75a',
+            },
+          },
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    expect(AuthErrorMapper.fieldErrors(exception), isEmpty);
+    final message = AuthErrorMapper.message(exception);
+    expect(message, 'Check the information you entered and try again.');
+    expect(message, isNot(contains('cf539e20')));
+    expect(message, isNot(contains('class-validator')));
+  });
+
   test('personal-name validation fields use the approved safe copy', () {
     const exception = ValidationException(
       message: 'private name validator details',
@@ -175,6 +224,42 @@ void main() {
       'We couldn\'t confirm SMS delivery. Your code is still active. '
       'Wait for it or use resend.',
     );
+  });
+
+  test('parses canonical active-OTP 429 without exposing diagnostics', () {
+    final exception = ApiException.fromDioException(
+      DioException(
+        requestOptions: RequestOptions(path: '/auth/register'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/auth/register'),
+          statusCode: 429,
+          data: const {
+            'success': false,
+            'error': {
+              'code': 'RATE_LIMIT_EXCEEDED',
+              'message': 'Backend wording must stay hidden.',
+              'details': {'otpActive': true},
+              'supportReference': '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
+            },
+          },
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    expect(exception.statusCode, 429);
+    expect(exception.errorCode, 'RATE_LIMIT_EXCEEDED');
+    expect(exception.details?['otpActive'], isTrue);
+    expect(
+      exception.details?['supportReference'],
+      '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
+    );
+    expect(AuthErrorMapper.hasActiveOtp(exception), isTrue);
+    final message = AuthErrorMapper.message(exception);
+    expect(message, contains('code is still active'));
+    expect(message, isNot(contains('RATE_LIMIT_EXCEEDED')));
+    expect(message, isNot(contains('Backend wording')));
+    expect(message, isNot(contains('15286d11')));
   });
 
   test('never infers an active OTP from a 429 or truthy string', () {

@@ -171,7 +171,8 @@ void main() {
     );
   });
 
-  test('controller preserves correction code and safe support reference',
+  test(
+      'controller preserves correction code without using a support UUID as field copy',
       () async {
     final repository = _MockAuthRepository();
     final controller = AuthController(
@@ -201,7 +202,8 @@ void main() {
     final state = controller.state as AuthUnauthenticated;
     expect(state.errorCode, 'INVALID_RIDE_CATEGORY');
     expect(state.error, contains('no longer available'));
-    expect(state.error, contains('15286d11-fceb-43e6-ac0e-41f96d9a1b77'));
+    expect(
+        state.error, isNot(contains('15286d11-fceb-43e6-ac0e-41f96d9a1b77')));
     expect(state.error, isNot(contains('inactive database category')));
   });
 

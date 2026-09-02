@@ -59,4 +59,25 @@ void main() {
       'Enter a valid Ghana phone number.',
     );
   });
+
+  testWidgets('shows a complete actionable remote error below the phone field',
+      (tester) async {
+    const error =
+        'Code requests are temporarily unavailable. Please try again shortly.';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MyShopPhoneInputScreen(
+          title: 'Verify your phone',
+          subtitle: 'Enter your number',
+          errorText: error,
+          onSubmit: (_) {},
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.decoration?.errorText, error);
+    expect(field.decoration?.errorMaxLines, 5);
+    expect(find.text(error), findsOneWidget);
+  });
 }
