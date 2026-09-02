@@ -63,8 +63,10 @@ class _ProviderOtpVerificationScreenState
     String phone = '';
     String? error;
     bool isVerifying = false;
+    AuthOtpSent? otpState;
 
     if (state is AuthOtpSent) {
+      otpState = state;
       phone = state.phone;
       error = state.error;
       isVerifying = state.isVerifying;
@@ -79,20 +81,64 @@ class _ProviderOtpVerificationScreenState
       onErrorCleared: () =>
           ref.read(authControllerProvider.notifier).clearError(),
       onVerify: (code) => _verifyAndFlushDraft(ref, code),
-      onResend: () async {
-        try {
-          await ref.read(authControllerProvider.notifier).resendOtp();
-        } catch (_) {}
-      },
-      onResendWhatsApp: whatsappAvailable
-          ? () async {
-              await ref
-                  .read(authControllerProvider.notifier)
-                  .resendOtp(channel: 'whatsapp');
-            }
+      onResendAttempt: () =>
+          ref.read(authControllerProvider.notifier).resendOtp(),
+      onResendWhatsAppAttempt: whatsappAvailable
+          ? () => ref
+              .read(authControllerProvider.notifier)
+              .resendOtp(channel: 'whatsapp')
+          : null,
+      bottomAction: _canRemoveReferral(otpState)
+          ? TextButton.icon(
+              onPressed: () => _removeReferralAndRestart(otpState!),
+              icon: const Icon(Icons.link_off_rounded),
+              label: const Text('Remove code and request a new OTP'),
+            )
           : null,
       onBack: () => ref.read(authControllerProvider.notifier).reset(),
     );
+  }
+
+  bool _canRemoveReferral(AuthOtpSent? state) {
+    if (state == null ||
+        !state.isNewUser ||
+        !AuthErrorMapper.isReferralRegistrationErrorCode(state.errorCode)) {
+      return false;
+    }
+    final role = state.role;
+    if (role == ProviderType.driver) {
+      return ref
+          .read(driverRegistrationProvider)
+          .referralCode
+          .trim()
+          .isNotEmpty;
+    }
+    if (role == ProviderType.artisan) {
+      return ref
+          .read(artisanRegistrationProvider)
+          .referralCode
+          .trim()
+          .isNotEmpty;
+    }
+    return false;
+  }
+
+  void _removeReferralAndRestart(AuthOtpSent state) {
+    final role = state.role;
+    if (role == ProviderType.driver) {
+      final draft = ref.read(driverRegistrationProvider);
+      ref
+          .read(driverRegistrationProvider.notifier)
+          .update(draft.copyWith(referralCode: ''));
+    } else if (role == ProviderType.artisan) {
+      final draft = ref.read(artisanRegistrationProvider);
+      ref
+          .read(artisanRegistrationProvider.notifier)
+          .update(draft.copyWith(referralCode: ''));
+    } else {
+      return;
+    }
+    ref.read(authControllerProvider.notifier).reset();
   }
 
   /// Verify the OTP, clear the driver draft created by the now-complete
@@ -124,9 +170,19 @@ class _ProviderOtpVerificationScreenState
 
     await controller.verifyOtp(code);
 
+    // AuthController reports verification failures by restoring AuthOtpSent;
+    // it does not throw. Never discard a registration draft unless the
+    // complete authenticated profile has actually been published.
+    if (ref.read(authControllerProvider) is! AuthAuthenticated) return;
+
     if (freshDriverSignup) {
       driverDraftNotifier?.update(DriverRegistrationDraft());
     } else if (artisanDraft != null) {
+      // The production AuthController finalizes this draft as part of the
+      // authenticated-session transition, including after a deferred profile
+      // restore. Keep this local fallback for injected/test controllers, but
+      // never send the radius update twice when the controller already did it.
+      if (ref.read(artisanRegistrationProvider).fullName.isEmpty) return;
       // serviceRadiusKm is the only post-register artisan-only field on the
       // draft today. Only push when the user actually changed it from the
       // 5 km default so we don't overwrite a server-side default with one.

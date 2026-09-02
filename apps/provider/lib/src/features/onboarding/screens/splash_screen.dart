@@ -200,7 +200,7 @@ class _SessionRestorePanel extends StatelessWidget {
         child: Column(
           children: [
             Text(
-              'Connect to the internet and try again.',
+              state.error ?? 'Connect to the internet and try again.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.9),

@@ -9,6 +9,7 @@ import '../../artisan_home/providers/bid_drafts_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
+import '../../registration/providers/registration_controller.dart';
 import '../data/auth_repository.dart';
 import '../../../core/providers/provider_online_intent.dart';
 import '../../../core/providers/service_notice_provider.dart';
@@ -92,6 +93,7 @@ class AuthOtpSent extends AuthState {
     required this.isNewUser,
     this.role,
     this.error,
+    this.errorCode,
     this.isVerifying = false,
     this.regionRejected = false,
   });
@@ -100,6 +102,7 @@ class AuthOtpSent extends AuthState {
   final bool isNewUser;
   final ProviderType? role;
   final String? error;
+  final String? errorCode;
   final bool isVerifying;
 
   /// True when [error] came from an INVALID_REGION verify failure during
@@ -250,6 +253,41 @@ final authControllerProvider =
         ref.read(providerTypeProvider.notifier).state = intendedRole;
       }
     },
+    onRegistrationAuthenticated: (
+      AuthUser user,
+      ProviderType registeredRole,
+    ) async {
+      if (registeredRole == ProviderType.driver) {
+        ref
+            .read(driverRegistrationProvider.notifier)
+            .update(DriverRegistrationDraft());
+        return user;
+      }
+
+      final draft = ref.read(artisanRegistrationProvider);
+      var finalizedUser = user;
+      // The registration endpoint carries every other retained artisan field.
+      // Keep this draft until the one post-registration profile update lands.
+      if (draft.serviceRadiusKm != 5) {
+        try {
+          finalizedUser =
+              await ref.read(authRepositoryProvider).updateArtisanProfile(
+                    UpdateArtisanProfileRequest(
+                      serviceRadiusKm: draft.serviceRadiusKm,
+                    ),
+                  );
+        } catch (error) {
+          debugPrint(
+            '[Auth] deferred post-signup artisan sync failed: $error',
+          );
+          return null;
+        }
+      }
+      ref
+          .read(artisanRegistrationProvider.notifier)
+          .update(ArtisanRegistrationDraft());
+      return finalizedUser;
+    },
     onLocalStateClear: (
       AuthUser? exitingUser,
       AuthSessionIdentity? exitingSession,
@@ -323,6 +361,7 @@ class AuthController extends StateNotifier<AuthState> {
   AuthController(
     this._repo, {
     this.onAuthenticated,
+    this.onRegistrationAuthenticated,
     this.onLocalStateClear,
     this.onSessionIdentityChanged,
     required TokenStorage tokenStorage,
@@ -340,6 +379,14 @@ class AuthController extends StateNotifier<AuthState> {
   /// a session via [bootstrap], it is null — derive from the profile instead.
   final FutureOr<void> Function(AuthUser user, ProviderType? intendedRole)?
       onAuthenticated;
+
+  /// Completes provider-role signup data only after a persisted session has a
+  /// verified profile. Returning null keeps the in-memory draft available for
+  /// a later session/profile retry instead of silently discarding it.
+  final FutureOr<AuthUser?> Function(
+    AuthUser user,
+    ProviderType registeredRole,
+  )? onRegistrationAuthenticated;
 
   /// Synchronous publication fence for consumers whose async work must be
   /// owned by the exact authenticated SID.
@@ -362,6 +409,7 @@ class AuthController extends StateNotifier<AuthState> {
   bool _restoringSession = false;
   int _sessionInvalidationEpoch = 0;
   AuthSessionIdentity? _ownedSessionIdentity;
+  ProviderType? _pendingRegistrationRole;
 
   /// Try to restore session from stored tokens.
   ///
@@ -421,15 +469,31 @@ class AuthController extends StateNotifier<AuthState> {
           }
           _ownedSessionIdentity = identity;
           await onAuthenticated?.call(user, restoredRole);
+          final authenticatedUser = restoredRole == null
+              ? user
+              : await _finalizePendingRegistration(
+                  user,
+                  restoredRole,
+                  identity,
+                );
+          if (authenticatedUser == null) {
+            state = AuthSessionRestorePending(
+              error: 'Your account was saved, but we could not finish your '
+                  'registration details. Try again.',
+              intendedRole: restoredRole,
+            );
+            return;
+          }
           if (!mounted || attemptEpoch != _sessionInvalidationEpoch) return;
           if (await _currentSessionIdentity() != identity) {
             return;
           }
           onSessionIdentityChanged?.call(identity);
-          state = AuthAuthenticated(user);
+          state = AuthAuthenticated(authenticatedUser);
           unawaited(_refreshInBackground());
         case ProviderBootstrapNoSession():
           _ownedSessionIdentity = null;
+          _pendingRegistrationRole = null;
           onSessionIdentityChanged?.call(null);
           state = const AuthUnauthenticated();
         case ProviderBootstrapDeferred():
@@ -456,6 +520,32 @@ class AuthController extends StateNotifier<AuthState> {
         AuthRole.artisan => ProviderType.artisan,
         _ => null,
       };
+
+  Future<AuthUser?> _finalizePendingRegistration(
+    AuthUser user,
+    ProviderType role,
+    AuthSessionIdentity identity,
+  ) async {
+    if (_pendingRegistrationRole != role) return user;
+    final finalizer = onRegistrationAuthenticated;
+    if (finalizer == null) {
+      _pendingRegistrationRole = null;
+      return user;
+    }
+    try {
+      final finalizedUser = await finalizer(user, role);
+      if (finalizedUser == null ||
+          !_identityMatchesUser(identity, finalizedUser) ||
+          await _currentSessionIdentity() != identity) {
+        return null;
+      }
+      _pendingRegistrationRole = null;
+      return finalizedUser;
+    } catch (error) {
+      debugPrint('[Auth] provider registration finalization failed: $error');
+      return null;
+    }
+  }
 
   Future<void> _refreshInBackground() async {
     final refreshEpoch = _sessionInvalidationEpoch;
@@ -684,12 +774,27 @@ class AuthController extends StateNotifier<AuthState> {
         return;
       }
       await onAuthenticated?.call(user, providerType);
+      final authenticatedUser = providerType == null
+          ? user
+          : await _finalizePendingRegistration(
+              user,
+              providerType,
+              completionIdentity,
+            );
+      if (authenticatedUser == null) {
+        state = AuthSessionRestorePending(
+          error: 'Your account was saved, but we could not finish your '
+              'registration details. Try again.',
+          intendedRole: providerType,
+        );
+        return;
+      }
       if (!mounted || completionEpoch != _sessionInvalidationEpoch) return;
       if (await _currentSessionIdentity() != completionIdentity) {
         return;
       }
       onSessionIdentityChanged?.call(completionIdentity);
-      state = AuthAuthenticated(user);
+      state = AuthAuthenticated(authenticatedUser);
     } catch (error) {
       if (!mounted || completionEpoch != _sessionInvalidationEpoch) return;
       if (completionIdentity != null &&
@@ -744,6 +849,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (current.isNewUser) {
         // Registration: role already chosen at sign-up; legacy verify.
         await _repo.verifyOtp(phone: current.phone, code: code);
+        _pendingRegistrationRole = current.role;
         await _completePersistedSession(current.role);
         return;
       }
@@ -780,6 +886,7 @@ class AuthController extends StateNotifier<AuthState> {
           isNewUser: current.isNewUser,
           role: current.role,
           error: AuthErrorMapper.message(e),
+          errorCode: e.errorCode,
           regionRejected: e.errorCode == AuthErrorCodes.invalidRegion,
         );
       }
@@ -801,10 +908,10 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   /// Re-deliver the active OTP without issuing a new code.
-  Future<void> resendOtp({String channel = 'sms'}) async {
+  Future<bool> resendOtp({String channel = 'sms'}) async {
     final current = state;
-    if (current is! AuthOtpSent) return;
-    if (_requesting) return;
+    if (current is! AuthOtpSent) return false;
+    if (_requesting) return false;
     _requesting = true;
     try {
       await _repo.resendOtp(phone: current.phone, channel: channel);
@@ -813,13 +920,16 @@ class AuthController extends StateNotifier<AuthState> {
         isNewUser: current.isNewUser,
         role: current.role,
       );
+      return true;
     } on ApiException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         role: current.role,
         error: AuthErrorMapper.message(e),
+        errorCode: e.errorCode,
       );
+      return false;
     } on AuthException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
@@ -827,6 +937,7 @@ class AuthController extends StateNotifier<AuthState> {
         role: current.role,
         error: e.message,
       );
+      return false;
     } catch (_) {
       state = AuthOtpSent(
         phone: current.phone,
@@ -834,6 +945,7 @@ class AuthController extends StateNotifier<AuthState> {
         role: current.role,
         error: 'Could not resend code. Please try again.',
       );
+      return false;
     } finally {
       _requesting = false;
     }
@@ -855,6 +967,8 @@ class AuthController extends StateNotifier<AuthState> {
         phone: current.phone,
         isNewUser: current.isNewUser,
         role: current.role,
+        errorCode: current.errorCode,
+        regionRejected: current.regionRejected,
       );
     }
   }
@@ -877,13 +991,25 @@ class AuthController extends StateNotifier<AuthState> {
         return 'The authenticated session changed.';
       }
       await onAuthenticated?.call(user, null);
+      final role = _providerTypeFromUser(user);
+      final authenticatedUser = role == null
+          ? user
+          : await _finalizePendingRegistration(
+              user,
+              role,
+              expectedIdentity,
+            );
+      if (authenticatedUser == null) {
+        return 'Your account was saved, but we could not finish your '
+            'registration details. Please try again.';
+      }
       if (!mounted ||
           operationEpoch != _sessionInvalidationEpoch ||
           _ownedSessionIdentity != expectedIdentity ||
           await _currentSessionIdentity() != expectedIdentity) {
         return 'The authenticated session changed.';
       }
-      state = AuthAuthenticated(user);
+      state = AuthAuthenticated(authenticatedUser);
       return null;
     } catch (_) {
       return 'Failed to refresh profile.';
@@ -976,6 +1102,7 @@ class AuthController extends StateNotifier<AuthState> {
   void reset() {
     _sessionInvalidationEpoch += 1;
     _ownedSessionIdentity = null;
+    _pendingRegistrationRole = null;
     onSessionIdentityChanged?.call(null);
     state = const AuthUnauthenticated();
   }
@@ -986,6 +1113,7 @@ class AuthController extends StateNotifier<AuthState> {
     final logoutEpoch = ++_sessionInvalidationEpoch;
     final exitingSession = _ownedSessionIdentity;
     _ownedSessionIdentity = null;
+    _pendingRegistrationRole = null;
     onSessionIdentityChanged?.call(null);
     debugPrint('[AuthController] logout() called from ${state.runtimeType}');
     final exitingUser = switch (state) {

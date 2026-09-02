@@ -17,12 +17,10 @@ class _DriverProfileStepState extends ConsumerState<DriverProfileStep>
     with AutomaticKeepAliveClientMixin {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _emailCtrl;
-  late final TextEditingController _ghanaCardCtrl;
   late final TextEditingController _referralCtrl;
 
   bool _nameTouched = false;
   bool _emailTouched = false;
-  bool _ghanaCardTouched = false;
   bool _referralTouched = false;
 
   @override
@@ -34,7 +32,6 @@ class _DriverProfileStepState extends ConsumerState<DriverProfileStep>
     final draft = ref.read(driverRegistrationProvider);
     _nameCtrl = TextEditingController(text: draft.fullName);
     _emailCtrl = TextEditingController(text: draft.email);
-    _ghanaCardCtrl = TextEditingController(text: draft.ghanaCardNumber);
     _referralCtrl = TextEditingController(text: draft.referralCode);
   }
 
@@ -42,7 +39,6 @@ class _DriverProfileStepState extends ConsumerState<DriverProfileStep>
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _ghanaCardCtrl.dispose();
     _referralCtrl.dispose();
     super.dispose();
   }
@@ -83,28 +79,13 @@ class _DriverProfileStepState extends ConsumerState<DriverProfileStep>
             keyboardType: TextInputType.emailAddress,
             controller: _emailCtrl,
             errorText: (_emailTouched || showAll)
-                ? Validators.email(_emailCtrl.text)
+                ? validateRegistrationEmail(_emailCtrl.text)
                 : null,
             onChanged: (v) {
               _apply((d) => d.copyWith(email: v));
               if (_emailTouched || showAll) setState(() {});
             },
             onSubmitted: (_) => setState(() => _emailTouched = true),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          MyShopTextField(
-            label: 'Ghana Card number',
-            hint: 'GHA-XXXXXXXXX-X',
-            controller: _ghanaCardCtrl,
-            textCapitalization: TextCapitalization.characters,
-            errorText: (_ghanaCardTouched || showAll)
-                ? Validators.ghanaCard(_ghanaCardCtrl.text)
-                : null,
-            onChanged: (v) {
-              _apply((d) => d.copyWith(ghanaCardNumber: v));
-              if (_ghanaCardTouched || showAll) setState(() {});
-            },
-            onSubmitted: (_) => setState(() => _ghanaCardTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.md),
           MyShopTextField(

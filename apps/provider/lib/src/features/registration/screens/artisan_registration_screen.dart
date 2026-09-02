@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../profile/providers/provider_type_provider.dart';
 import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
 import '../widgets/artisan_business_step.dart';
@@ -62,13 +63,10 @@ class _ArtisanRegistrationScreenState
     switch (_currentStep) {
       case 0:
         return Validators.fullName(d.fullName) == null &&
-            Validators.email(d.email) == null &&
-            Validators.ghanaCard(d.ghanaCardNumber) == null &&
+            validateRegistrationEmail(d.email) == null &&
             validateOptionalReferralCode(d.referralCode) == null;
       case 1:
-        return d.businessName.isNotEmpty &&
-            d.tradeCategory.isNotEmpty &&
-            d.serviceCategories.isNotEmpty;
+        return d.businessName.isNotEmpty && d.serviceCategories.isNotEmpty;
       case 2:
         // Region is a pre-selected confirmation in the pilot. Only block
         // when the user genuinely has more than one region to choose from
@@ -110,7 +108,9 @@ class _ArtisanRegistrationScreenState
 
   void _finish() {
     final draft = ref.read(artisanRegistrationProvider);
-    final policyAccepted = ref.read(policyAcceptedProvider);
+    final policyAccepted = ref.read(
+      policyAcceptedProvider(ProviderType.artisan),
+    );
     if (_canAdvance(draft) && policyAccepted) {
       ref.read(showRegistrationErrorsProvider.notifier).state = false;
       context.go('/signup/phone');
@@ -130,7 +130,9 @@ class _ArtisanRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(artisanRegistrationProvider);
-    final policyAccepted = ref.watch(policyAcceptedProvider);
+    final policyAccepted = ref.watch(
+      policyAcceptedProvider(ProviderType.artisan),
+    );
     final isLast = _currentStep == _steps.length - 1;
 
     return PopScope(

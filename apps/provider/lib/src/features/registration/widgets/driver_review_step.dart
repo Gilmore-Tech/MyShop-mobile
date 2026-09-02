@@ -93,8 +93,12 @@ class DriverReviewStep extends ConsumerWidget {
             onEdit: () => onEditStep(0),
             rows: [
               ReviewRow(label: 'Full name', value: draft.fullName),
-              ReviewRow(label: 'Email', value: draft.email),
-              ReviewRow(label: 'Ghana Card', value: draft.ghanaCardNumber),
+              ReviewRow(
+                label: 'Email',
+                value: draft.email.trim().isEmpty
+                    ? 'Not provided'
+                    : draft.email.trim(),
+              ),
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),
