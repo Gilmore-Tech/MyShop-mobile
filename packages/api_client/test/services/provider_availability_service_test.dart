@@ -86,15 +86,21 @@ void main() {
     expect(snapshot.status, ProviderAvailabilityStatus.offline);
     expect(snapshot.effectiveSessionStatus, ProviderAvailabilityStatus.online);
     json.remove('sessionStatus');
-    expect(ProviderAvailabilitySnapshot.fromJson(json).effectiveSessionStatus,
-        ProviderAvailabilityStatus.offline);
+    expect(
+      ProviderAvailabilitySnapshot.fromJson(json).effectiveSessionStatus,
+      ProviderAvailabilityStatus.offline,
+    );
     json['sessionStatus'] = 'unknown';
-    expect(() => ProviderAvailabilitySnapshot.fromJson(json),
-        throwsFormatException);
+    expect(
+      () => ProviderAvailabilitySnapshot.fromJson(json),
+      throwsFormatException,
+    );
     json['sessionStatus'] = 'online';
     json.remove('selectedVehicleId');
-    expect(() => ProviderAvailabilitySnapshot.fromJson(json),
-        throwsFormatException);
+    expect(
+      () => ProviderAvailabilitySnapshot.fromJson(json),
+      throwsFormatException,
+    );
   });
 
   test('rejects a partial or invalid location session instead of guessing', () {

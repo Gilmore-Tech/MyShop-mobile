@@ -67,8 +67,10 @@ void main() {
         onlineSessionId: 'epoch-1',
         sampleSequence: 8,
       );
-      expect(capturedRequest.path,
-          isArtisan ? '/location/artisan/update' : '/location/update');
+      expect(
+        capturedRequest.path,
+        isArtisan ? '/location/artisan/update' : '/location/update',
+      );
       expect(capturedRequest.data, containsPair('resumeOnly', true));
       expect(capturedRequest.data, containsPair('onlineSessionId', 'epoch-1'));
       expect(capturedRequest.data, containsPair('sampleSequence', 8));
