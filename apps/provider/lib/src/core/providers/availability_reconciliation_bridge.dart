@@ -7,6 +7,7 @@ import '../services/fcm_service.dart';
 import 'app_lifecycle_provider.dart';
 import 'availability_reconciliation_controller.dart';
 import 'provider_online_intent.dart';
+import 'provider_connection_recovery_provider.dart';
 import 'socket_provider.dart';
 
 /// Keeps authoritative availability reconciliation active for the authenticated
@@ -17,6 +18,7 @@ final availabilityReconciliationBridgeProvider = Provider<void>((ref) {
 
   void reconcile(String trigger) {
     if (ref.read(authControllerProvider) is! AuthAuthenticated) return;
+    ref.read(providerLocationRecoveryKickProvider.notifier).state++;
     unawaited(
       ref
           .read(availabilityReconciliationControllerProvider)

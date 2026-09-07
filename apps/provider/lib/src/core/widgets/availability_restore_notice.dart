@@ -3,13 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/provider_online_intent.dart';
+import '../providers/provider_connection_recovery_provider.dart';
 
 class AvailabilityRestoreNoticeBanner extends ConsumerWidget {
   const AvailabilityRestoreNoticeBanner({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final message = ref.watch(availabilityRestoreNoticeProvider);
+    final persistentConnectionFailure =
+        ref.watch(providerConnectionRecoveryProvider);
+    final message = ref.watch(availabilityRestoreNoticeProvider) ??
+        (persistentConnectionFailure
+            ? 'Your connection is taking longer to recover. We’ll resume '
+                'requests automatically when your connection and location are ready.'
+            : null);
     if (message == null) return const SizedBox.shrink();
 
     return Container(
@@ -49,6 +56,9 @@ class AvailabilityRestoreNoticeBanner extends ConsumerWidget {
             tooltip: 'Dismiss',
             onPressed: () {
               ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
+              ref
+                  .read(providerConnectionRecoveryProvider.notifier)
+                  .dismissNotice();
             },
             icon: const Icon(Icons.close, size: 18),
           ),
