@@ -7,15 +7,18 @@ class ProviderLocationSessionState {
   const ProviderLocationSessionState({
     required this.onlineSessionId,
     required this.lastSequence,
+    this.supportsSilentRecovery = false,
   });
 
   final String onlineSessionId;
   final int lastSequence;
+  final bool supportsSilentRecovery;
 
   ProviderLocationSessionState copyWith({required int lastSequence}) =>
       ProviderLocationSessionState(
         onlineSessionId: onlineSessionId,
         lastSequence: lastSequence,
+        supportsSilentRecovery: supportsSilentRecovery,
       );
 }
 
@@ -23,7 +26,8 @@ class ProviderLocationSessionController
     extends StateNotifier<ProviderLocationSessionState?> {
   ProviderLocationSessionController() : super(null);
 
-  void install(String onlineSessionId, int lastSequence) {
+  void install(String onlineSessionId, int lastSequence,
+      {bool? supportsSilentRecovery}) {
     final normalizedId = onlineSessionId.trim();
     if (normalizedId.isEmpty ||
         lastSequence < 0 ||
@@ -41,6 +45,9 @@ class ProviderLocationSessionController
     state = ProviderLocationSessionState(
       onlineSessionId: normalizedId,
       lastSequence: lastSequence,
+      supportsSilentRecovery: supportsSilentRecovery ??
+          (current?.onlineSessionId == normalizedId &&
+              current!.supportsSilentRecovery),
     );
   }
 
@@ -51,7 +58,8 @@ class ProviderLocationSessionController
       clear();
       return;
     }
-    install(onlineSessionId, lastSequence);
+    install(onlineSessionId, lastSequence,
+        supportsSilentRecovery: snapshot.sessionStatus != null);
   }
 
   void installResponse(Map<String, dynamic> response) {

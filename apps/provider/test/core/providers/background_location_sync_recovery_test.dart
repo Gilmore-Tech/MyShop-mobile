@@ -13,6 +13,7 @@ import 'package:myshop_provider/src/core/providers/background_location_sync_prov
 import 'package:myshop_provider/src/core/providers/provider_location_session_provider.dart';
 import 'package:myshop_provider/src/core/providers/provider_location_sync_recovery.dart';
 import 'package:myshop_provider/src/core/providers/provider_online_intent.dart';
+import 'package:myshop_provider/src/core/providers/provider_connection_recovery_provider.dart';
 import 'package:myshop_provider/src/core/providers/provider_status_provider.dart';
 import 'package:myshop_provider/src/features/auth/providers/auth_controller.dart';
 import 'package:myshop_provider/src/features/auth/providers/current_user_provider.dart';
@@ -142,6 +143,50 @@ ProviderContainer _container({
 void main() {
   setUp(clearOnlineLocationPostAt);
   tearDown(clearOnlineLocationPostAt);
+
+  test(
+      'reconnection immediately retries a stationary provider without toggle flicker',
+      () async {
+    final positions = StreamController<Position>.broadcast();
+    final location = _FakeLocationService()
+      ..outcomes.add(const NetworkException(message: 'temporary outage'))
+      ..outcomes.add(null);
+    final store = _FakeOnlineIntentStore();
+    final container = _container(
+      positions: positions.stream,
+      location: location,
+      intentStore: store,
+      recovery: ProviderLocationRecoveryActions(
+        forceOffline: (_) async =>
+            fail('network loss must not end the session'),
+        reconcile: (_) async {},
+      ),
+    );
+    addTearDown(() async {
+      await positions.close();
+      container.dispose();
+    });
+    container.read(providerStatusProvider.notifier).goOnline();
+    container
+        .read(providerLocationSessionProvider.notifier)
+        .install(_epochA, 0);
+    final revision =
+        container.read(providerStatusProvider.notifier).transitionRevision;
+    container.read(backgroundLocationSyncProvider);
+    positions.add(_position(DateTime.now().toUtc()));
+    await _settle();
+    expect(location.batches, hasLength(1));
+    expect(container.read(providerConnectionRecoveryProvider), isFalse);
+    // No movement or new GPS event: reconnect itself wakes the queued writer.
+    container.read(providerLocationRecoveryKickProvider.notifier).state++;
+    await _settle();
+    expect(location.batches, hasLength(2));
+    expect(container.read(providerStatusProvider), DriverStatus.online);
+    expect(container.read(providerStatusProvider.notifier).transitionRevision,
+        revision);
+    expect(container.read(availabilityRestoreNoticeProvider), isNull);
+    expect(store.shouldBeOnline, isTrue);
+  });
 
   test(
     'idle nested terminal rejection consumes intent and confirms Offline',
@@ -521,7 +566,7 @@ void main() {
     expect(container.read(providerStatusProvider), DriverStatus.busy);
   });
 
-  test('capability startup grace terminates after three rejected attempts',
+  test('capability registration keeps intent after repeated transient failures',
       () async {
     final positions = StreamController<Position>.broadcast();
     final capabilityError =
@@ -576,9 +621,9 @@ void main() {
     await _settle();
 
     expect(location.batches, hasLength(3));
-    expect(offlineCalls, 1);
-    expect(intentStore.shouldBeOnline, isFalse);
-    expect(container.read(providerStatusProvider), DriverStatus.offline);
+    expect(offlineCalls, 0);
+    expect(intentStore.shouldBeOnline, isTrue);
+    expect(container.read(providerStatusProvider), DriverStatus.online);
   });
 
   test(
