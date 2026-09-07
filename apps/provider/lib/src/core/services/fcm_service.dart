@@ -32,6 +32,7 @@ import '../providers/socket_provider.dart';
 import '../providers/nav_badge_provider.dart';
 import '../utils/incoming_ride_fare_copy.dart';
 import 'local_notification_service.dart';
+import 'provider_online_recovery.dart';
 import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
 import 'incoming_request_overlay_presenter.dart';
@@ -1713,6 +1714,9 @@ class FcmService {
     bool requestPermissionIfNeeded = true,
   }) async {
     if (!_ref.read(firebaseReadyProvider)) {
+      if (!requestPermissionIfNeeded) {
+        throw const ProviderOnlineRestorePending();
+      }
       return 'Notifications are still starting. Check your connection and try again.';
     }
 
@@ -1751,23 +1755,35 @@ class FcmService {
               const Duration(seconds: 5),
             );
         if (apnsToken == null || apnsToken.isEmpty) {
+          if (!requestPermissionIfNeeded) {
+            throw const ProviderOnlineRestorePending();
+          }
           return 'This device is not ready for notifications yet. Check your connection and try again.';
         }
       }
 
       final token = await _fcm.getToken().timeout(const Duration(seconds: 8));
       if (token == null || token.isEmpty) {
+        if (!requestPermissionIfNeeded) {
+          throw const ProviderOnlineRestorePending();
+        }
         return 'This device could not register for notifications. Check your connection and try again.';
       }
       final registered = await _register(
         token,
       ).timeout(const Duration(seconds: 15));
       if (!registered) {
+        if (!requestPermissionIfNeeded) {
+          throw const ProviderOnlineRestorePending();
+        }
         return 'MyShop could not register this device for requests. Check your connection and try again.';
       }
       return null;
     } catch (error) {
       debugPrint('[FCM] online reachability check failed: $error');
+      if (!requestPermissionIfNeeded) {
+        throw const ProviderOnlineRestorePending();
+      }
       return 'MyShop could not verify notification access. Check Settings and your connection, then try again.';
     }
   }

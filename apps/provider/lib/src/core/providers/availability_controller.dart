@@ -14,6 +14,7 @@ import '../di/providers.dart';
 import '../services/ios_always_location_permission_bridge.dart';
 import '../services/fcm_service.dart';
 import '../services/provider_request_policy.dart';
+import '../services/provider_online_recovery.dart';
 import 'provider_status_provider.dart';
 import 'availability_reconciliation_controller.dart';
 import 'location_degradation_provider.dart';
@@ -415,11 +416,28 @@ class AvailabilityController {
     required bool allowPermissionPrompts,
     required bool promptOverlayPermission,
   }) async {
+    final restoreIdentity =
+        _ref.read(currentProviderOnlineIntentIdentityProvider);
+    final restoreAuth = _ref.read(currentAuthSessionIdentityProvider);
+    final restoreRevision =
+        _ref.read(providerStatusProvider.notifier).transitionRevision;
+    void assertRestoreCurrent() {
+      if (!allowPermissionPrompts &&
+          (_ref.read(currentProviderOnlineIntentIdentityProvider) !=
+                  restoreIdentity ||
+              _ref.read(currentAuthSessionIdentityProvider) != restoreAuth ||
+              _ref.read(providerStatusProvider.notifier).transitionRevision !=
+                  restoreRevision)) {
+        throw const StaleAuthSessionException();
+      }
+    }
+
     // Response/cancellation enforcement clears the authoritative Online
     // session. Check its dedicated, server-authored summary before spending
     // notification/GPS/rate-limit budget so a generic location throttle can
     // never hide the actual reason this provider cannot receive work.
     final requestBlockMessage = await _activeRequestBlockMessage();
+    assertRestoreCurrent();
     if (requestBlockMessage != null) {
       _ref.read(availabilityRestoreNoticeProvider.notifier).state =
           requestBlockMessage;
@@ -461,9 +479,13 @@ class AvailabilityController {
         lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
         currentLoader: _ref.read(onlineEntryPositionLoaderProvider),
       );
+      assertRestoreCurrent();
       _ref.read(lastKnownPositionProvider.notifier).state = position;
+    } on StaleAuthSessionException {
+      rethrow;
     } catch (e) {
       debugPrint('[Availability] online: position fetch failed — $e');
+      if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
       if (e is TimeoutException) {
         return 'GPS could not get an accurate fix within '
             '${onlineEntryFixTimeout.inSeconds} seconds. Move near a window '
@@ -474,19 +496,33 @@ class AvailabilityController {
     }
 
     if (!isOnlineLocationFixAcceptable(position)) {
+      if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
       return 'Your location is not accurate or recent enough to go online. '
           'Move to an open area, wait for GPS to settle, and try again.';
     }
 
     final isArtisan = _ref.read(providerTypeProvider).isArtisan;
     final locationService = _ref.read(locationServiceProvider);
+    assertRestoreCurrent();
     try {
       final locationSession = _ref.read(providerLocationSessionProvider);
       final sampleSequence = locationSession == null
           ? null
           : _ref.read(providerLocationSessionProvider.notifier).nextSequence();
       final Map<String, dynamic> response;
-      if (isArtisan) {
+      if (!allowPermissionPrompts &&
+          locationSession != null &&
+          locationSession.supportsSilentRecovery) {
+        response = await locationService.resumeOnlineSession(
+          isArtisan: isArtisan,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracyMeters: position.accuracy,
+          recordedAt: position.timestamp,
+          onlineSessionId: locationSession.onlineSessionId,
+          sampleSequence: sampleSequence!,
+        );
+      } else if (isArtisan) {
         response = await locationService.updateArtisanLocation(
           latitude: position.latitude,
           longitude: position.longitude,
@@ -508,6 +544,7 @@ class AvailabilityController {
           sampleSequence: sampleSequence,
         );
       }
+      assertRestoreCurrent();
       _ref
           .read(providerLocationSessionProvider.notifier)
           .installResponse(response);
@@ -517,13 +554,22 @@ class AvailabilityController {
       debugPrint('[Availability] online POST sent');
     } on ApiException catch (e) {
       debugPrint('[Availability] online POST failed: $e');
+      if (!allowPermissionPrompts && isRetryableProviderRestoreError(e)) {
+        throw const ProviderOnlineRestorePending();
+      }
       return friendlyAvailabilityApiError(e);
+    } on StaleAuthSessionException {
+      rethrow;
     } catch (e) {
       debugPrint('[Availability] online POST error: $e');
+      if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
       return "Couldn't reach the server. Check your connection and try again.";
     }
 
-    await _writeOnlineIntent(shouldBeOnline: true);
+    assertRestoreCurrent();
+    // Restoration already owns durable intent; never rewrite it across a
+    // concurrent explicit Offline/logout while storage is pending.
+    if (allowPermissionPrompts) await _writeOnlineIntent(shouldBeOnline: true);
     _ref.read(providerStatusProvider.notifier).goOnline();
     if (promptOverlayPermission &&
         Platform.isAndroid &&

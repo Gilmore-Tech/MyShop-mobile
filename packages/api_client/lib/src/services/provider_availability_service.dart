@@ -26,6 +26,7 @@ class ProviderAvailabilitySnapshot {
     required this.locationDegradedEscalatedAt,
     this.onlineSessionId,
     this.lastLocationSequence,
+    this.sessionStatus,
   });
 
   factory ProviderAvailabilitySnapshot.fromJson(Map<String, dynamic> json) {
@@ -38,6 +39,12 @@ class ProviderAvailabilitySnapshot {
       'online' => ProviderAvailabilityStatus.online,
       'offline' => ProviderAvailabilityStatus.offline,
       _ => throw const FormatException('Invalid provider availability status'),
+    };
+    final sessionStatus = switch (json['sessionStatus']) {
+      null => null, // Older APIs expose dispatch readiness only.
+      'online' => ProviderAvailabilityStatus.online,
+      'offline' => ProviderAvailabilityStatus.offline,
+      _ => throw const FormatException('Invalid provider session status'),
     };
     final providerId = json['providerId']?.toString().trim() ?? '';
     if (providerId.isEmpty) {
@@ -101,6 +108,12 @@ class ProviderAvailabilitySnapshot {
         (lastLocationSequence != null && lastLocationSequence < 0)) {
       throw const FormatException('Inconsistent provider location session');
     }
+    if (sessionStatus == ProviderAvailabilityStatus.online &&
+        (onlineSessionId == null ||
+            (role == ProviderAvailabilityRole.driver &&
+                optionalId('selectedVehicleId') == null))) {
+      throw const FormatException('Missing active provider session authority');
+    }
     final recoveryRequired = rawRecoveryRequired as bool? ??
         locationHealth == ProviderLocationHealth.degraded;
     if (recoveryRequired !=
@@ -127,12 +140,20 @@ class ProviderAvailabilitySnapshot {
       locationDegradedEscalatedAt: degradedEscalatedAt,
       onlineSessionId: onlineSessionId,
       lastLocationSequence: lastLocationSequence,
+      sessionStatus: sessionStatus,
     );
   }
 
   final ProviderAvailabilityRole role;
   final String providerId;
   final ProviderAvailabilityStatus status;
+
+  /// The durable Online choice, independent of temporary dispatch readiness.
+  /// Null on APIs predating silent session recovery.
+  final ProviderAvailabilityStatus? sessionStatus;
+
+  ProviderAvailabilityStatus get effectiveSessionStatus =>
+      sessionStatus ?? status;
   final String? activeRideId;
   final String? activeJobId;
   final DateTime? lastSeenAt;
