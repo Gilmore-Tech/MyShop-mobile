@@ -44,8 +44,7 @@ class EarningsPromoCallout extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final campaigns =
-        ref.watch(activePromoCampaignsProvider).valueOrNull ??
+    final campaigns = ref.watch(activePromoCampaignsProvider).valueOrNull ??
         const <ActivePromoCampaign>[];
     final best = bestReliefCampaign(campaigns);
     if (best == null) return const SizedBox.shrink();

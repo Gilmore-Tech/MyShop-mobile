@@ -102,10 +102,10 @@ class ActivePromoCampaign {
 
   num? get commissionReliefPercent =>
       providerPromo?.rewardKind == 'commission_relief'
-      ? providerPromo!.rewardValue
-      : isCommissionRelief && providerPromo == null
-      ? discountValue
-      : null;
+          ? providerPromo!.rewardValue
+          : isCommissionRelief && providerPromo == null
+              ? discountValue
+              : null;
 }
 
 /// Server-authoritative progress for one provider incentive campaign.
