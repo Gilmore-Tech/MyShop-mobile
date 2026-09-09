@@ -17,24 +17,25 @@ import 'promo_details_sheet.dart';
 class EarningsPromoCallout extends ConsumerWidget {
   const EarningsPromoCallout({super.key});
 
-  /// Highest-relief active campaign, or null when none qualifies.
+  /// Highest actual commission-relief reward, or null when none qualifies.
   /// Stable on ties — the server's ordering wins.
   static ActivePromoCampaign? bestReliefCampaign(
     List<ActivePromoCampaign> campaigns,
   ) {
     ActivePromoCampaign? best;
     for (final c in campaigns) {
-      if (!c.isCommissionRelief || c.discountValue <= 0) continue;
-      if (best == null || c.discountValue > best.discountValue) best = c;
+      final relief = c.commissionReliefPercent;
+      if (relief == null || relief <= 0) continue;
+      if (best == null || relief > best.commissionReliefPercent!) best = c;
     }
     return best;
   }
 
   static String calloutText(ActivePromoCampaign c) {
-    final pct = c.discountValue.toDouble() ==
-            c.discountValue.toDouble().truncateToDouble()
-        ? c.discountValue.toDouble().toStringAsFixed(0)
-        : c.discountValue.toDouble().toStringAsFixed(1);
+    final relief = c.commissionReliefPercent ?? 0;
+    final pct = relief.toDouble() == relief.toDouble().truncateToDouble()
+        ? relief.toDouble().toStringAsFixed(0)
+        : relief.toDouble().toStringAsFixed(1);
     final ends = c.endsAt;
     if (ends == null) return 'Active promo: $pct% commission relief';
     final until = DateFormat('d MMM yyyy').format(ends.toLocal());
