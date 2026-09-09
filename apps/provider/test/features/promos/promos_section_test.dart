@@ -32,6 +32,24 @@ const _noBannerReliefCampaign = ActivePromoCampaign(
   audience: 'provider_artisan',
 );
 
+const _progressCampaign = ActivePromoCampaign(
+  id: 'camp-progress-1',
+  name: 'Complete and earn',
+  campaignType: 'commission_relief',
+  discountValue: 1,
+  audience: 'driver',
+  providerPromo: ProviderPromoProgress(
+    rewardKind: 'fixed_bonus',
+    rewardValue: 5000,
+    completedBookingsTarget: 10,
+    verifiedOnlineMinutesTarget: 420,
+    generatedRevenueTargetPesewas: 100000,
+    completedBookings: 6,
+    verifiedOnlineSeconds: 25200,
+    generatedRevenuePesewas: 75000,
+  ),
+);
+
 Future<void> _pumpSection(
   WidgetTester tester,
   List<ActivePromoCampaign> campaigns,
@@ -90,6 +108,23 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
     // The banner-less campaign contributes no carousel item.
     expect(find.byKey(const Key('promo-banner-camp-relief-2')), findsNothing);
+  });
+
+  testWidgets('shows live provider targets without requiring a banner',
+      (tester) async {
+    await _pumpSection(tester, const [_progressCampaign]);
+
+    expect(find.text('PROMOS'), findsOneWidget);
+    expect(find.byKey(const Key('promo-progress-camp-progress-1')),
+        findsOneWidget);
+    expect(find.text('6 / 10 trips or jobs'), findsOneWidget);
+    expect(find.text('7.0 / 7.0 hours online'), findsOneWidget);
+    expect(find.text('GHS 750.00 / GHS 1000.00 revenue'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('promo-progress-camp-progress-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PromoDetailsSheet), findsOneWidget);
+    expect(find.text('YOUR PROGRESS'), findsOneWidget);
   });
 
   testWidgets('tapping a banner opens the relief details sheet',
