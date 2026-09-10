@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/features/promos/providers/promo_campaigns_provider.dart';
 import 'package:myshop_provider/src/features/promos/widgets/promo_details_sheet.dart';
 import 'package:myshop_provider/src/features/promos/widgets/promos_section.dart';
+import 'package:myshop_provider/src/features/promos/widgets/promo_timing.dart';
 
 import '../../support/png_http_overrides.dart';
 
@@ -32,12 +33,14 @@ const _noBannerReliefCampaign = ActivePromoCampaign(
   audience: 'provider_artisan',
 );
 
-const _progressCampaign = ActivePromoCampaign(
+final _progressCampaign = ActivePromoCampaign(
   id: 'camp-progress-1',
   name: 'Complete and earn',
   campaignType: 'commission_relief',
   discountValue: 1,
   audience: 'driver',
+  startsAt: DateTime.utc(2099, 1, 2, 8, 15),
+  endsAt: DateTime.utc(2099, 1, 3, 20, 45),
   providerPromo: ProviderPromoProgress(
     rewardKind: 'fixed_bonus',
     rewardValue: 5000,
@@ -112,19 +115,65 @@ void main() {
 
   testWidgets('shows live provider targets without requiring a banner',
       (tester) async {
-    await _pumpSection(tester, const [_progressCampaign]);
+    await _pumpSection(tester, [_progressCampaign]);
 
     expect(find.text('PROMOS'), findsOneWidget);
     expect(find.byKey(const Key('promo-progress-camp-progress-1')),
         findsOneWidget);
     expect(find.text('6 / 10 trips or jobs'), findsOneWidget);
     expect(find.text('7.0 / 7.0 hours online'), findsOneWidget);
-    expect(find.text('GHS 750.00 / GHS 1000.00 revenue'), findsOneWidget);
+    expect(find.text('GH₵ 750.00 / GH₵ 1000.00 revenue'), findsOneWidget);
+    expect(
+      find.byKey(const Key('promo-countdown-camp-progress-1')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Starts in'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('promo-progress-camp-progress-1')));
     await tester.pumpAndSettle();
     expect(find.byType(PromoDetailsSheet), findsOneWidget);
     expect(find.text('YOUR PROGRESS'), findsOneWidget);
+    expect(find.byKey(const Key('promo-schedule')), findsOneWidget);
+    expect(find.text('Starts'), findsOneWidget);
+    expect(find.text('Ends'), findsOneWidget);
+    expect(
+      find.text(formatPromoDateTime(_progressCampaign.startsAt!)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(formatPromoDateTime(_progressCampaign.endsAt!)),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('formats countdown states from campaign boundaries', () {
+    final now = DateTime.utc(2026, 9, 10, 10);
+
+    expect(
+      promoCountdownLabel(
+        now: now,
+        startsAt: DateTime.utc(2026, 9, 10, 12),
+        endsAt: DateTime.utc(2026, 9, 10, 16),
+      ),
+      'Starts in 2h 0m',
+    );
+    expect(
+      promoCountdownLabel(
+        now: now,
+        startsAt: DateTime.utc(2026, 9, 10, 8),
+        endsAt: DateTime.utc(2026, 9, 10, 11, 30),
+      ),
+      '1h 30m left',
+    );
+    expect(
+      promoCountdownLabel(
+        now: now,
+        endsAt: DateTime.utc(2026, 9, 10, 9),
+      ),
+      'Ended',
+    );
   });
 
   testWidgets('tapping a banner opens the relief details sheet',
@@ -137,7 +186,7 @@ void main() {
     expect(find.byType(PromoDetailsSheet), findsOneWidget);
     expect(find.text('Driver Boost Week'), findsOneWidget);
     expect(
-      find.text('50% commission relief, up to GHS 15 per booking'),
+      find.text('50% commission relief, up to GH₵ 15 per booking'),
       findsOneWidget,
     );
     expect(

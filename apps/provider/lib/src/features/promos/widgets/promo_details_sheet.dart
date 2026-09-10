@@ -1,7 +1,8 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import 'promo_timing.dart';
 
 /// Modal bottom sheet with the full details of a provider-audience
 /// promotional campaign and its server-authoritative progress.
@@ -36,7 +37,7 @@ class PromoDetailsSheet extends StatelessWidget {
     final pct = _trimNum(c.discountValue);
     final cap = c.maxDiscountPesewas;
     if (cap != null && cap > 0) {
-      return '$pct% commission relief, up to GHS ${_ghs(cap)} per booking';
+      return '$pct% commission relief, up to GH₵ ${_ghs(cap)} per booking';
     }
     return '$pct% commission relief';
   }
@@ -48,9 +49,9 @@ class PromoDetailsSheet extends StatelessWidget {
       return '${progress.rewardValue}% commission relief';
     }
     if (progress.isGuaranteedEarnings) {
-      return 'GHS ${_ghs(progress.rewardValue)} guaranteed earnings';
+      return 'GH₵ ${_ghs(progress.rewardValue)} guaranteed earnings';
     }
-    return 'GHS ${_ghs(progress.rewardValue)} cash reward';
+    return 'GH₵ ${_ghs(progress.rewardValue)} cash reward';
   }
 
   static String _trimNum(num value) {
@@ -67,23 +68,9 @@ class PromoDetailsSheet extends StatelessWidget {
         : ghs.toStringAsFixed(2);
   }
 
-  static String? validityLabel(ActivePromoCampaign c) {
-    final fmt = DateFormat('d MMM yyyy');
-    final starts = c.startsAt;
-    final ends = c.endsAt;
-    if (starts != null && ends != null) {
-      return 'Valid ${fmt.format(starts.toLocal())} – '
-          '${fmt.format(ends.toLocal())}';
-    }
-    if (ends != null) return 'Valid until ${fmt.format(ends.toLocal())}';
-    if (starts != null) return 'Valid from ${fmt.format(starts.toLocal())}';
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
-    final validity = validityLabel(campaign);
     final progress = campaign.providerPromo;
 
     return SafeArea(
@@ -238,26 +225,9 @@ class PromoDetailsSheet extends StatelessWidget {
                   ),
                 ],
 
-                if (validity != null) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.event_rounded,
-                        size: 14,
-                        color: MyShopColors.textSecondary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        validity,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: MyShopColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+                if (campaign.startsAt != null || campaign.endsAt != null) ...[
+                  const SizedBox(height: 14),
+                  _PromoSchedule(campaign: campaign),
                 ],
 
                 if (campaign.termsText.trim().isNotEmpty) ...[
@@ -320,6 +290,83 @@ class PromoDetailsSheet extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PromoSchedule extends StatelessWidget {
+  const _PromoSchedule({required this.campaign});
+
+  final ActivePromoCampaign campaign;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('promo-schedule'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (campaign.startsAt != null)
+            _ScheduleRow(
+              label: 'Starts',
+              value: formatPromoDateTime(campaign.startsAt!),
+            ),
+          if (campaign.startsAt != null && campaign.endsAt != null)
+            const SizedBox(height: 7),
+          if (campaign.endsAt != null)
+            _ScheduleRow(
+              label: 'Ends',
+              value: formatPromoDateTime(campaign.endsAt!),
+            ),
+          const SizedBox(height: 9),
+          PromoCountdownLabel(
+            startsAt: campaign.startsAt,
+            endsAt: campaign.endsAt,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleRow extends StatelessWidget {
+  const _ScheduleRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 48,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: MyShopColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: MyShopColors.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
