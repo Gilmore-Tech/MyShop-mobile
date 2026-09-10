@@ -11,12 +11,14 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
+import '../services/fcm_service.dart';
 import 'availability_controller.dart';
 import 'availability_reconciliation_controller.dart';
 import 'provider_status_provider.dart';
 import 'provider_location_session_provider.dart';
 import 'provider_location_sync_recovery.dart';
 import 'provider_online_intent.dart';
+import 'provider_connection_recovery_provider.dart';
 
 const int _maxDriverSamplesPerBatch = 120;
 const int _maxQueuedDriverSamples = 360;
@@ -34,12 +36,14 @@ class ProviderLocationRecoveryActions {
   const ProviderLocationRecoveryActions({
     required this.forceOffline,
     required this.reconcile,
+    this.refreshNotificationRegistration,
   });
 
   final Future<ProviderRecoveryOfflineResult> Function(
     ProviderRecoveryOfflineAuthority authority,
   ) forceOffline;
   final Future<void> Function(String trigger) reconcile;
+  final Future<void> Function()? refreshNotificationRegistration;
 }
 
 final providerLocationRecoveryActionsProvider =
@@ -49,6 +53,9 @@ final providerLocationRecoveryActionsProvider =
     reconcile: (trigger) => ref
         .read(availabilityReconciliationControllerProvider)
         .reconcile(trigger: trigger),
+    refreshNotificationRegistration: () async {
+      await ref.read(onlineNotificationRestoreReachabilityCheckProvider)();
+    },
   );
 });
 
@@ -98,6 +105,9 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
       ref.read(providerLocationSessionProvider)?.onlineSessionId;
   var recoveryInFlight = false;
   var terminalRecoveryInFlight = false;
+  var registrationInFlight = false;
+  Timer? retryTimer;
+  late final Future<void> Function() retryFlush;
   final retryGate = ProviderLocationRetryGate(
     ref.read(providerLocationRetryPolicyProvider),
   );
@@ -110,6 +120,17 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
       container.read(currentAuthSessionIdentityProvider) == authSession &&
       container.read(currentProviderOnlineIntentIdentityProvider) ==
           onlineIntentIdentity;
+
+  void retryTransientFailure() {
+    if (!authorityCurrent()) return;
+    final now = container.read(providerLocationSyncNowProvider)();
+    retryGate.recordFailure(now);
+    container.read(providerConnectionRecoveryProvider.notifier).interrupted();
+    retryTimer?.cancel();
+    retryTimer = Timer(retryGate.retryAt!.difference(now), () {
+      if (authorityCurrent()) unawaited(retryFlush());
+    });
+  }
 
   bool sessionCurrent(String attemptedSessionId) =>
       authorityCurrent() &&
@@ -375,9 +396,8 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
         );
       } catch (error) {
         debugPrint('[LOC] background sync: fresh-fix request failed: $error');
-        retryGate.recordFailure(
-          container.read(providerLocationSyncNowProvider)(),
-        );
+        retryTransientFailure();
+
         return;
       }
       if (!authorityCurrent()) return;
@@ -386,9 +406,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
         debugPrint(
           '[LOC] background sync: fresh-fix request returned an unusable sample',
         );
-        retryGate.recordFailure(
-          container.read(providerLocationSyncNowProvider)(),
-        );
+        retryTransientFailure();
         return;
       }
       if (refreshRequired) {
@@ -467,6 +485,8 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
       }
       sent = true;
       retryGate.reset();
+      retryTimer?.cancel();
+      container.read(providerConnectionRecoveryProvider.notifier).recovered();
       markOnlineLocationPosted();
       lastSyncAt = DateTime.now();
       lastSyncedPosition = latest;
@@ -492,19 +512,21 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
           rejection,
           attemptedSessionId: rejectedSessionId,
         );
-      } else if (isProviderCapabilityRegistrationRace(e) &&
-          retryGate.consecutiveFailures >= 2) {
-        await handleTerminalRejection(
-          const ProviderLocationRejection(
-            kind: ProviderLocationRejectionKind.eligibility,
-            reasonCodes: <String>['OFFER_RECEIPT_CAPABILITY_REQUIRED'],
-          ),
-          attemptedSessionId: rejectedSessionId,
-        );
       } else {
-        retryGate.recordFailure(
-          container.read(providerLocationSyncNowProvider)(),
-        );
+        // Token registration can take longer on a recovering connection. Its
+        // absence excludes dispatch server-side, but does not revoke intent.
+        retryTransientFailure();
+        if (isProviderCapabilityRegistrationRace(e) && !registrationInFlight) {
+          registrationInFlight = true;
+          try {
+            await recoveryActions.refreshNotificationRegistration?.call();
+          } catch (_) {
+            // The bounded REST retry will reattempt registration. Keep the
+            // original session and its queue while notification setup recovers.
+          } finally {
+            registrationInFlight = false;
+          }
+        }
       }
     } catch (e) {
       debugPrint('[LOC] background sync error: $e');
@@ -515,9 +537,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
               ? authorityCurrent()
               : requestCurrent(failedSessionId, failedTransitionRevision);
       if (stillOwnsRequest) {
-        retryGate.recordFailure(
-          container.read(providerLocationSyncNowProvider)(),
-        );
+        retryTransientFailure();
       }
     } finally {
       flushInFlight = false;
@@ -541,9 +561,18 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
   }
 
   final heartbeat = Timer.periodic(cadence, (_) => unawaited(flush()));
+  retryFlush = flush;
   ref.onDispose(() {
     disposed = true;
     heartbeat.cancel();
+    retryTimer?.cancel();
+  });
+
+  ref.listen<int>(providerLocationRecoveryKickProvider, (_, next) {
+    if (!authorityCurrent()) return;
+    retryTimer?.cancel();
+    retryGate.reset();
+    unawaited(flush());
   });
 
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {

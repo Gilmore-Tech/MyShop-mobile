@@ -54,6 +54,30 @@ void main() {
     });
   });
 
+  for (final isArtisan in [false, true]) {
+    test(
+        'resume request carries existing authority and cannot create a session ($isArtisan)',
+        () async {
+      await LocationService(dio).resumeOnlineSession(
+        isArtisan: isArtisan,
+        latitude: 6.6885,
+        longitude: -1.6244,
+        accuracyMeters: 8,
+        recordedAt: DateTime.utc(2026, 9, 6),
+        onlineSessionId: 'epoch-1',
+        sampleSequence: 8,
+      );
+      expect(
+        capturedRequest.path,
+        isArtisan ? '/location/artisan/update' : '/location/update',
+      );
+      expect(capturedRequest.data, containsPair('resumeOnly', true));
+      expect(capturedRequest.data, containsPair('onlineSessionId', 'epoch-1'));
+      expect(capturedRequest.data, containsPair('sampleSequence', 8));
+      expect(capturedRequest.data, isNot(contains('vehicleId')));
+    });
+  }
+
   test('artisan location carries the exact online epoch and sequence',
       () async {
     final recordedAt = DateTime.utc(2026, 7, 18, 12, 30, 16);

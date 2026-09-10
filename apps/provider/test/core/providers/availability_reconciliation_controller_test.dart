@@ -13,6 +13,9 @@ import 'package:myshop_provider/src/core/providers/location_degradation_provider
 import 'package:myshop_provider/src/core/providers/provider_location_session_provider.dart';
 import 'package:myshop_provider/src/core/providers/provider_online_intent.dart';
 import 'package:myshop_provider/src/core/services/fcm_service.dart';
+import 'package:myshop_provider/src/core/services/provider_online_recovery.dart';
+import 'package:myshop_provider/src/core/providers/provider_connection_recovery_provider.dart';
+import 'package:myshop_provider/src/features/auth/providers/auth_controller.dart';
 import 'package:myshop_provider/src/features/profile/providers/provider_type_provider.dart';
 
 const _intentIdentity = ProviderOnlineIntentIdentity(
@@ -82,6 +85,7 @@ ProviderAvailabilitySnapshot _snapshot({
   ProviderAvailabilityRole role = ProviderAvailabilityRole.artisan,
   String providerId = 'provider-1',
   ProviderAvailabilityStatus status = ProviderAvailabilityStatus.offline,
+  ProviderAvailabilityStatus? sessionStatus,
   String? activeRideId,
   String? activeJobId,
   ProviderLocationHealth locationHealth = ProviderLocationHealth.healthy,
@@ -95,6 +99,7 @@ ProviderAvailabilitySnapshot _snapshot({
     role: role,
     providerId: providerId,
     status: status,
+    sessionStatus: sessionStatus,
     activeRideId: activeRideId,
     activeJobId: activeJobId,
     lastSeenAt: DateTime.utc(2026, 7, 17),
@@ -148,6 +153,125 @@ ProviderContainer _container(
 }
 
 void main() {
+  test('stale dispatch snapshot preserves Online, epoch and intent silently',
+      () async {
+    final service = _FakeProviderAvailabilityService(_snapshot(
+      sessionStatus: ProviderAvailabilityStatus.online,
+      onlineSessionId: 'epoch-1',
+      lastLocationSequence: 7,
+    ));
+    final store = _FakeOnlineIntentStore(shouldBeOnline: true);
+    final container = _container(
+      service,
+      intentStore: store,
+      actions: AvailabilityReconciliationActions(
+        restoreOnline: (_) async => fail('must keep current writer alive'),
+        forceOffline: () async => fail('must not end a live session'),
+      ),
+    );
+    addTearDown(container.dispose);
+    container.read(providerStatusProvider.notifier).goOnline();
+    final revision =
+        container.read(providerStatusProvider.notifier).transitionRevision;
+    await container
+        .read(availabilityReconciliationControllerProvider)
+        .reconcile(trigger: 'socket_reconnect');
+    expect(container.read(providerStatusProvider), DriverStatus.online);
+    expect(container.read(providerStatusProvider.notifier).transitionRevision,
+        revision);
+    expect(container.read(providerLocationSessionProvider)?.onlineSessionId,
+        'epoch-1');
+    expect(store.shouldBeOnline, isTrue);
+    expect(container.read(availabilityRestoreNoticeProvider), isNull);
+    expect(container.read(providerConnectionRecoveryProvider), isFalse);
+    expect(container.read(providerLocationRecoveryKickProvider), 1);
+  });
+
+  testWidgets(
+      'transient restoration retries silently without another lifecycle event',
+      (tester) async {
+    final service = _FakeProviderAvailabilityService(_snapshot(
+      sessionStatus: ProviderAvailabilityStatus.online,
+      onlineSessionId: 'epoch-1',
+      lastLocationSequence: 7,
+    ));
+    final store = _FakeOnlineIntentStore(shouldBeOnline: true);
+    var attempts = 0;
+    late ProviderContainer container;
+    container = _container(
+      service,
+      intentStore: store,
+      actions: AvailabilityReconciliationActions(
+        restoreOnline: (_) async {
+          if (++attempts == 1) throw const ProviderOnlineRestorePending();
+          container.read(providerStatusProvider.notifier).goOnline();
+          return null;
+        },
+        forceOffline: () async => fail('transient failure cannot clear intent'),
+      ),
+    );
+    addTearDown(container.dispose);
+    await container
+        .read(availabilityReconciliationControllerProvider)
+        .reconcile(trigger: 'authentication');
+    expect(attempts, 1);
+    expect(store.shouldBeOnline, isTrue);
+    expect(container.read(availabilityRestoreNoticeProvider), isNull);
+    await tester.pump(const Duration(seconds: 3));
+    expect(attempts, 2);
+    expect(container.read(providerStatusProvider), DriverStatus.online);
+    expect(store.writes, isEmpty);
+  });
+
+  test('explicitly closed server session cannot be automatically reopened',
+      () async {
+    final store = _FakeOnlineIntentStore(shouldBeOnline: true);
+    final container = _container(
+        _FakeProviderAvailabilityService(_snapshot(
+          sessionStatus: ProviderAvailabilityStatus.offline,
+        )),
+        intentStore: store,
+        actions: AvailabilityReconciliationActions(
+          restoreOnline: (_) async =>
+              fail('closed session requires a new user action'),
+          forceOffline: () async => fail('already closed'),
+        ));
+    addTearDown(container.dispose);
+    await container
+        .read(availabilityReconciliationControllerProvider)
+        .reconcile(trigger: 'test');
+    expect(store.shouldBeOnline, isFalse);
+    expect(container.read(providerStatusProvider), DriverStatus.offline);
+  });
+
+  test('late old-auth snapshot cannot replace the new login session', () async {
+    final service = _DelayedProviderAvailabilityService();
+    final container = ProviderContainer(overrides: [
+      providerAvailabilityServiceProvider.overrideWithValue(service),
+      currentProviderOnlineIntentIdentityProvider
+          .overrideWith((_) => _intentIdentity),
+      providerTypeProvider.overrideWith((_) => ProviderType.artisan),
+    ]);
+    addTearDown(container.dispose);
+    final pending = container
+        .read(availabilityReconciliationControllerProvider)
+        .reconcile(trigger: 'test');
+    container.read(currentAuthSessionIdentityProvider.notifier).state =
+        const AuthSessionIdentity(
+      subject: 'new-user',
+      role: 'artisan',
+      roleAccountId: 'new-artisan',
+      sessionId: 'new-auth',
+    );
+    container
+        .read(providerLocationSessionProvider.notifier)
+        .install('new-epoch', 10);
+    service.completer.complete(
+        _snapshot(onlineSessionId: 'old-epoch', lastLocationSequence: 1));
+    await pending;
+    expect(container.read(providerLocationSessionProvider)?.onlineSessionId,
+        'new-epoch');
+  });
   test('authoritative offline demotes an idle local online state', () async {
     final service = _FakeProviderAvailabilityService(_snapshot());
     final container = _container(service);

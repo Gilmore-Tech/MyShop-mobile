@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
@@ -6,14 +7,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../features/profile/providers/provider_type_provider.dart';
+import '../../features/auth/providers/auth_controller.dart';
 import '../di/providers.dart';
 import '../services/fcm_service.dart';
 import '../services/provider_request_policy.dart';
+import '../services/provider_online_recovery.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
 import 'location_degradation_provider.dart';
 import 'provider_location_session_provider.dart';
 import 'provider_online_intent.dart';
+import 'provider_connection_recovery_provider.dart';
 
 class AvailabilityReconciliationActions {
   const AvailabilityReconciliationActions({
@@ -43,21 +47,63 @@ final availabilityReconciliationActionsProvider =
 /// and changing `busy` here would encode unresolved product policy. For an
 /// idle provider the safe convergence rules are:
 ///
-/// * backend offline + local online -> local offline;
+/// * temporary dispatch unavailability preserves a live session and its writer;
+/// * ended server session + local online -> local offline;
 /// * no durable intent -> both sides converge Offline;
 /// * durable intent -> restore only after notification, full server
 ///   eligibility, and a fresh BR-30 device-location revalidation;
-/// * failed revalidation consumes the intent, leaves both sides Offline, and
-///   presents stable actionable copy instead of retrying invisibly forever.
+/// * transient restore failures retain intent and retry silently; permanent
+///   restrictions still leave both sides Offline with actionable copy.
 class AvailabilityReconciliationController {
   AvailabilityReconciliationController(this._ref);
 
   final Ref _ref;
   Future<void>? _inFlight;
+  Timer? _retryTimer;
+  int _failures = 0;
+  bool _disposed = false;
+
+  void dispose() {
+    _disposed = true;
+    _retryTimer?.cancel();
+  }
+
+  void _recovered() {
+    _retryTimer?.cancel();
+    _failures = 0;
+    _ref.read(providerConnectionRecoveryProvider.notifier).recovered();
+  }
+
+  Future<void> _retryIfIntended(bool Function() current) async {
+    if (!current()) return;
+    final identity = _ref.read(currentProviderOnlineIntentIdentityProvider);
+    if (identity == null) return;
+    bool intended;
+    try {
+      intended =
+          await _ref.read(providerOnlineIntentStoreProvider).read(identity);
+    } catch (_) {
+      return;
+    }
+    if (!current() || !intended) return;
+    _ref.read(providerConnectionRecoveryProvider.notifier).interrupted();
+    _retryTimer?.cancel();
+    final seconds = min(30, 2 * (1 << min(_failures++, 4)));
+    _retryTimer = Timer(
+      Duration(
+          milliseconds:
+              (seconds * 1000 * (0.8 + Random().nextDouble() * 0.4)).round()),
+      () {
+        if (current()) unawaited(reconcile(trigger: 'automatic_recovery'));
+      },
+    );
+  }
 
   Future<void> reconcile({required String trigger}) {
+    if (_disposed) return Future<void>.value();
     final inFlight = _inFlight;
     if (inFlight != null) return inFlight;
+    _retryTimer?.cancel();
 
     final future = _reconcile(trigger: trigger).whenComplete(() {
       _inFlight = null;
@@ -73,6 +119,13 @@ class AvailabilityReconciliationController {
 
     final statusNotifier = _ref.read(providerStatusProvider.notifier);
     final transitionRevisionAtStart = statusNotifier.transitionRevision;
+    final authSession = _ref.read(currentAuthSessionIdentityProvider);
+    bool current() =>
+        !_disposed &&
+        _ref.read(currentProviderOnlineIntentIdentityProvider) ==
+            intentIdentity &&
+        _ref.read(currentAuthSessionIdentityProvider) == authSession &&
+        statusNotifier.transitionRevision == transitionRevisionAtStart;
     final ProviderAvailabilitySnapshot snapshot;
     try {
       snapshot = await _ref
@@ -83,6 +136,9 @@ class AvailabilityReconciliationController {
         '[AvailabilityReconcile] $trigger failed: '
         '${error.errorCode ?? error.message}',
       );
+      if (isRetryableProviderRestoreError(error)) {
+        await _retryIfIntended(current);
+      }
       return;
     } on FormatException catch (error) {
       debugPrint(
@@ -92,10 +148,11 @@ class AvailabilityReconciliationController {
       return;
     } catch (error) {
       debugPrint('[AvailabilityReconcile] $trigger error: $error');
+      await _retryIfIntended(current);
       return;
     }
 
-    if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+    if (!current()) {
       debugPrint(
         '[AvailabilityReconcile] $trigger ignored stale snapshot after '
         'a newer local transition',
@@ -156,7 +213,7 @@ class AvailabilityReconciliationController {
           'be verified on this device. Tap Go Online when you are ready.';
     }
 
-    if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+    if (!current()) {
       debugPrint(
         '[AvailabilityReconcile] $trigger ignored intent after a newer '
         'local transition',
@@ -171,11 +228,11 @@ class AvailabilityReconciliationController {
     // active restriction, consume that preference and preserve the exact safe
     // provider-facing reason instead of allowing a later GPS/rate-limit error
     // to replace it.
-    if (snapshot.status == ProviderAvailabilityStatus.offline &&
+    if (snapshot.effectiveSessionStatus == ProviderAvailabilityStatus.offline &&
         localStatus != DriverStatus.offline &&
         hasOnlineIntent) {
       final restrictionMessage = await _activeRequestRestrictionMessage();
-      if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+      if (!current()) {
         debugPrint(
           '[AvailabilityReconcile] $trigger ignored authoritative offline '
           'after a newer local transition',
@@ -184,7 +241,7 @@ class AvailabilityReconciliationController {
       }
       if (restrictionMessage != null) {
         await _consumeOnlineIntent(intentIdentity);
-        if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+        if (!current()) {
           return;
         }
       }
@@ -203,7 +260,8 @@ class AvailabilityReconciliationController {
     }
 
     if (!hasOnlineIntent) {
-      if (snapshot.status == ProviderAvailabilityStatus.online) {
+      if (snapshot.effectiveSessionStatus ==
+          ProviderAvailabilityStatus.online) {
         await _forceOfflineAfterRecovery(
           trigger: trigger,
           notice:
@@ -221,7 +279,29 @@ class AvailabilityReconciliationController {
       return;
     }
 
-    if (localStatus != DriverStatus.offline) return;
+    if (localStatus != DriverStatus.offline) {
+      if (snapshot.status == ProviderAvailabilityStatus.offline) {
+        // The same SID still owns an Online session. Keep the writer alive,
+        // acquire a fresh fix and repair it without changing the toggle.
+        _ref.read(providerConnectionRecoveryProvider.notifier).interrupted();
+        _ref.read(providerLocationRecoveryKickProvider.notifier).state++;
+      } else {
+        _recovered();
+      }
+      return;
+    }
+
+    // A new API explicitly distinguishes a closed session from a temporary
+    // dispatch pause. Do not resurrect logout, manual Offline or enforcement.
+    if (snapshot.sessionStatus == ProviderAvailabilityStatus.offline) {
+      await _consumeOnlineIntent(intentIdentity);
+      if (!current()) return;
+      _recovered();
+      _ref.read(providerLocationSessionProvider.notifier).clear();
+      _ref.read(availabilityRestoreNoticeProvider.notifier).state =
+          'Your previous Online session ended. Tap Go Online when you are ready.';
+      return;
+    }
 
     // Firebase setup is asynchronous during process launch. Do not consume a
     // valid prior intent merely because notification authority is not ready;
@@ -245,8 +325,23 @@ class AvailabilityReconciliationController {
     }
 
     final actions = _ref.read(availabilityReconciliationActionsProvider);
-    final error = await actions.restoreOnline(snapshot.selectedVehicleId);
+    final String? error;
+    try {
+      error = await actions.restoreOnline(snapshot.selectedVehicleId);
+    } on ProviderOnlineRestorePending {
+      await _retryIfIntended(current);
+      return;
+    } on StaleAuthSessionException {
+      return;
+    }
+    if (_disposed ||
+        _ref.read(currentProviderOnlineIntentIdentityProvider) !=
+            intentIdentity ||
+        _ref.read(currentAuthSessionIdentityProvider) != authSession) {
+      return;
+    }
     if (error == null) {
+      _recovered();
       _ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
       debugPrint(
         '[AvailabilityReconcile] $trigger restored prior Online intent',
@@ -254,7 +349,7 @@ class AvailabilityReconciliationController {
       return;
     }
 
-    if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
+    if (!current()) {
       debugPrint(
         '[AvailabilityReconcile] $trigger ignored failed restore after a '
         'newer local transition',
@@ -331,5 +426,8 @@ class AvailabilityReconciliationController {
 
 final availabilityReconciliationControllerProvider =
     Provider<AvailabilityReconciliationController>((ref) {
-  return AvailabilityReconciliationController(ref);
+  ref.watch(currentAuthSessionIdentityProvider);
+  final controller = AvailabilityReconciliationController(ref);
+  ref.onDispose(controller.dispose);
+  return controller;
 });

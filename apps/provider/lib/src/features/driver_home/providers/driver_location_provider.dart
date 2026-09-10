@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/services/recovering_location_stream.dart';
 
 typedef OnlinePositionLoader = Future<Position> Function();
 typedef LastKnownPositionLoader = Future<Position?> Function();
@@ -104,19 +105,20 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
 /// Consumers (e.g. the home screen map) listen to this and update the car
 /// marker on each emission.
 final driverLocationStreamProvider =
-    StreamProvider.autoDispose<Position>((ref) async* {
+    StreamProvider.autoDispose<Position>((ref) {
   final status = ref.watch(providerStatusProvider);
   if (status.isOffline) {
     debugPrint('[LOC] stream provider: offline — not subscribing');
-    return;
+    return const Stream<Position>.empty();
   }
+  return recoveringLocationStream(_openOnlinePositionStream);
+});
+
+Stream<Position> _openOnlinePositionStream() async* {
   debugPrint('[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
-  var permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
-  }
+  final permission = await Geolocator.checkPermission();
   if (permission == LocationPermission.denied ||
       permission == LocationPermission.deniedForever) {
     debugPrint('[LOC] stream provider: permission $permission — bailing');
@@ -167,4 +169,4 @@ final driverLocationStreamProvider =
   yield* Geolocator.getPositionStream(
     locationSettings: onlineStreamLocationSettings(defaultTargetPlatform),
   );
-});
+}

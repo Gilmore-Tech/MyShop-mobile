@@ -135,6 +135,37 @@ class LocationService {
     }
   }
 
+  /// Repair the same Online session without permission to open a new one.
+  /// The server rejects a delayed restore after Offline/logout/expiry.
+  Future<Map<String, dynamic>> resumeOnlineSession({
+    required bool isArtisan,
+    required double latitude,
+    required double longitude,
+    required double accuracyMeters,
+    required DateTime recordedAt,
+    required String onlineSessionId,
+    required int sampleSequence,
+  }) async {
+    try {
+      final response = await _dio.post(
+        isArtisan ? '/location/artisan/update' : '/location/update',
+        data: {
+          'latitude': latitude,
+          'longitude': longitude,
+          'accuracyMeters': accuracyMeters,
+          'recordedAt': recordedAt.toIso8601String(),
+          'onlineSessionId': onlineSessionId,
+          'sampleSequence': sampleSequence,
+          'status': 'online',
+          'resumeOnly': true,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(error);
+    }
+  }
+
   /// POST /location/driver/batch — persist one or more driver GPS fixes.
   ///
   /// The latest sample updates the driver's matcher location and heartbeat.
