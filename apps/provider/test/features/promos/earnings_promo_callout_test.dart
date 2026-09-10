@@ -92,7 +92,7 @@ void main() {
     expect(find.byType(PromoDetailsSheet), findsOneWidget);
     expect(find.text('Driver Boost Week'), findsOneWidget);
     expect(
-      find.text('50% commission relief, up to GHS 15 per booking'),
+      find.text('50% commission relief, up to GH₵ 15 per booking'),
       findsOneWidget,
     );
   });
