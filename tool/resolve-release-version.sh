@@ -18,11 +18,19 @@ esac
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
-APPROVED_MARKETING_VERSION=1.4.9
-# Builds through 41 are occupied by retained release artifacts, store uploads,
-# or delivery attempts. They remain unavailable even if a console later hides
-# an old or failed artifact.
-LOCAL_BUILD_NUMBER_FLOOR=41
+case "$APP" in
+  client)
+    APPROVED_MARKETING_VERSION=1.4.9
+    LOCAL_BUILD_NUMBER_FLOOR=41
+    ;;
+  provider)
+    APPROVED_MARKETING_VERSION=1.4.10
+    LOCAL_BUILD_NUMBER_FLOOR=42
+    ;;
+esac
+# Builds through each app's floor are occupied by retained release artifacts,
+# store uploads, or delivery attempts. They remain unavailable even if a
+# console later hides an old or failed artifact.
 MAX_PORTABLE_BUILD_NUMBER=2100000000
 
 PUBSPEC_VERSION=$(awk '$1 == "version:" { print $2; exit }' "$PUBSPEC")
