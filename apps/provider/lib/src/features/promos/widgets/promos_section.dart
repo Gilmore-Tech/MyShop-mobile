@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/promo_campaigns_provider.dart';
 import 'promo_details_sheet.dart';
+import 'promo_timing.dart';
 
 /// PROMOS section for active/recent provider incentives.
 ///
@@ -108,9 +109,9 @@ class _ProviderPromoProgressCard extends StatelessWidget {
       return '${progress.rewardValue}% commission relief';
     }
     if (progress.isGuaranteedEarnings) {
-      return 'GHS ${_money(progress.rewardValue)} guaranteed earnings';
+      return 'GH₵ ${_money(progress.rewardValue)} guaranteed earnings';
     }
-    return 'GHS ${_money(progress.rewardValue)} reward';
+    return 'GH₵ ${_money(progress.rewardValue)} reward';
   }
 
   @override
@@ -148,7 +149,7 @@ class _ProviderPromoProgressCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: 'Raleway',
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: MyShopColors.textPrimary,
                     ),
@@ -166,7 +167,7 @@ class _ProviderPromoProgressCard extends StatelessWidget {
               style: const TextStyle(
                 color: MyShopColors.primaryGoldDark,
                 fontWeight: FontWeight.w700,
-                fontSize: 12,
+                fontSize: 14,
               ),
             ),
             const SizedBox(height: 10),
@@ -198,21 +199,38 @@ class _ProviderPromoProgressCard extends StatelessWidget {
             if (progress.generatedRevenueTargetPesewas != null)
               _ProgressLine(
                 complete: progress.revenueComplete,
-                text: 'GHS ${_money(progress.generatedRevenuePesewas)} / '
-                    'GHS ${_money(progress.generatedRevenueTargetPesewas!)} revenue',
+                text: 'GH₵ ${_money(progress.generatedRevenuePesewas)} / '
+                    'GH₵ ${_money(progress.generatedRevenueTargetPesewas!)} revenue',
               ),
             const Spacer(),
-            Text(
-              progress.qualified
-                  ? 'Requirements complete'
-                  : 'Complete every selected target',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: progress.qualified
-                    ? MyShopColors.success
-                    : MyShopColors.textSecondary,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    progress.qualified
+                        ? 'Requirements complete'
+                        : 'Complete every target',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: progress.qualified
+                          ? MyShopColors.success
+                          : MyShopColors.textSecondary,
+                    ),
+                  ),
+                ),
+                if (campaign.startsAt != null || campaign.endsAt != null) ...[
+                  const SizedBox(width: 8),
+                  PromoCountdownLabel(
+                    key: Key('promo-countdown-${campaign.id}'),
+                    startsAt: campaign.startsAt,
+                    endsAt: campaign.endsAt,
+                    compact: true,
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -248,7 +266,7 @@ class _ProgressLine extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: MyShopColors.textSecondary,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
