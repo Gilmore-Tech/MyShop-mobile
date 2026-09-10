@@ -134,6 +134,48 @@ void main() {
     expect(artisan.maxDiscountPesewas, isNull);
   });
 
+  test('parses additive provider incentive progress without changing clients',
+      () async {
+    dio = buildDio({
+      'campaigns': [
+        {
+          'id': 'provider-progress-1',
+          'name': 'Complete and earn',
+          'campaignType': 'commission_relief',
+          'discountValue': 1,
+          'audience': 'driver',
+          'providerPromo': {
+            'rewardKind': 'guaranteed_earnings',
+            'rewardValue': 50000,
+            'completedBookingsTarget': 10,
+            'verifiedOnlineMinutesTarget': 420,
+            'generatedRevenueTargetPesewas': 100000,
+            'completedBookings': 7,
+            'verifiedOnlineSeconds': 12600,
+            'generatedRevenuePesewas': 80000,
+            'qualifyingCommissionPesewas': 12000,
+            'qualifyingEarningsPesewas': 68000,
+            'qualified': false,
+            'calculatedRewardPesewas': 0,
+            'settlementStatus': 'pending',
+          },
+        },
+      ],
+    });
+
+    final campaign = (await PromoService(dio).getActiveCampaigns()).single;
+    final progress = campaign.providerPromo!;
+    expect(campaign.audience, 'driver');
+    expect(campaign.commissionReliefPercent, isNull);
+    expect(progress.isGuaranteedEarnings, isTrue);
+    expect(progress.completedBookings, 7);
+    expect(progress.completedBookingsTarget, 10);
+    expect(progress.verifiedOnlineMinutesTarget, 420);
+    expect(progress.generatedRevenuePesewas, 80000);
+    expect(progress.qualifyingEarningsPesewas, 68000);
+    expect(progress.overallProgress, closeTo(0.6667, 0.001));
+  });
+
   test('returns empty list when the feature is off', () async {
     dio = buildDio({'campaigns': <dynamic>[]});
 
