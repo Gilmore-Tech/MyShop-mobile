@@ -122,9 +122,9 @@ class _VehicleIcon extends StatelessWidget {
     final h = MediaQuery.sizeOf(context).height;
     final assetPath = rideCategoryIconAsset(id: option.id, name: option.name);
     return Container(
-      width: w * 0.144,
-      height: h * 0.047,
-      padding: EdgeInsets.symmetric(horizontal: w * 0.006, vertical: h * 0.002),
+      width: w * 0.16,
+      height: h * 0.054,
+      padding: EdgeInsets.symmetric(horizontal: w * 0.003, vertical: h * 0.001),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.015),
