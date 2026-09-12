@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
+import '../utils/ride_category_icon.dart';
 
 class VehicleOptionCard extends StatelessWidget {
   final VehicleOption option;
@@ -37,8 +38,10 @@ class VehicleOptionCard extends StatelessWidget {
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(10),
@@ -57,9 +60,7 @@ class VehicleOptionCard extends StatelessWidget {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _VehicleIcon(
-                                isMotorcycle: option.isMotorcycle,
-                              ),
+                              _VehicleIcon(option: option),
                               const SizedBox(width: 12),
                               Expanded(child: _VehicleInfo(option: option)),
                             ],
@@ -76,7 +77,7 @@ class VehicleOptionCard extends StatelessWidget {
                       )
                     : Row(
                         children: [
-                          _VehicleIcon(isMotorcycle: option.isMotorcycle),
+                          _VehicleIcon(option: option),
                           const SizedBox(width: 12),
                           Expanded(child: _VehicleInfo(option: option)),
                           _FareInfo(option: option, isSelected: selected),
@@ -84,11 +85,7 @@ class VehicleOptionCard extends StatelessWidget {
                       ),
               ),
               if (selected)
-                const Positioned(
-                  top: -6,
-                  right: -6,
-                  child: _SelectedBadge(),
-                ),
+                const Positioned(top: -6, right: -6, child: _SelectedBadge()),
             ],
           ),
         ),
@@ -116,25 +113,43 @@ class _SelectedBadge extends StatelessWidget {
 }
 
 class _VehicleIcon extends StatelessWidget {
-  final bool isMotorcycle;
-  const _VehicleIcon({required this.isMotorcycle});
+  final VehicleOption option;
+  const _VehicleIcon({required this.option});
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
+    final assetPath = rideCategoryIconAsset(id: option.id, name: option.name);
     return Container(
       width: w * 0.144,
       height: h * 0.047,
+      padding: EdgeInsets.symmetric(horizontal: w * 0.006, vertical: h * 0.002),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.015),
       ),
-      child: Icon(
-        isMotorcycle ? Icons.two_wheeler_rounded : Icons.directions_car_rounded,
-        size: isMotorcycle ? w * 0.067 : w * 0.077,
-        color: MyShopColors.darkSlate,
-      ),
+      child: assetPath == null
+          ? Icon(
+              option.isMotorcycle
+                  ? Icons.two_wheeler_rounded
+                  : Icons.directions_car_rounded,
+              size: option.isMotorcycle ? w * 0.067 : w * 0.077,
+              color: MyShopColors.darkSlate,
+            )
+          : Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              semanticLabel: '${option.name} vehicle',
+              errorBuilder: (_, __, ___) => Icon(
+                option.isMotorcycle
+                    ? Icons.two_wheeler_rounded
+                    : Icons.directions_car_rounded,
+                size: option.isMotorcycle ? w * 0.067 : w * 0.077,
+                color: MyShopColors.darkSlate,
+              ),
+            ),
     );
   }
 }
@@ -164,8 +179,11 @@ class _VehicleInfo extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.person_outline_rounded,
-                size: 13, color: MyShopColors.textSecondary),
+            const Icon(
+              Icons.person_outline_rounded,
+              size: 13,
+              color: MyShopColors.textSecondary,
+            ),
             const SizedBox(width: 2),
             Text(
               '${option.capacityPersons}',
