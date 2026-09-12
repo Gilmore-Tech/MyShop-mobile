@@ -1965,7 +1965,10 @@ Future<void> _hydrateFromRest(
 /// Cancel an in-flight ride request from the matching screen. Local state is
 /// reset only after the API response or a read-back proves the backend row is
 /// cancelled; otherwise the caller must keep the ride visible.
-Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
+Future<bool> cancelInFlightRideRequest(
+  ProviderContainer ref, {
+  String reason = 'rider_cancelled_during_search',
+}) async {
   ref.read(rideSearchCancellationRequestedProvider.notifier).state = true;
 
   var rideId = ref.read(activeRideIdProvider);
@@ -1990,7 +1993,7 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
     final cancellation = await cancelRideWithAuthority(
       rideService: ref.read(rideServiceProvider),
       rideId: rideId,
-      reason: 'rider_cancelled_during_search',
+      reason: reason,
     );
     if (!cancellation.confirmedCancelled) {
       developer.log(
