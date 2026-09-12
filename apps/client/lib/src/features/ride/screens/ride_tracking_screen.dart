@@ -14,6 +14,7 @@ import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
 import '../widgets/ride_route_map.dart';
+import '../widgets/ride_cancellation_reason_sheet.dart';
 import '../widgets/ride_tracking_sheet.dart';
 
 /// PRD 4.6 — Ride Tracking Screen
@@ -168,6 +169,11 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
           name: 'RideTrackingScreen');
       return;
     }
+    final reason = await showClientRideCancellationReasonSheet(
+      context,
+      driverAssigned: true,
+    );
+    if (reason == null || !mounted) return;
     final phaseAfterConfirm = ref.read(rideTrackingPhaseProvider);
     if (phaseAfterConfirm != RideTrackingPhase.enRoute &&
         phaseAfterConfirm != RideTrackingPhase.arrived) {
@@ -191,7 +197,13 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     final cancellation = await cancelRideWithAuthority(
       rideService: ref.read(rideServiceProvider),
       rideId: rideId,
-      reason: 'rider_cancelled',
+      reason: reason,
+    );
+    ref.read(systemTelemetryProvider).trackAction(
+      'ride_cancellation',
+      outcome: cancellation.confirmedCancelled ? 'success' : 'failure',
+      correlationId: rideId,
+      metadata: const {'driverAssigned': true},
     );
     if (!cancellation.confirmedCancelled) {
       developer.log(

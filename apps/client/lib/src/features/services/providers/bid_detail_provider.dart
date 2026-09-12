@@ -340,21 +340,26 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
 
   /// Cancels a job after acceptance — PRD 4.5.5 free cancellation window.
   /// PATCH /v1/jobs/:jobId/cancel
-  Future<void> cancelJobRequest({required String jobId}) async {
-    if (state.isBusy) return;
+  Future<bool> cancelJobRequest({
+    required String jobId,
+    required String reason,
+  }) async {
+    if (state.isBusy) return false;
     state = state.copyWith(isDeclining: true, clearError: true);
     final cancellation = await cancelJobWithAuthority(
       jobService: _jobService,
       jobId: jobId,
-      reason: 'client_cancelled',
+      reason: reason,
     );
     if (cancellation.confirmedCancelled) {
       state = state.copyWith(isDeclining: false, isAwaitingConfirmation: false);
+      return true;
     } else {
       state = state.copyWith(
         isDeclining: false,
         errorMessage: cancellation.message,
       );
+      return false;
     }
   }
 
