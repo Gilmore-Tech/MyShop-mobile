@@ -105,6 +105,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/ride_categories/
     - assets/icons/
     - assets/i18n/
 
