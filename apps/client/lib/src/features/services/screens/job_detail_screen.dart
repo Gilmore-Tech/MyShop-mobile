@@ -13,6 +13,7 @@ import '../data/job_cancellation_coordinator.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
+import '../widgets/job_cancellation_reason_sheet.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client views full job request detail, timeline progression,
@@ -264,6 +265,9 @@ class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
     );
     if (confirmed != true || !mounted) return;
 
+    final reason = await showClientJobCancellationReasonSheet(context);
+    if (reason == null || !mounted) return;
+
     setState(() => _cancelling = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
@@ -273,8 +277,13 @@ class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
     final cancellation = await cancelJobWithAuthority(
       jobService: jobService,
       jobId: widget.jobId,
-      reason: 'client_cancelled',
+      reason: reason,
     );
+    ref.read(systemTelemetryProvider).trackAction(
+          'job_cancellation',
+          outcome: cancellation.confirmedCancelled ? 'success' : 'failure',
+          correlationId: widget.jobId,
+        );
     if (!cancellation.confirmedCancelled) {
       if (mounted) {
         setState(() => _cancelling = false);

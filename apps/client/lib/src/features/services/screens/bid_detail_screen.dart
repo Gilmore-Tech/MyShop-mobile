@@ -9,6 +9,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../../../core/providers/chat_controller_provider.dart';
 import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/artisan_live_location_provider.dart';
@@ -16,6 +17,7 @@ import '../providers/active_job_provider.dart';
 import '../providers/bid_detail_provider.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
+import '../widgets/job_cancellation_reason_sheet.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client reviews full bid details: artisan profile, bid breakdown,
@@ -1686,6 +1688,19 @@ class _AwaitingActionContent extends StatelessWidget {
     required this.ref,
   });
 
+  Future<void> _cancelJob(BuildContext context) async {
+    final reason = await showClientJobCancellationReasonSheet(context);
+    if (reason == null || !context.mounted) return;
+    final cancelled = await ref
+        .read(bidDetailActionProvider.notifier)
+        .cancelJobRequest(jobId: bid.jobId, reason: reason);
+    ref.read(systemTelemetryProvider).trackAction(
+          'job_cancellation',
+          outcome: cancelled ? 'success' : 'failure',
+          correlationId: bid.jobId,
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1730,11 +1745,7 @@ class _AwaitingActionContent extends StatelessWidget {
         SizedBox(height: h * 0.010),
         // ── Cancel Job Request (PRD 4.5.5 free cancellation window) ──
         GestureDetector(
-          onTap: actionState.isBusy
-              ? null
-              : () => ref
-                  .read(bidDetailActionProvider.notifier)
-                  .cancelJobRequest(jobId: bid.jobId),
+          onTap: actionState.isBusy ? null : () => _cancelJob(context),
           behavior: HitTestBehavior.opaque,
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.005),

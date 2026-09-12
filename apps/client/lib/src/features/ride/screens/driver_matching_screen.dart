@@ -6,10 +6,12 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_radar.dart';
+import '../widgets/ride_cancellation_reason_sheet.dart';
 
 /// Live, server-driven rider matching screen.
 ///
@@ -94,9 +96,23 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     );
     if (confirmed != true || !mounted) return;
 
+    final reason = await showClientRideCancellationReasonSheet(
+      context,
+      driverAssigned: false,
+    );
+    if (reason == null || !mounted) return;
+
     setState(() => _cancelling = true);
     final container = ProviderScope.containerOf(context, listen: false);
-    final cancelled = await cancelInFlightRideRequest(container);
+    final rideId = container.read(activeRideIdProvider);
+    final cancelled =
+        await cancelInFlightRideRequest(container, reason: reason);
+    container.read(systemTelemetryProvider).trackAction(
+      'ride_cancellation',
+      outcome: cancelled ? 'success' : 'failure',
+      correlationId: rideId,
+      metadata: const {'driverAssigned': false},
+    );
     if (!mounted) return;
     if (!cancelled) {
       setState(() => _cancelling = false);
