@@ -33,14 +33,10 @@ class ProviderStatusNotifier extends StateNotifier<DriverStatus> {
     _transitionTo(DriverStatus.online);
   }
 
-  /// Leaves the busy state after terminal work. A degraded provider must not
-  /// briefly re-enter Online while the backend completion trigger is forcing
-  /// the role Offline pending a fresh GPS fix.
-  void finishActiveWork({required bool locationRecoveryRequired}) {
-    _transitionTo(
-      locationRecoveryRequired ? DriverStatus.offline : DriverStatus.online,
-    );
-  }
+  /// Leaves the busy state after terminal work while preserving the explicit
+  /// Online choice. If location is still degraded, the backend keeps dispatch
+  /// paused until a fresh trusted fix arrives; the session itself stays open.
+  void finishActiveWork() => _transitionTo(DriverStatus.online);
 
   void goOffline() {
     if (state != DriverStatus.busy) {

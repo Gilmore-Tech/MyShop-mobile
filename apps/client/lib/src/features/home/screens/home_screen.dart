@@ -441,7 +441,10 @@ class _PromosSection extends ConsumerWidget {
     final h = MediaQuery.sizeOf(context).height;
     final campaigns = ref.watch(activePromoCampaignsProvider).valueOrNull ??
         const <ActivePromoCampaign>[];
-    final hasBanners = campaigns.any((c) => c.hasBanner);
+    final now = DateTime.now();
+    final hasBanners = campaigns.any(
+      (campaign) => campaign.hasBanner && campaign.isDashboardActiveAt(now),
+    );
     if (!hasBanners) return const SizedBox.shrink();
 
     return Column(

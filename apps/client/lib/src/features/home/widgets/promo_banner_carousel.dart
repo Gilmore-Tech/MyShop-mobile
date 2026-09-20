@@ -20,9 +20,10 @@ class PromoBannerCarousel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final campaignsAsync = ref.watch(activePromoCampaignsProvider);
+    final now = DateTime.now();
     final banners = (campaignsAsync.valueOrNull ??
             const <ActivePromoCampaign>[])
-        .where((c) => c.hasBanner)
+        .where((c) => c.hasBanner && c.isDashboardActiveAt(now))
         .toList()
       ..sort((a, b) => b.bannerPriority.compareTo(a.bannerPriority));
 

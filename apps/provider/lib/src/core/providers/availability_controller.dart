@@ -94,6 +94,9 @@ String friendlyAvailabilityApiError(ApiException error) {
   }
 
   switch (error.errorCode) {
+    case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
+      return 'Your commission owing has reached the allowed limit. Pay down '
+          'the outstanding commission before going Online to receive new requests.';
     case 'NOT_VERIFIED':
       return 'The server could not confirm that this provider profile is '
           'eligible to go online. Refresh Documents & Verification. If every '
@@ -820,10 +823,11 @@ class AvailabilityController {
     }
   }
 
-  /// Report device-authoritative location loss. The backend keeps active work
-  /// alive, removes all new-dispatch authority, and forces an idle provider
-  /// Offline. Local degraded state is immediate so a network outage cannot
-  /// hide the safety warning while the server's stale-fix detector catches up.
+  /// Report device-authoritative location loss. The backend keeps the explicit
+  /// Online session and active work intact while removing all new-dispatch
+  /// authority. A fresh accurate fix clears the fence and resumes dispatch
+  /// automatically. Local degraded state is immediate so a network outage
+  /// cannot hide the safety warning while server reconciliation catches up.
   Future<void> reportLocationUnavailable(
     LocationUnavailableReason reason,
   ) async {

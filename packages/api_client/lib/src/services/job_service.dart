@@ -186,7 +186,7 @@ class JobService {
   /// Backend expects four fields:
   ///   - `amountPesewas`  (required, int >= 1)
   ///   - `etaMinutes`     (required, int 1–180)
-  ///   - `durationMinutes` (required, int 15–1440)
+  ///   - `durationMinutes` (required, int 15–21600; up to 15 days)
   ///   - `message`        (optional, free-text)
   ///
   /// [clientRequestId] is forwarded as `Idempotency-Key`. Same key on a retry
@@ -256,6 +256,48 @@ class JobService {
   Future<void> withdrawBid(String jobId, String bidId) async {
     try {
       await _dio.delete('/jobs/$jobId/bids/$bidId');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// Send the next structured counteroffer. The backend keeps the original
+  /// bid expiry, so this never resets the job's negotiation countdown.
+  Future<Map<String, dynamic>> counterBid(
+    String jobId,
+    String bidId, {
+    required int amountPesewas,
+    required int durationMinutes,
+    String? message,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/jobs/$jobId/bids/$bidId/negotiate',
+        data: {
+          'amountPesewas': amountPesewas,
+          'durationMinutes': durationMinutes,
+          if (message != null && message.trim().isNotEmpty)
+            'message': message.trim(),
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// Artisan response to the client's currently pending counteroffer.
+  Future<Map<String, dynamic>> respondToBidNegotiation(
+    String jobId,
+    String bidId, {
+    required bool accept,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/jobs/$jobId/bids/$bidId/negotiate/respond',
+        data: {'action': accept ? 'accept' : 'decline'},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

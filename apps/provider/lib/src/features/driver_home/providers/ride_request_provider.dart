@@ -8,7 +8,6 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
-import '../../../core/providers/location_degradation_provider.dart';
 import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/ride_offer_receipt_service.dart';
@@ -587,6 +586,9 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return 'This ride request was not sent to you.';
       case 'DRIVER_PROFILE_REQUIRED':
         return 'Your driver profile is incomplete — finish verification to accept rides.';
+      case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
+        return 'Your commission owing has reached the allowed limit. Pay down '
+            'the outstanding commission before accepting new rides.';
       case 'PROVIDER_CANCELLATION_BLOCK':
       case 'PROVIDER_REQUEST_BLOCK':
         return providerRequestBlockMessage(
@@ -1060,11 +1062,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
 
   void _resumeOnline() {
     try {
-      final locationRecoveryRequired =
-          _ref.read(providerLocationDegradationProvider).isDegraded;
-      _ref.read(providerStatusProvider.notifier).finishActiveWork(
-            locationRecoveryRequired: locationRecoveryRequired,
-          );
+      _ref.read(providerStatusProvider.notifier).finishActiveWork();
       unawaited(
         _ref
             .read(availabilityReconciliationControllerProvider)

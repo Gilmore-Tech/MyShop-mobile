@@ -616,8 +616,16 @@ String _etaLabel(int minutes) {
 
 String _durationLabel(int minutes) {
   if (minutes < 60) return '$minutes min';
-  final hours = minutes ~/ 60;
+  final days = minutes ~/ (24 * 60);
+  final hours = (minutes % (24 * 60)) ~/ 60;
   final rem = minutes % 60;
+  if (days > 0) {
+    return [
+      '${days}d',
+      if (hours > 0) '${hours}h',
+      if (rem > 0) '${rem}m',
+    ].join(' ');
+  }
   return rem == 0 ? '${hours}h' : '${hours}h ${rem}m';
 }
 
@@ -864,7 +872,7 @@ class _NoBidsState extends StatelessWidget {
             ),
             SizedBox(height: h * 0.009),
             Text(
-              'Artisans have up to 5 minutes to submit bids. Check back shortly.',
+              'Artisans have up to 7 minutes to bid and agree terms. Check back shortly.',
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,

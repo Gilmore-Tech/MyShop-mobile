@@ -20,8 +20,9 @@ class LocationDegradationBanner extends StatelessWidget {
         : state.hasActiveWork
             ? 'Location unavailable. Finish your current work; new requests '
                 'are paused until an accurate location returns.'
-            : 'You are Offline because location is unavailable. Restore '
-                'accurate location before going Online again.';
+            : 'Connection or location is temporarily unavailable. You remain '
+                'Online, but new requests are paused and will resume '
+                'automatically when an accurate location returns.';
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(12, 8, 12, 0),

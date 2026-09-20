@@ -9,7 +9,8 @@ class ProviderOnlineRestorePending implements Exception {
 bool isRetryableProviderRestoreError(ApiException error) {
   if (error.isNetworkError || error.isServerError) return true;
   if (error.errorCode == 'PROVIDER_REQUEST_BLOCK' ||
-      error.errorCode == 'PROVIDER_REQUEST_WARNING') {
+      error.errorCode == 'PROVIDER_REQUEST_WARNING' ||
+      error.errorCode == 'PROVIDER_COMMISSION_DEBT_CAP_REACHED') {
     return false;
   }
   if (error.statusCode == 408 || error.statusCode == 429) return true;
