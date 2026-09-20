@@ -550,8 +550,16 @@ class _ActiveJobNotifier
     String? formatMinutes(int? mins) {
       if (mins == null || mins <= 0) return null;
       if (mins < 60) return '$mins min${mins == 1 ? '' : 's'}';
-      final hours = mins ~/ 60;
+      final days = mins ~/ (24 * 60);
+      final hours = (mins % (24 * 60)) ~/ 60;
       final rem = mins % 60;
+      if (days > 0) {
+        return [
+          '$days day${days == 1 ? '' : 's'}',
+          if (hours > 0) '${hours}h',
+          if (rem > 0) '${rem}m',
+        ].join(' ');
+      }
       if (rem == 0) return '$hours hr${hours == 1 ? '' : 's'}';
       return '${hours}h ${rem}m';
     }

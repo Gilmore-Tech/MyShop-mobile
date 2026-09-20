@@ -100,6 +100,20 @@ class ActivePromoCampaign {
   bool get isCommissionRelief => campaignType == 'commission_relief';
   bool get hasBanner => bannerUrl != null && bannerUrl!.trim().isNotEmpty;
 
+  /// Whether this campaign belongs on an active dashboard at [instant].
+  ///
+  /// The backend remains authoritative for paused/cancelled campaigns. This
+  /// local window check prevents a campaign that expires between refreshes
+  /// from lingering in either app's cached UI.
+  bool isDashboardActiveAt(DateTime instant) {
+    final now = instant.toUtc();
+    final start = startsAt?.toUtc();
+    final end = endsAt?.toUtc();
+    if (start != null && now.isBefore(start)) return false;
+    if (end != null && !now.isBefore(end)) return false;
+    return true;
+  }
+
   num? get commissionReliefPercent =>
       providerPromo?.rewardKind == 'commission_relief'
           ? providerPromo!.rewardValue
@@ -237,7 +251,12 @@ class PromoService {
       return campaigns
           .whereType<Map<String, dynamic>>()
           .map(ActivePromoCampaign.fromJson)
-          .where((c) => c.id.isNotEmpty && c.name.isNotEmpty)
+          .where(
+            (c) =>
+                c.id.isNotEmpty &&
+                c.name.isNotEmpty &&
+                c.isDashboardActiveAt(DateTime.now()),
+          )
           .toList(growable: false);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

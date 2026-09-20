@@ -36,7 +36,7 @@ import 'bid_submission_screen.dart';
 /// received via Socket.IO or from the live job feed cards.
 ///
 /// PRD Reference: PRD 5.3 — incoming job notification (category, description,
-/// photos, client location, 5-minute bid window).
+/// photos, client location, 7-minute bid and negotiation window).
 class JobRequestScreen extends ConsumerStatefulWidget {
   const JobRequestScreen({
     super.key,
@@ -66,7 +66,159 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   bool _hasRedirectedToActiveJob = false;
   bool _didAutoOpenBidSheet = false;
   bool _decliningRequest = false;
+  bool _respondingToNegotiation = false;
   String? _mountedOfferId;
+
+  Future<void> _respondToNegotiation({
+    required String jobId,
+    required String bidId,
+    required bool accept,
+  }) async {
+    if (_respondingToNegotiation) return;
+    setState(() => _respondingToNegotiation = true);
+    try {
+      await ref.read(jobServiceProvider).respondToBidNegotiation(
+            jobId,
+            bidId,
+            accept: accept,
+          );
+      await ref.read(artisanJobsProvider.notifier).load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accept
+                ? 'Counteroffer accepted. The client can now select your bid.'
+                : 'Counteroffer declined. Your previous bid remains available.',
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            userSafeApiErrorMessage(
+              error,
+              fallback:
+                  'Could not answer the counteroffer. Refresh and try again.',
+              conflictMessage:
+                  'This counteroffer is no longer awaiting a response.',
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _respondingToNegotiation = false);
+    }
+  }
+
+  Future<void> _sendArtisanCounter({
+    required String jobId,
+    required String bidId,
+    required int amountPesewas,
+    required int durationMinutes,
+    String? message,
+  }) async {
+    final amount = TextEditingController(
+      text: (amountPesewas / 100).toStringAsFixed(2),
+    );
+    final duration = TextEditingController(text: durationMinutes.toString());
+    final note = TextEditingController(text: message ?? '');
+    final proposal =
+        await showDialog<({int amount, int duration, String note})>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Send a counteroffer'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amount,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration:
+                    const InputDecoration(labelText: 'Proposed total (GHS)'),
+              ),
+              TextField(
+                controller: duration,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Proposed duration (minutes)',
+                ),
+              ),
+              TextField(
+                controller: note,
+                maxLength: 500,
+                decoration:
+                    const InputDecoration(labelText: 'Message (optional)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final ghs = double.tryParse(amount.text.trim());
+              final minutes = int.tryParse(duration.text.trim());
+              if (ghs == null ||
+                  ghs <= 0 ||
+                  minutes == null ||
+                  minutes < 15 ||
+                  minutes > 21600) {
+                return;
+              }
+              Navigator.pop(
+                dialogContext,
+                (
+                  amount: (ghs * 100).round(),
+                  duration: minutes,
+                  note: note.text.trim(),
+                ),
+              );
+            },
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    amount.dispose();
+    duration.dispose();
+    note.dispose();
+    if (proposal == null || !mounted) return;
+    setState(() => _respondingToNegotiation = true);
+    try {
+      await ref.read(jobServiceProvider).counterBid(
+            jobId,
+            bidId,
+            amountPesewas: proposal.amount,
+            durationMinutes: proposal.duration,
+            message: proposal.note,
+          );
+      await ref.read(artisanJobsProvider.notifier).load();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              userSafeApiErrorMessage(
+                error,
+                fallback:
+                    'Could not send the counteroffer. Refresh and try again.',
+              ),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _respondingToNegotiation = false);
+    }
+  }
 
   /// Full-fat job fetched from `GET /jobs/:id` on mount. The artisan jobs
   /// feed (`GET /jobs`) returns slim records that drop client identity
@@ -425,7 +577,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       // Anchor the countdown to the actual bid expiry. Prefer
                       // the local SubmittedBid (set the moment we ACK a fresh
                       // submission), fall back to the live entry's
-                      // bidSubmittedAt + 5-minute window so the timer is
+                      // bidSubmittedAt + the server bid window so the timer is
                       // correct even when the bid came back from the
                       // backend's /jobs feed without ever passing through
                       // local state — otherwise the banner would default to
@@ -452,7 +604,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       },
                       onMessage: () => context.push('/chat'),
                       onEdit: effectiveBidStatus == BidStatus.pending &&
-                              liveEntry?.bidId != null
+                              liveEntry?.bidId != null &&
+                              liveEntry?.hasPendingClientCounter != true
                           ? () => BidSubmissionScreen.show(
                                 context,
                                 job: effectiveJob,
@@ -466,13 +619,48 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                               )
                           : null,
                       onWithdraw: effectiveBidStatus == BidStatus.pending &&
-                              liveEntry?.bidId != null
+                              liveEntry?.bidId != null &&
+                              liveEntry?.hasPendingClientCounter != true
                           ? () => _confirmAndWithdraw(
                                 context,
                                 jobId: effectiveJob.id,
                                 bidId: liveEntry!.bidId!,
                               )
                           : null,
+                    ),
+                    const SizedBox(height: MyShopSpacing.md),
+                  ],
+                  if (liveEntry?.hasPendingClientCounter == true &&
+                      liveEntry?.bidId != null) ...[
+                    _ClientCounterofferCard(
+                      amountPesewas: liveEntry!.negotiationAmountPesewas ??
+                          liveEntry.bidAmountPesewas ??
+                          0,
+                      durationMinutes:
+                          liveEntry.negotiationDurationMinutes ?? 15,
+                      message: liveEntry.negotiationMessage,
+                      busy: _respondingToNegotiation,
+                      onAccept: () => _respondToNegotiation(
+                        jobId: effectiveJob.id,
+                        bidId: liveEntry!.bidId!,
+                        accept: true,
+                      ),
+                      onDecline: () => _respondToNegotiation(
+                        jobId: effectiveJob.id,
+                        bidId: liveEntry!.bidId!,
+                        accept: false,
+                      ),
+                      onCounter: () => _sendArtisanCounter(
+                        jobId: effectiveJob.id,
+                        bidId: liveEntry!.bidId!,
+                        amountPesewas: liveEntry.bidAmountPesewas ??
+                            liveEntry.negotiationAmountPesewas ??
+                            0,
+                        durationMinutes: liveEntry.bidDurationMinutes ??
+                            liveEntry.negotiationDurationMinutes ??
+                            15,
+                        message: liveEntry.bidMessage,
+                      ),
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
@@ -607,10 +795,10 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   }
 
   /// Backend-anchored bid expiry. Prefers the explicit `expiresAt` from
-  /// the live entry's `myBid` payload; falls back to `bidSubmittedAt + 5min`
+  /// the live entry's `myBid` payload; falls back to `bidSubmittedAt + 7min`
   /// (the default bidding window) when only the submission time is known.
   /// Returns null when neither is available — the banner will then degrade
-  /// to its "now + 5min" default, but only as a last resort.
+  /// to its "now + 7min" default, but only as a last resort.
   DateTime? _bidExpiresFromLive(ArtisanJobEntry? entry) {
     if (entry == null) return null;
     final explicit = entry.bidExpiresAt;
@@ -621,7 +809,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     final submitted = entry.bidSubmittedAt;
     if (submitted != null) {
       final parsed = DateTime.tryParse(submitted);
-      if (parsed != null) return parsed.add(const Duration(minutes: 5));
+      if (parsed != null) return parsed.add(const Duration(minutes: 7));
     }
     return null;
   }
@@ -720,6 +908,102 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   }
 }
 
+class _ClientCounterofferCard extends StatelessWidget {
+  const _ClientCounterofferCard({
+    required this.amountPesewas,
+    required this.durationMinutes,
+    required this.message,
+    required this.busy,
+    required this.onAccept,
+    required this.onDecline,
+    required this.onCounter,
+  });
+
+  final int amountPesewas;
+  final int durationMinutes;
+  final String? message;
+  final bool busy;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+  final VoidCallback onCounter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: MyShopColors.primaryGold),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.handshake_outlined,
+                  color: MyShopColors.primaryGold),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Client counteroffer',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          Text(
+            'GHS ${(amountPesewas / 100).toStringAsFixed(2)} · ${formatBidDuration(durationMinutes)}',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (message?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: MyShopSpacing.xs),
+            Text(message!.trim()),
+          ],
+          const SizedBox(height: MyShopSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy ? null : onDecline,
+                  child: const Text('Decline'),
+                ),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy ? null : onCounter,
+                  child: const Text('Counter'),
+                ),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy ? null : onAccept,
+                  child: Text(busy ? 'Saving…' : 'Accept'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.xs),
+          Text(
+            'Respond before the existing bid countdown ends. A response does not add more time.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /// Maps the artisan's live relationship with a job into a [BidStatus] the
@@ -780,7 +1064,7 @@ bool _isActiveWork(JobStatus status) =>
 /// authenticated artisan.
 ///
 /// Two bid-accepting states:
-///   - `open`             → standard public bid window (first 5 min after post)
+///   - `open`             → standard public bid window (first 7 min after post)
 ///   - `adminAssigned`    → admin manually routed the job to this specific
 ///                          artisan after the public window closed with zero
 ///                          bids. Only the assigned artisan may quote.

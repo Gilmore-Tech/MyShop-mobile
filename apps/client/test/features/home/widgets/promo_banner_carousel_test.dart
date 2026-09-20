@@ -143,6 +143,21 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
+  testWidgets('does not render an expired client promo', (tester) async {
+    final expired = ActivePromoCampaign(
+      id: 'expired-client-promo',
+      name: 'Expired promo',
+      bannerUrl: 'https://cdn.example.test/banners/expired.png',
+      endsAt: DateTime.now().subtract(const Duration(seconds: 1)),
+    );
+
+    await _pumpCarousel(tester, [expired]);
+
+    expect(find.byKey(const Key('promo-banner-expired-client-promo')),
+        findsNothing);
+    expect(find.byType(Image), findsNothing);
+  });
+
   testWidgets('renders a banner for campaigns with a bannerUrl',
       (tester) async {
     await _pumpCarousel(

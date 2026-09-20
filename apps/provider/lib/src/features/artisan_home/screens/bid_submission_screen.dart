@@ -40,6 +40,19 @@ bool submittedBidResponseIsConfirmed(Map<String, dynamic> response) {
   return jobStatus == 'confirmed';
 }
 
+/// Formats an artisan's estimated job duration for bid and job surfaces.
+String formatBidDuration(int minutes) {
+  if (minutes <= 0) return '';
+  final days = minutes ~/ (24 * 60);
+  final hours = (minutes % (24 * 60)) ~/ 60;
+  final mins = minutes % 60;
+  return [
+    if (days > 0) '${days}d',
+    if (hours > 0) '${hours}h',
+    if (mins > 0) '${mins}m',
+  ].join(' ');
+}
+
 /// Submit bid bottom sheet — shown over the Request Details screen.
 ///
 /// PRD Reference: PRD 5.3 — bid submission with category-minimum validation,
@@ -247,17 +260,6 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     return m > 0 ? '$m' : '';
   }
 
-  /// Formats a duration as "Xh Ym" / "Xh" / "Ym" for the field label.
-  /// Returns the empty string when nothing is set so the hint text shows.
-  static String _formatDuration(int minutes) {
-    if (minutes <= 0) return '';
-    final hh = minutes ~/ 60;
-    final mm = minutes % 60;
-    if (hh == 0) return '${mm}m';
-    if (mm == 0) return '${hh}h';
-    return '${hh}h ${mm}m';
-  }
-
   void _scheduleSave() {
     _isDirty = true;
     _saveDebounce?.cancel();
@@ -357,6 +359,9 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
           e,
           requestLabel: 'job requests',
         );
+      case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
+        return 'Your commission owing has reached the allowed limit. Pay down '
+            'the outstanding commission before bidding for new jobs.';
       default:
         return userSafeApiErrorMessage(
           e,
@@ -506,7 +511,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     // real submission time even across app restarts.
     final submittedAt = DateTime.now();
     final expiresAt = _expiresFromResponse(bidResponse) ??
-        submittedAt.add(const Duration(minutes: 5));
+        submittedAt.add(const Duration(minutes: 7));
     await ref.read(submittedBidsProvider.notifier).add(
           SubmittedBid(
             job: widget.job,
@@ -1079,10 +1084,9 @@ class _NumberField extends StatelessWidget {
   }
 }
 
-/// Read-only duration field. Tapping opens a bottom-sheet with two wheel
-/// pickers (hours 0–8, minutes 0/5/…/55). Wheels eliminate free-form HH:MM
-/// typos and put the legal range in front of the artisan, so a 30-minute
-/// quote can't be entered as "30:00" by mistake.
+/// Read-only duration field. Tapping opens a bottom-sheet with day, hour and
+/// minute wheels. This supports longer artisan work while keeping the exact
+/// server-owned 15-minute to 15-day range visible and typo-proof.
 class _DurationPickerField extends StatelessWidget {
   const _DurationPickerField({
     required this.minutes,
@@ -1092,10 +1096,10 @@ class _DurationPickerField extends StatelessWidget {
   final int minutes;
   final ValueChanged<int> onChanged;
 
-  static const _maxHours = 8;
+  static const _maxDays = 15;
   static const _minuteStep = 5;
 
-  String get _display => _BidSubmissionScreenState._formatDuration(minutes);
+  String get _display => formatBidDuration(minutes);
 
   Future<void> _open(BuildContext context) async {
     final picked = await showModalBottomSheet<int>(
@@ -1107,7 +1111,7 @@ class _DurationPickerField extends StatelessWidget {
       ),
       builder: (sheetContext) => _DurationPickerSheet(
         initialMinutes: minutes,
-        maxHours: _maxHours,
+        maxDays: _maxDays,
         minuteStep: _minuteStep,
       ),
     );
@@ -1163,12 +1167,12 @@ class _DurationPickerField extends StatelessWidget {
 class _DurationPickerSheet extends StatefulWidget {
   const _DurationPickerSheet({
     required this.initialMinutes,
-    required this.maxHours,
+    required this.maxDays,
     required this.minuteStep,
   });
 
   final int initialMinutes;
-  final int maxHours;
+  final int maxDays;
   final int minuteStep;
 
   @override
@@ -1176,8 +1180,10 @@ class _DurationPickerSheet extends StatefulWidget {
 }
 
 class _DurationPickerSheetState extends State<_DurationPickerSheet> {
+  late int _days;
   late int _hours;
   late int _minuteIndex;
+  late final FixedExtentScrollController _dayCtrl;
   late final FixedExtentScrollController _hourCtrl;
   late final FixedExtentScrollController _minuteCtrl;
 
@@ -1189,28 +1195,45 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
   @override
   void initState() {
     super.initState();
-    final init = widget.initialMinutes.clamp(0, widget.maxHours * 60);
-    _hours = (init ~/ 60).clamp(0, widget.maxHours);
+    final init = widget.initialMinutes.clamp(0, widget.maxDays * 24 * 60);
+    _days = init ~/ (24 * 60);
+    _hours = (init % (24 * 60)) ~/ 60;
     final remainder = init % 60;
     _minuteIndex = _minuteValues
         .indexOf((remainder ~/ widget.minuteStep) * widget.minuteStep);
     if (_minuteIndex < 0) _minuteIndex = 0;
+    _dayCtrl = FixedExtentScrollController(initialItem: _days);
     _hourCtrl = FixedExtentScrollController(initialItem: _hours);
     _minuteCtrl = FixedExtentScrollController(initialItem: _minuteIndex);
   }
 
   @override
   void dispose() {
+    _dayCtrl.dispose();
     _hourCtrl.dispose();
     _minuteCtrl.dispose();
     super.dispose();
   }
 
-  int get _selectedMinutes => _hours * 60 + _minuteValues[_minuteIndex];
+  int get _selectedMinutes =>
+      _days * 24 * 60 + _hours * 60 + _minuteValues[_minuteIndex];
+
+  void _setDays(int days) {
+    setState(() {
+      _days = days;
+      if (_days == widget.maxDays) {
+        _hours = 0;
+        _minuteIndex = 0;
+        _hourCtrl.jumpToItem(0);
+        _minuteCtrl.jumpToItem(0);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final canConfirm = _selectedMinutes > 0;
+    final canConfirm =
+        _selectedMinutes >= 15 && _selectedMinutes <= widget.maxDays * 24 * 60;
     return SafeArea(
       top: false,
       child: Padding(
@@ -1241,8 +1264,8 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Hours and minutes you expect to work. '
-              'Range: 5 minutes to ${widget.maxHours} hours.',
+              'How long you expect the job to take. '
+              'Range: 15 minutes to ${widget.maxDays} days.',
               style: MyShopTypography.body2,
             ),
             const SizedBox(height: MyShopSpacing.md),
@@ -1252,8 +1275,17 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
                 children: [
                   Expanded(
                     child: _WheelColumn(
+                      controller: _dayCtrl,
+                      itemCount: widget.maxDays + 1,
+                      label: 'd',
+                      formatter: (i) => i.toString(),
+                      onChanged: _setDays,
+                    ),
+                  ),
+                  Expanded(
+                    child: _WheelColumn(
                       controller: _hourCtrl,
-                      itemCount: widget.maxHours + 1,
+                      itemCount: 24,
                       label: 'h',
                       formatter: (i) => i.toString(),
                       onChanged: (i) => setState(() => _hours = i),
@@ -1288,8 +1320,8 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
               ),
               child: Text(
                 canConfirm
-                    ? 'Set ${_BidSubmissionScreenState._formatDuration(_selectedMinutes)}'
-                    : 'Pick at least 5 minutes',
+                    ? 'Set ${formatBidDuration(_selectedMinutes)}'
+                    : 'Pick 15 minutes to ${widget.maxDays} days',
                 style: MyShopTypography.button.copyWith(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,

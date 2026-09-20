@@ -65,7 +65,7 @@ class SubmittedBid {
   /// Display like `GHS 175.00`.
   String get amountDisplay => 'GHS ${(amountPesewas / 100).toStringAsFixed(2)}';
 
-  /// Whether the 5-minute bidding window is still open.
+  /// Whether the server-owned bidding and negotiation window is still open.
   bool get isActive => DateTime.now().isBefore(expiresAt);
 
   Map<String, dynamic> toJson() => {

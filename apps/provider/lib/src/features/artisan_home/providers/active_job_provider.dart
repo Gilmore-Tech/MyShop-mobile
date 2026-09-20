@@ -9,7 +9,6 @@ import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
-import '../../../core/providers/location_degradation_provider.dart';
 import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../earnings/providers/earnings_providers.dart';
@@ -327,11 +326,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   }
 
   void _finishActiveWork() {
-    final locationRecoveryRequired =
-        _ref.read(providerLocationDegradationProvider).isDegraded;
-    _ref.read(providerStatusProvider.notifier).finishActiveWork(
-          locationRecoveryRequired: locationRecoveryRequired,
-        );
+    _ref.read(providerStatusProvider.notifier).finishActiveWork();
     unawaited(
       _ref
           .read(availabilityReconciliationControllerProvider)

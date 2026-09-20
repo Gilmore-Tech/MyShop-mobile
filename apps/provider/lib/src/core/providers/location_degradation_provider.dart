@@ -25,7 +25,11 @@ class ProviderLocationDegradationState {
     return ProviderLocationDegradationState(
       isDegraded: snapshot.locationRecoveryRequired,
       hasActiveWork: snapshot.hasActiveWork,
-      isOffline: snapshot.status == ProviderAvailabilityStatus.offline,
+      // `status` is dispatch readiness and can be Offline while a recoverable
+      // Online session is preserved. Only the durable session authority should
+      // make the UI claim that the provider is actually Offline.
+      isOffline:
+          snapshot.effectiveSessionStatus == ProviderAvailabilityStatus.offline,
       reasonCode: snapshot.locationDegradedReason,
       degradedAt: snapshot.locationDegradedAt,
       escalatedAt: snapshot.locationDegradedEscalatedAt,
@@ -39,7 +43,9 @@ class ProviderLocationDegradationState {
     return ProviderLocationDegradationState(
       isDegraded: true,
       hasActiveWork: hasActiveWork,
-      isOffline: !hasActiveWork,
+      // Device-reported location loss pauses new dispatch but preserves the
+      // explicit Online choice while recovery runs.
+      isOffline: false,
       reasonCode: reason.wireValue,
       degradedAt: DateTime.now(),
     );
