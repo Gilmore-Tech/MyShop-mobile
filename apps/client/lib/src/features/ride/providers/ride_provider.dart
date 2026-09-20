@@ -805,7 +805,11 @@ final bookingFailureMessageProvider = StateProvider<String?>((_) => null);
 /// [noRideCreated] is set only for a definitive, non-ambiguous pre-create
 /// `NO_DRIVERS_AVAILABLE` response. In that one case there is no server ride
 /// to cancel and the client may safely clear its local request state.
-enum BookingFailureExitMode { cancellationRequired, noRideCreated }
+enum BookingFailureExitMode {
+  cancellationRequired,
+  noRideCreated,
+  terminalNoDrivers,
+}
 
 final bookingFailureExitModeProvider = StateProvider<BookingFailureExitMode>(
   (_) => BookingFailureExitMode.cancellationRequired,
@@ -1610,11 +1614,13 @@ Future<void> requestRideAndMatchDriver(
     name: 'RideProvider',
   );
 
+  var terminalNoDriversConfirmed = false;
   try {
     await rideService.cancelRide(
       rideId,
       reason: 'client_matching_timeout_recovery',
     );
+    terminalNoDriversConfirmed = true;
     await ref.read(rideBookingAttemptStoreProvider).clear();
     ref.invalidate(homeRecentActivityProvider);
   } on ApiException catch (e) {
@@ -1642,7 +1648,12 @@ Future<void> requestRideAndMatchDriver(
   }
 
   ref.read(matchedDriverProvider.notifier).state = null;
-  failWith(noDriversAvailableMessage);
+  failWith(
+    noDriversAvailableMessage,
+    exitMode: terminalNoDriversConfirmed
+        ? BookingFailureExitMode.terminalNoDrivers
+        : BookingFailureExitMode.cancellationRequired,
+  );
 }
 
 /// One-shot REST hydrate when socket-based snapshot delivery has been
@@ -1803,6 +1814,10 @@ Future<void> _hydrateFromRest(
         status: status,
         reason: cancellationReason,
       );
+      if (noDrivers) {
+        read(bookingFailureExitModeProvider.notifier).state =
+            BookingFailureExitMode.terminalNoDrivers;
+      }
       read(bookingFailureMessageProvider.notifier).state = noDrivers
           ? noDriversAvailableMessage
           : rideSocketCancellationMessage(
@@ -2029,11 +2044,12 @@ Future<bool> cancelInFlightRideRequest(
 /// cancel/read-back path.
 Future<bool> dismissFailedRideRequest(ProviderContainer ref) async {
   final rideId = ref.read(activeRideIdProvider);
+  final exitMode = ref.read(bookingFailureExitModeProvider);
   final canResetLocally =
       ref.read(bookingPhaseProvider) == BookingPhase.failed &&
-          ref.read(bookingFailureExitModeProvider) ==
-              BookingFailureExitMode.noRideCreated &&
-          (rideId == null || rideId.isEmpty);
+          (exitMode == BookingFailureExitMode.terminalNoDrivers ||
+              (exitMode == BookingFailureExitMode.noRideCreated &&
+                  (rideId == null || rideId.isEmpty)));
 
   if (!canResetLocally) {
     final cancelled = await cancelInFlightRideRequest(ref);

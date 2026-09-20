@@ -390,6 +390,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
           final reason = (data['cancellationReason'] as String?) ?? '';
           final cancelledBy = (data['cancelledBy'] as String?) ?? '';
+          final noDrivers = isNoDriversSocketCancellation(
+            status: status,
+            reason: reason,
+          );
+          if (noDrivers) {
+            ref.container.read(bookingFailureExitModeProvider.notifier).state =
+                BookingFailureExitMode.terminalNoDrivers;
+          }
           final friendlyMessage = rideSocketCancellationMessage(
             status: status,
             reason: reason,
@@ -519,10 +527,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
               .read(rideOfferDecisionCountdownProvider.notifier)
               .clear();
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
+          final noDrivers = isNoDriversSocketCancellation(
+            status: status,
+            reason: (map['reason'] ?? map['cancellationReason']) as String?,
+          );
           ref.container.read(bookingFailureMessageProvider.notifier).state =
-              status == 'no_drivers'
+              noDrivers
                   ? noDriversAvailableMessage
                   : 'This ride was cancelled.';
+          if (noDrivers) {
+            ref.container.read(bookingFailureExitModeProvider.notifier).state =
+                BookingFailureExitMode.terminalNoDrivers;
+          }
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.cancelled;
           ref.container.read(bookingPhaseProvider.notifier).fail();
@@ -566,6 +582,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               noDriversAvailableMessage;
+          ref.container.read(bookingFailureExitModeProvider.notifier).state =
+              BookingFailureExitMode.terminalNoDrivers;
           ref.container.read(bookingPhaseProvider.notifier).fail();
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.cancelled;

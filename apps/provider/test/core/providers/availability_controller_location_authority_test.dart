@@ -149,4 +149,23 @@ void main() {
 
     expect(resolved, same(fresh));
   });
+
+  test('online entry retries when Android first returns an unusable cached fix',
+      () async {
+    final stale =
+        _position(timestamp: now.subtract(const Duration(minutes: 2)));
+    final fresh = _position(timestamp: now);
+    var calls = 0;
+
+    final resolved = await resolveOnlineEntryPosition(
+      null,
+      now: now,
+      unusableFixRetryDelay: Duration.zero,
+      lastKnownLoader: () async => null,
+      currentLoader: () async => calls++ == 0 ? stale : fresh,
+    );
+
+    expect(resolved, same(fresh));
+    expect(calls, 2);
+  });
 }
