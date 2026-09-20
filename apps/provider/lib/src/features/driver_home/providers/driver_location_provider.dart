@@ -75,6 +75,11 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
         notificationTitle: 'MyShop Provider is online',
         notificationText: 'Keeping your location active for jobs and trips.',
         notificationChannelName: 'Provider location',
+        // A number of Android devices put Wi-Fi to sleep shortly after the
+        // screen turns off even though the CPU wake lock remains held. Keep
+        // the network radio available while the provider is explicitly Online
+        // so fresh fixes can still reach the matcher in the background.
+        enableWifiLock: true,
         enableWakeLock: true,
         setOngoing: true,
       ),

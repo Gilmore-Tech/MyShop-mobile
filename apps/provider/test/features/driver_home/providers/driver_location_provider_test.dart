@@ -22,8 +22,12 @@ void main() {
 
     expect(settings, isA<AndroidSettings>());
     expect(settings.distanceFilter, 0);
-    expect((settings as AndroidSettings).intervalDuration,
-        const Duration(seconds: 4));
+    final android = settings as AndroidSettings;
+    expect(android.intervalDuration, const Duration(seconds: 4));
+    expect(android.foregroundNotificationConfig, isNotNull);
+    expect(android.foregroundNotificationConfig!.enableWakeLock, isTrue);
+    expect(android.foregroundNotificationConfig!.enableWifiLock, isTrue);
+    expect(android.foregroundNotificationConfig!.setOngoing, isTrue);
   });
 
   test('Apple online stream does not suppress stationary fixes', () {

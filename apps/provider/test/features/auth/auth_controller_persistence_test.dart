@@ -153,6 +153,18 @@ void main() {
     expect(resumeBody, isNot(contains('SessionStartedAt')));
   });
 
+  test('backgrounding preserves the online realtime location transport', () {
+    final source = File('lib/src/app/provider_app.dart').readAsStringSync();
+    final pauseStart = source.indexOf('case AppLifecycleState.paused:');
+    final pauseEnd = source.indexOf('\n    }', pauseStart);
+
+    expect(pauseStart, greaterThanOrEqualTo(0));
+    expect(pauseEnd, greaterThan(pauseStart));
+    final pauseBody = source.substring(pauseStart, pauseEnd);
+    expect(pauseBody, contains('refreshHeartbeat()'));
+    expect(pauseBody, isNot(contains('socketServiceProvider).disconnect()')));
+  });
+
   test('issued provider session plus profile failure never requests OTP again',
       () async {
     const phone = '+233241234567';

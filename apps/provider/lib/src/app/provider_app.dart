@@ -138,18 +138,18 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         if (ref.exists(artisanJobsProvider)) {
           ref.read(artisanJobsProvider.notifier).pausePolling();
         }
-        // Refresh the backend's liveness heartbeat one last time. The
-        // socket bridge's 4s heartbeat is about to stop firing (Doze /
-        // iOS suspend), and the backend's zombie-offline cron flips us
-        // offline as soon as the Redis TTL expires — at which point the
-        // matcher's SQL filter excludes us and inbound jobs fall through
-        // to admin even though FCM could have woken the device. This
-        // resets the TTL to a full 5-min window. Fire-and-forget.
+        // Refresh the durable REST location path immediately. The periodic
+        // writer remains active after this transition, but an eager write
+        // gives the OS-backed stream a full freshness window while Android's
+        // foreground service / iOS background Core Location takes over.
         ref.read(availabilityControllerProvider).refreshHeartbeat();
-        // Drop the socket — it's redundant with FCM while backgrounded
-        // and holds a TCP connection + event buffers that count against
-        // the iOS jetsam budget.
-        ref.read(socketServiceProvider).disconnect();
+        // Keep the real-time location transport attached while the provider
+        // has explicitly chosen Online. Android's foreground-location service
+        // keeps the process eligible to run; deliberately disconnecting here
+        // removed the socket location path and left matching dependent on one
+        // Dart REST timer. iOS may suspend the socket itself, but keeping it
+        // attached lets Core Location callbacks use it whenever the process is
+        // running. Offline/logout remain the authorities that disconnect it.
         break;
     }
   }
