@@ -1087,6 +1087,7 @@ Future<Position> resolveOnlineEntryPosition(
   required LastKnownPositionLoader lastKnownLoader,
   required OnlinePositionLoader currentLoader,
   DateTime? now,
+  Duration unusableFixRetryDelay = const Duration(milliseconds: 750),
 }) async {
   if (cached != null && isOnlineLocationFixAcceptable(cached, now: now)) {
     return cached;
@@ -1102,6 +1103,17 @@ Future<Position> resolveOnlineEntryPosition(
     debugPrint('[Availability] last-known position fetch failed — $error');
   }
 
+  final firstCurrent = await currentLoader();
+  if (isOnlineLocationFixAcceptable(firstCurrent, now: now)) {
+    return firstCurrent;
+  }
+
+  // Some Android location providers initially return their cached sample even
+  // for getCurrentPosition. Give the radio a brief acquisition window and ask
+  // once more before making the provider tap Go Online again.
+  if (unusableFixRetryDelay > Duration.zero) {
+    await Future<void>.delayed(unusableFixRetryDelay);
+  }
   return currentLoader();
 }
 
