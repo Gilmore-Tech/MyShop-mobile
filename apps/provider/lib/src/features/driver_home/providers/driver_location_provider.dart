@@ -12,16 +12,30 @@ typedef LastKnownPositionLoader = Future<Position?> Function();
 /// durable writer and network latency while the server enforces its strict
 /// 30-second dispatch boundary.
 const Duration periodicOnlineFixMaxAge = Duration(seconds: 10);
-const Duration onlineEntryFixTimeout = Duration(seconds: 20);
+const Duration onlineEntryBalancedFixTimeout = Duration(seconds: 8);
+const Duration onlineEntryPreciseFixTimeout = Duration(seconds: 16);
+const Duration onlineEntryFixTimeout = Duration(seconds: 25);
 
 /// Entering the matching pool is an explicit user action and can tolerate a
-/// longer cold-start wait than the periodic writer. Eight seconds proved too
-/// short on real Android hardware indoors even with every permission granted.
+/// longer cold-start wait than the periodic writer. Start with a balanced fix
+/// so providers indoors are not forced to wait for a GPS-only result. If that
+/// fix is unavailable or outside the matching accuracy boundary, the
+/// controller follows with the precise loader below.
 final onlineEntryPositionLoaderProvider = Provider<OnlinePositionLoader>((_) {
   return () => Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: onlineEntryBalancedFixTimeout,
+        ),
+      );
+});
+
+final onlineEntryPrecisePositionLoaderProvider =
+    Provider<OnlinePositionLoader>((_) {
+  return () => Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: onlineEntryFixTimeout,
+          timeLimit: onlineEntryPreciseFixTimeout,
         ),
       );
 });

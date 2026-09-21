@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:myshop_provider/src/core/providers/availability_controller.dart';
@@ -25,12 +27,12 @@ Position _position({
 void main() {
   final now = DateTime.utc(2026, 7, 17, 22);
 
-  test('accepts a fix at the approved 30-second and 50-metre boundaries', () {
+  test('accepts a fix at the approved 30-second and 100-metre boundaries', () {
     expect(
       isOnlineLocationFixAcceptable(
         _position(
           timestamp: now.subtract(const Duration(seconds: 30)),
-          accuracy: 50,
+          accuracy: 100,
         ),
         now: now,
       ),
@@ -48,10 +50,10 @@ void main() {
     );
   });
 
-  test('rejects a fix less accurate than 50 metres', () {
+  test('rejects a fix less accurate than 100 metres', () {
     expect(
       isOnlineLocationFixAcceptable(
-        _position(timestamp: now, accuracy: 50.1),
+        _position(timestamp: now, accuracy: 100.1),
         now: now,
       ),
       isFalse,
@@ -167,5 +169,47 @@ void main() {
 
     expect(resolved, same(fresh));
     expect(calls, 2);
+  });
+
+  test('online entry rechecks the warmed OS fix after a GPS timeout', () async {
+    final warmed = _position(timestamp: now, accuracy: 75);
+    var lastKnownCalls = 0;
+    var currentCalls = 0;
+
+    final resolved = await resolveOnlineEntryPosition(
+      null,
+      now: now,
+      unusableFixRetryDelay: Duration.zero,
+      lastKnownLoader: () async => lastKnownCalls++ == 0 ? null : warmed,
+      currentLoader: () {
+        currentCalls += 1;
+        throw TimeoutException('first acquisition timed out');
+      },
+    );
+
+    expect(resolved, same(warmed));
+    expect(lastKnownCalls, 2);
+    expect(currentCalls, 1);
+  });
+
+  test('online entry falls back to the precise loader', () async {
+    final imprecise = _position(timestamp: now, accuracy: 150);
+    final precise = _position(timestamp: now, accuracy: 25);
+    var preciseCalls = 0;
+
+    final resolved = await resolveOnlineEntryPosition(
+      null,
+      now: now,
+      unusableFixRetryDelay: Duration.zero,
+      lastKnownLoader: () async => null,
+      currentLoader: () async => imprecise,
+      retryLoader: () async {
+        preciseCalls += 1;
+        return precise;
+      },
+    );
+
+    expect(resolved, same(precise));
+    expect(preciseCalls, 1);
   });
 }
