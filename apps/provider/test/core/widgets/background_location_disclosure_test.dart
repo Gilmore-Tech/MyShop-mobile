@@ -9,11 +9,13 @@ void main() {
 
   const channel = MethodChannel('flutter.baseflow.com/geolocator');
   var permission = LocationPermission.whileInUse;
+  var accuracyStatus = LocationAccuracyStatus.precise;
   var serviceEnabled = true;
   var appSettingsOpened = false;
 
   setUp(() {
     permission = LocationPermission.whileInUse;
+    accuracyStatus = LocationAccuracyStatus.precise;
     serviceEnabled = true;
     appSettingsOpened = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -23,6 +25,8 @@ void main() {
           return permission.index;
         case 'isLocationServiceEnabled':
           return serviceEnabled;
+        case 'getLocationAccuracy':
+          return accuracyStatus.index;
         case 'openAppSettings':
           appSettingsOpened = true;
           return true;
@@ -112,6 +116,34 @@ void main() {
 
     expect(find.text('Background location is off'), findsOneWidget);
     expect(find.textContaining('Allow all the time'), findsOneWidget);
+    await tester.tap(find.text('Open Settings'));
+    await tester.pumpAndSettle();
+
+    expect(appSettingsOpened, isTrue);
+  });
+
+  testWidgets('offers app Settings when precise location is disabled', (
+    tester,
+  ) async {
+    permission = LocationPermission.always;
+    accuracyStatus = LocationAccuracyStatus.reduced;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showLocationRecoveryIfNeeded(context),
+            child: const Text('Recover'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Recover'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Turn on Precise Location'), findsOneWidget);
+    expect(
+        find.textContaining('acquire the fix automatically'), findsOneWidget);
     await tester.tap(find.text('Open Settings'));
     await tester.pumpAndSettle();
 
