@@ -58,6 +58,7 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
   late final bool serviceEnabled;
   LocationPermission? permission;
   IosLocationAuthorizationStatus? iosStatus;
+  LocationAccuracyStatus? accuracyStatus;
   try {
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (Platform.isIOS) {
@@ -70,8 +71,18 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
     debugPrint('[LocationDisclosure] recovery check failed: $error');
     return false;
   }
+  if (serviceEnabled) {
+    try {
+      accuracyStatus = await Geolocator.getLocationAccuracy();
+    } catch (error) {
+      // Older platform implementations may not expose the precision status.
+      // Keep the normal permission recovery available in that case.
+      debugPrint('[LocationDisclosure] precision check unavailable: $error');
+    }
+  }
 
   if (serviceEnabled &&
+      accuracyStatus != LocationAccuracyStatus.reduced &&
       (iosStatus == IosLocationAuthorizationStatus.always ||
           permission == LocationPermission.always)) {
     return false;
@@ -89,6 +100,8 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
   if (!context.mounted) return false;
 
   final needsService = !serviceEnabled;
+  final needsPreciseLocation =
+      serviceEnabled && accuracyStatus == LocationAccuracyStatus.reduced;
   final isRestricted = iosStatus == IosLocationAuthorizationStatus.restricted;
   await showDialog<void>(
     context: context,
@@ -96,20 +109,26 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
       title: Text(
         needsService
             ? 'Turn on Location Services'
-            : isRestricted
-                ? 'Location access is restricted'
-                : 'Background location is off',
+            : needsPreciseLocation
+                ? 'Turn on Precise Location'
+                : isRestricted
+                    ? 'Location access is restricted'
+                    : 'Background location is off',
       ),
       content: Text(
         needsService
             ? 'Location Services must be on before you can go online.'
-            : isRestricted
-                ? 'Screen Time or device management is preventing MyShop '
-                    'Provider from requesting location. Allow changes to '
-                    'Location Services, then return and tap Go Online.'
-                : 'To stay online and receive requests when the app is in the '
-                    'background, set Location to Always / Allow all the time in '
-                    'MyShop Settings.',
+            : needsPreciseLocation
+                ? 'MyShop uses precise location to match you with nearby '
+                    'requests. Enable Precise Location for MyShop Provider; '
+                    'the app will acquire the fix automatically.'
+                : isRestricted
+                    ? 'Screen Time or device management is preventing MyShop '
+                        'Provider from requesting location. Allow changes to '
+                        'Location Services, then return and tap Go Online.'
+                    : 'To stay online and receive requests when the app is in the '
+                        'background, set Location to Always / Allow all the time in '
+                        'MyShop Settings.',
       ),
       actions: [
         TextButton(

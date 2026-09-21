@@ -80,7 +80,7 @@ void main() {
   test('online entry reuses an acceptable in-process fix', () async {
     final cached = _position(timestamp: now);
     var lastKnownCalled = false;
-    var currentCalled = false;
+    var streamCalled = false;
 
     final resolved = await resolveOnlineEntryPosition(
       cached,
@@ -89,15 +89,15 @@ void main() {
         lastKnownCalled = true;
         return null;
       },
-      currentLoader: () async {
-        currentCalled = true;
-        return _position(timestamp: now);
+      positionStreamLoader: () {
+        streamCalled = true;
+        return Stream.value(_position(timestamp: now));
       },
     );
 
     expect(resolved, same(cached));
     expect(lastKnownCalled, isFalse);
-    expect(currentCalled, isFalse);
+    expect(streamCalled, isFalse);
   });
 
   test('online entry safely reuses an acceptable OS last-known fix', () async {
@@ -105,20 +105,20 @@ void main() {
       timestamp: now.subtract(const Duration(seconds: 20)),
       accuracy: 40,
     );
-    var currentCalled = false;
+    var streamCalled = false;
 
     final resolved = await resolveOnlineEntryPosition(
       _position(timestamp: now.subtract(const Duration(minutes: 1))),
       now: now,
       lastKnownLoader: () async => lastKnown,
-      currentLoader: () async {
-        currentCalled = true;
-        return _position(timestamp: now);
+      positionStreamLoader: () {
+        streamCalled = true;
+        return Stream.value(_position(timestamp: now));
       },
     );
 
     expect(resolved, same(lastKnown));
-    expect(currentCalled, isFalse);
+    expect(streamCalled, isFalse);
   });
 
   test('online entry requests a fresh fix when cached fixes are unusable',
@@ -132,7 +132,7 @@ void main() {
         timestamp: now,
         accuracy: 300,
       ),
-      currentLoader: () async => fresh,
+      positionStreamLoader: () => Stream.value(fresh),
     );
 
     expect(resolved, same(fresh));
@@ -146,70 +146,59 @@ void main() {
       null,
       now: now,
       lastKnownLoader: () => Future<Position?>.error(StateError('unavailable')),
-      currentLoader: () async => fresh,
+      positionStreamLoader: () => Stream.value(fresh),
     );
 
     expect(resolved, same(fresh));
   });
 
-  test('online entry retries when Android first returns an unusable cached fix',
-      () async {
+  test('online entry keeps listening through unusable fixes', () async {
     final stale =
         _position(timestamp: now.subtract(const Duration(minutes: 2)));
+    final inaccurate = _position(timestamp: now, accuracy: 150);
     final fresh = _position(timestamp: now);
-    var calls = 0;
 
     final resolved = await resolveOnlineEntryPosition(
       null,
       now: now,
-      unusableFixRetryDelay: Duration.zero,
       lastKnownLoader: () async => null,
-      currentLoader: () async => calls++ == 0 ? stale : fresh,
+      positionStreamLoader: () => Stream.fromIterable([
+        stale,
+        inaccurate,
+        fresh,
+      ]),
     );
 
     expect(resolved, same(fresh));
-    expect(calls, 2);
   });
 
-  test('online entry rechecks the warmed OS fix after a GPS timeout', () async {
-    final warmed = _position(timestamp: now, accuracy: 75);
-    var lastKnownCalls = 0;
-    var currentCalls = 0;
-
-    final resolved = await resolveOnlineEntryPosition(
+  test('online entry does not fail on a transient native stream error',
+      () async {
+    final controller = StreamController<Position>();
+    final fresh = _position(timestamp: now, accuracy: 75);
+    final resolved = resolveOnlineEntryPosition(
       null,
       now: now,
-      unusableFixRetryDelay: Duration.zero,
-      lastKnownLoader: () async => lastKnownCalls++ == 0 ? null : warmed,
-      currentLoader: () {
-        currentCalls += 1;
-        throw TimeoutException('first acquisition timed out');
-      },
-    );
-
-    expect(resolved, same(warmed));
-    expect(lastKnownCalls, 2);
-    expect(currentCalls, 1);
-  });
-
-  test('online entry falls back to the precise loader', () async {
-    final imprecise = _position(timestamp: now, accuracy: 150);
-    final precise = _position(timestamp: now, accuracy: 25);
-    var preciseCalls = 0;
-
-    final resolved = await resolveOnlineEntryPosition(
-      null,
-      now: now,
-      unusableFixRetryDelay: Duration.zero,
       lastKnownLoader: () async => null,
-      currentLoader: () async => imprecise,
-      retryLoader: () async {
-        preciseCalls += 1;
-        return precise;
-      },
+      positionStreamLoader: () => controller.stream,
     );
+    controller.addError(StateError('native stream restarted'));
+    controller.add(fresh);
 
-    expect(resolved, same(precise));
-    expect(preciseCalls, 1);
+    expect(await resolved, same(fresh));
+    await controller.close();
+  });
+
+  test('online entry reports an unexpectedly closed acquisition stream',
+      () async {
+    await expectLater(
+      resolveOnlineEntryPosition(
+        null,
+        now: now,
+        lastKnownLoader: () async => null,
+        positionStreamLoader: () => const Stream.empty(),
+      ),
+      throwsStateError,
+    );
   });
 }

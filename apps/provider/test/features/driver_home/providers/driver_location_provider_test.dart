@@ -40,6 +40,30 @@ void main() {
     expect(apple.allowBackgroundLocationUpdates, isTrue);
   });
 
+  test('Android Online acquisition uses a persistent fused foreground stream',
+      () {
+    final settings = onlineEntryLocationSettings(TargetPlatform.android);
+
+    expect(settings, isA<AndroidSettings>());
+    final android = settings as AndroidSettings;
+    expect(android.forceLocationManager, isFalse);
+    expect(android.distanceFilter, 0);
+    expect(android.intervalDuration, const Duration(seconds: 2));
+    expect(android.foregroundNotificationConfig, isNotNull);
+    expect(android.foregroundNotificationConfig!.enableWakeLock, isTrue);
+    expect(android.foregroundNotificationConfig!.enableWifiLock, isTrue);
+  });
+
+  test('Apple Online acquisition continues while the app is backgrounded', () {
+    final settings = onlineEntryLocationSettings(TargetPlatform.iOS);
+
+    expect(settings, isA<AppleSettings>());
+    final apple = settings as AppleSettings;
+    expect(apple.distanceFilter, 0);
+    expect(apple.pauseLocationUpdatesAutomatically, isFalse);
+    expect(apple.allowBackgroundLocationUpdates, isTrue);
+  });
+
   test('periodic online resolver reuses only a genuinely recent fix', () async {
     final now = DateTime.utc(2026, 7, 20, 15);
     final recent = position(
