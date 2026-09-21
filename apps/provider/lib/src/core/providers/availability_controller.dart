@@ -78,7 +78,7 @@ const Duration _kOnlineLocationPostMinGap = Duration(seconds: 3);
 
 /// Approved BR-30 authority for a fix used to enter the matching pool.
 const Duration onlineLocationMaxAge = Duration(seconds: 30);
-const double onlineLocationMaxAccuracyMeters = 50;
+const double onlineLocationMaxAccuracyMeters = 100;
 
 /// Converts the backend availability contract into stable, actionable copy.
 ///
@@ -481,6 +481,7 @@ class AvailabilityController {
         _ref.read(lastKnownPositionProvider),
         lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
         currentLoader: _ref.read(onlineEntryPositionLoaderProvider),
+        retryLoader: _ref.read(onlineEntryPrecisePositionLoaderProvider),
       );
       assertRestoreCurrent();
       _ref.read(lastKnownPositionProvider.notifier).state = position;
@@ -1086,24 +1087,44 @@ Future<Position> resolveOnlineEntryPosition(
   Position? cached, {
   required LastKnownPositionLoader lastKnownLoader,
   required OnlinePositionLoader currentLoader,
+  OnlinePositionLoader? retryLoader,
   DateTime? now,
   Duration unusableFixRetryDelay = const Duration(milliseconds: 750),
 }) async {
+  final preciseLoader = retryLoader ?? currentLoader;
   if (cached != null && isOnlineLocationFixAcceptable(cached, now: now)) {
     return cached;
   }
 
-  try {
-    final lastKnown = await lastKnownLoader();
-    if (lastKnown != null &&
-        isOnlineLocationFixAcceptable(lastKnown, now: now)) {
-      return lastKnown;
+  Future<Position?> acceptableLastKnown() async {
+    try {
+      final lastKnown = await lastKnownLoader();
+      if (lastKnown != null &&
+          isOnlineLocationFixAcceptable(lastKnown, now: now)) {
+        return lastKnown;
+      }
+    } catch (error) {
+      debugPrint('[Availability] last-known position fetch failed — $error');
     }
-  } catch (error) {
-    debugPrint('[Availability] last-known position fetch failed — $error');
+    return null;
   }
 
-  final firstCurrent = await currentLoader();
+  final initialLastKnown = await acceptableLastKnown();
+  if (initialLastKnown != null) return initialLastKnown;
+
+  Position firstCurrent;
+  try {
+    firstCurrent = await currentLoader();
+  } on TimeoutException {
+    // The first balanced request still warms Android's fused provider.
+    // Re-read that OS result before starting the precise acquisition.
+    final warmedLastKnown = await acceptableLastKnown();
+    if (warmedLastKnown != null) return warmedLastKnown;
+    if (unusableFixRetryDelay > Duration.zero) {
+      await Future<void>.delayed(unusableFixRetryDelay);
+    }
+    return preciseLoader();
+  }
   if (isOnlineLocationFixAcceptable(firstCurrent, now: now)) {
     return firstCurrent;
   }
@@ -1114,7 +1135,9 @@ Future<Position> resolveOnlineEntryPosition(
   if (unusableFixRetryDelay > Duration.zero) {
     await Future<void>.delayed(unusableFixRetryDelay);
   }
-  return currentLoader();
+  final warmedLastKnown = await acceptableLastKnown();
+  if (warmedLastKnown != null) return warmedLastKnown;
+  return preciseLoader();
 }
 
 final availabilityControllerProvider = Provider<AvailabilityController>((ref) {
