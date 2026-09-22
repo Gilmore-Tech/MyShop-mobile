@@ -21,9 +21,13 @@ class PromosSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final campaigns = ref.watch(activePromoCampaignsProvider).valueOrNull ??
         const <ActivePromoCampaign>[];
-    final banners = campaigns.where((c) => c.hasBanner).toList()
+    final now = DateTime.now();
+    final activeCampaigns = campaigns
+        .where((campaign) => campaign.isDashboardActiveAt(now))
+        .toList(growable: false);
+    final banners = activeCampaigns.where((c) => c.hasBanner).toList()
       ..sort((a, b) => b.bannerPriority.compareTo(a.bannerPriority));
-    final progressCampaigns = campaigns
+    final progressCampaigns = activeCampaigns
         .where((campaign) => campaign.providerPromo != null)
         .toList(growable: false);
 

@@ -1585,20 +1585,147 @@ class _PendingActionContent extends StatelessWidget {
     required this.ref,
   });
 
+  Future<void> _negotiate(BuildContext context) async {
+    final amount = TextEditingController(
+      text: ((bid.negotiationAmountPesewas ?? bid.breakdown.totalPesewas) / 100)
+          .toStringAsFixed(2),
+    );
+    final duration = TextEditingController(
+      text: (bid.negotiationDurationMinutes ?? bid.durationMinutes).toString(),
+    );
+    final note = TextEditingController(text: bid.negotiationMessage ?? '');
+    final proposal =
+        await showModalBottomSheet<({int amount, int duration, String note})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Negotiate this bid',
+                style: Theme.of(sheetContext).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            const Text(
+                'Your counteroffer uses the existing bid deadline. Sending it does not add more time.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amount,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+                  const InputDecoration(labelText: 'Proposed total (GHS)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: duration,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'Proposed duration (minutes)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: note,
+              maxLength: 500,
+              decoration:
+                  const InputDecoration(labelText: 'Message (optional)'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                final ghs = double.tryParse(amount.text.trim());
+                final minutes = int.tryParse(duration.text.trim());
+                if (ghs == null ||
+                    ghs <= 0 ||
+                    minutes == null ||
+                    minutes < 15 ||
+                    minutes > 21600) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Enter a valid amount and a duration from 15 minutes to 15 days.')),
+                  );
+                  return;
+                }
+                Navigator.pop(
+                  sheetContext,
+                  (
+                    amount: (ghs * 100).round(),
+                    duration: minutes,
+                    note: note.text.trim(),
+                  ),
+                );
+              },
+              child: const Text('Send counteroffer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amount.dispose();
+    duration.dispose();
+    note.dispose();
+    if (proposal == null || !context.mounted) return;
+    final sent = await ref.read(bidDetailActionProvider.notifier).counterBid(
+          jobId: bid.jobId,
+          bidId: bid.bidId,
+          amountPesewas: proposal.amount,
+          durationMinutes: proposal.duration,
+          message: proposal.note,
+        );
+    if (sent && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Counteroffer sent to the artisan.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (bid.negotiationSelectionBlocked) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGold.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'Waiting for the artisan to answer your counteroffer. You can select this bid once they respond.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(height: h * 0.010),
+        ],
         _AcceptButton(
           artisanFirstName: bid.artisan.firstName,
           isLoading: actionState.isAccepting,
-          isDisabled: actionState.isBusy,
+          isDisabled: actionState.isBusy || bid.negotiationSelectionBlocked,
           onPressed: () => ref
               .read(bidDetailActionProvider.notifier)
               .acceptBid(jobId: bid.jobId, bidId: bid.bidId),
           w: w,
           h: h,
+        ),
+        SizedBox(height: h * 0.010),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: actionState.isBusy || bid.negotiationSelectionBlocked
+                ? null
+                : () => _negotiate(context),
+            icon: const Icon(Icons.handshake_outlined),
+            label: Text(actionState.isNegotiating ? 'Sending…' : 'Negotiate'),
+          ),
         ),
         SizedBox(height: h * 0.010),
         // ── Pending hint ──

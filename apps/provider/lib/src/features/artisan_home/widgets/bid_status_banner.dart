@@ -51,7 +51,7 @@ class BidStatusBanner extends StatefulWidget {
 
   /// When the bidding window closes. The countdown shown for a pending bid
   /// is `expiresAt - now`, so it decreases in real time and is consistent
-  /// across navigations and app restarts. Falls back to 5 minutes from
+  /// across navigations and app restarts. Falls back to 7 minutes from
   /// now if null (e.g. pre-backend-integration callers).
   final DateTime? expiresAt;
 
@@ -82,7 +82,7 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
   void initState() {
     super.initState();
     _deadline =
-        widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 5));
+        widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 7));
     if (widget.status == BidStatus.pending && widget.showCountdown) {
       _timer = Timer.periodic(const Duration(seconds: 1), (t) {
         if (!mounted) return;
@@ -100,7 +100,7 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
     super.didUpdateWidget(oldWidget);
     if (widget.expiresAt != oldWidget.expiresAt) {
       _deadline =
-          widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 5));
+          widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 7));
     }
   }
 

@@ -39,7 +39,7 @@ final _progressCampaign = ActivePromoCampaign(
   campaignType: 'commission_relief',
   discountValue: 1,
   audience: 'driver',
-  startsAt: DateTime.utc(2099, 1, 2, 8, 15),
+  startsAt: DateTime.utc(2026, 1, 2, 8, 15),
   endsAt: DateTime.utc(2099, 1, 3, 20, 45),
   providerPromo: ProviderPromoProgress(
     rewardKind: 'fixed_bonus',
@@ -96,6 +96,25 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
+  testWidgets('does not render an expired provider promo', (tester) async {
+    final expired = ActivePromoCampaign(
+      id: 'expired-provider-promo',
+      name: 'Expired promo',
+      bannerUrl: 'https://cdn.example.test/banners/expired.png',
+      endsAt: DateTime.now().subtract(const Duration(seconds: 1)),
+      providerPromo: const ProviderPromoProgress(
+        rewardKind: 'fixed_bonus',
+        rewardValue: 1000,
+      ),
+    );
+
+    await _pumpSection(tester, [expired]);
+
+    expect(find.text('PROMOS'), findsNothing);
+    expect(find.byKey(const Key('promo-progress-expired-provider-promo')),
+        findsNothing);
+  });
+
   testWidgets('renders header + banner for a bannered relief campaign',
       (tester) async {
     await _pumpSection(
@@ -127,7 +146,7 @@ void main() {
       find.byKey(const Key('promo-countdown-camp-progress-1')),
       findsOneWidget,
     );
-    expect(find.textContaining('Starts in'), findsOneWidget);
+    expect(find.textContaining('left'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('promo-progress-camp-progress-1')));
     await tester.pumpAndSettle();

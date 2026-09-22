@@ -22,8 +22,12 @@ void main() {
 
     expect(settings, isA<AndroidSettings>());
     expect(settings.distanceFilter, 0);
-    expect((settings as AndroidSettings).intervalDuration,
-        const Duration(seconds: 4));
+    final android = settings as AndroidSettings;
+    expect(android.intervalDuration, const Duration(seconds: 4));
+    expect(android.foregroundNotificationConfig, isNotNull);
+    expect(android.foregroundNotificationConfig!.enableWakeLock, isTrue);
+    expect(android.foregroundNotificationConfig!.enableWifiLock, isTrue);
+    expect(android.foregroundNotificationConfig!.setOngoing, isTrue);
   });
 
   test('Apple online stream does not suppress stationary fixes', () {
@@ -32,6 +36,30 @@ void main() {
     expect(settings, isA<AppleSettings>());
     expect(settings.distanceFilter, 0);
     final apple = settings as AppleSettings;
+    expect(apple.pauseLocationUpdatesAutomatically, isFalse);
+    expect(apple.allowBackgroundLocationUpdates, isTrue);
+  });
+
+  test('Android Online acquisition uses a persistent fused foreground stream',
+      () {
+    final settings = onlineEntryLocationSettings(TargetPlatform.android);
+
+    expect(settings, isA<AndroidSettings>());
+    final android = settings as AndroidSettings;
+    expect(android.forceLocationManager, isFalse);
+    expect(android.distanceFilter, 0);
+    expect(android.intervalDuration, const Duration(seconds: 2));
+    expect(android.foregroundNotificationConfig, isNotNull);
+    expect(android.foregroundNotificationConfig!.enableWakeLock, isTrue);
+    expect(android.foregroundNotificationConfig!.enableWifiLock, isTrue);
+  });
+
+  test('Apple Online acquisition continues while the app is backgrounded', () {
+    final settings = onlineEntryLocationSettings(TargetPlatform.iOS);
+
+    expect(settings, isA<AppleSettings>());
+    final apple = settings as AppleSettings;
+    expect(apple.distanceFilter, 0);
     expect(apple.pauseLocationUpdatesAutomatically, isFalse);
     expect(apple.allowBackgroundLocationUpdates, isTrue);
   });

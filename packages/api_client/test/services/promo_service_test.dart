@@ -40,7 +40,7 @@ void main() {
           'promoScope': 'ride',
           'newClientsOnly': true,
           'startsAt': '2026-08-01T00:00:00.000Z',
-          'endsAt': '2026-08-31T23:59:59.000Z',
+          'endsAt': '2099-08-31T23:59:59.000Z',
           'bannerUrl': 'https://cdn.example.test/banners/august.png',
           'bannerPriority': 10,
           // Unknown fields must be ignored (additive contract).
@@ -65,7 +65,7 @@ void main() {
     expect(c.promoScope, 'ride');
     expect(c.newClientsOnly, isTrue);
     expect(c.startsAt, DateTime.utc(2026, 8, 1));
-    expect(c.endsAt, DateTime.utc(2026, 8, 31, 23, 59, 59));
+    expect(c.endsAt, DateTime.utc(2099, 8, 31, 23, 59, 59));
     expect(c.bannerUrl, 'https://cdn.example.test/banners/august.png');
     expect(c.hasBanner, isTrue);
     expect(c.bannerPriority, 10);
@@ -201,5 +201,37 @@ void main() {
     dio = buildDio({'somethingElse': true});
 
     expect(await PromoService(dio).getActiveCampaigns(), isEmpty);
+  });
+
+  test('drops expired and not-yet-started campaigns defensively', () async {
+    final now = DateTime.now().toUtc();
+    dio = buildDio({
+      'campaigns': [
+        {
+          'id': 'active',
+          'name': 'Active',
+          'startsAt':
+              now.subtract(const Duration(minutes: 1)).toIso8601String(),
+          'endsAt': now.add(const Duration(minutes: 1)).toIso8601String(),
+        },
+        {
+          'id': 'expired',
+          'name': 'Expired',
+          'startsAt':
+              now.subtract(const Duration(minutes: 2)).toIso8601String(),
+          'endsAt': now.subtract(const Duration(seconds: 1)).toIso8601String(),
+        },
+        {
+          'id': 'future',
+          'name': 'Future',
+          'startsAt': now.add(const Duration(minutes: 1)).toIso8601String(),
+          'endsAt': now.add(const Duration(minutes: 2)).toIso8601String(),
+        },
+      ],
+    });
+
+    final campaigns = await PromoService(dio).getActiveCampaigns();
+
+    expect(campaigns.map((campaign) => campaign.id), ['active']);
   });
 }

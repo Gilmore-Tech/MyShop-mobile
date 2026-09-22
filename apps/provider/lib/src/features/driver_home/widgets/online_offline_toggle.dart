@@ -37,8 +37,11 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
   @override
   Widget build(BuildContext context) {
     final status = ref.watch(providerStatusProvider);
+    final isAcquiringLocation =
+        ref.watch(onlineLocationAcquisitionPendingProvider);
     final isOnline = status.isOnline || status.isBusy;
-    final isLocked = status.isBusy || _isGoingOnline;
+    final isWorking = _isGoingOnline || isAcquiringLocation;
+    final isLocked = status.isBusy || isWorking;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -104,16 +107,20 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
                               children: [
                                 _OnlineSegmentLeading(
                                   isActive: isOnline,
-                                  isWorking: _isGoingOnline,
+                                  isWorking: isWorking,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  _isGoingOnline ? 'Checking…' : 'Online',
+                                  isAcquiringLocation
+                                      ? 'Getting location…'
+                                      : _isGoingOnline
+                                          ? 'Checking…'
+                                          : 'Online',
                                   style: TextStyle(
                                     fontFamily: 'Raleway',
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
-                                    color: isOnline || _isGoingOnline
+                                    color: isOnline || isWorking
                                         ? MyShopColors.textOnPrimary
                                         : MyShopColors.textSecondary,
                                   ),
@@ -160,6 +167,19 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
             ),
           ),
         ),
+        if (isAcquiringLocation)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
+            child: Text(
+              'Getting your location automatically. You can keep using the '
+              'app; it will switch you Online when ready.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ),
       ],
     );
   }

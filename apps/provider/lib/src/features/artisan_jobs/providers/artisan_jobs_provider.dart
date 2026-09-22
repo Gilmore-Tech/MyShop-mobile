@@ -54,6 +54,10 @@ class ArtisanJobEntry {
     this.bidStatus,
     this.bidSubmittedAt,
     this.bidExpiresAt,
+    this.negotiationStatus = 'none',
+    this.negotiationAmountPesewas,
+    this.negotiationDurationMinutes,
+    this.negotiationMessage,
   });
 
   final Job job;
@@ -78,6 +82,13 @@ class ArtisanJobEntry {
   /// uses this to anchor the pending-bid countdown so a screen open
   /// doesn't reset the clock.
   final String? bidExpiresAt;
+  final String negotiationStatus;
+  final int? negotiationAmountPesewas;
+  final int? negotiationDurationMinutes;
+  final String? negotiationMessage;
+
+  bool get hasPendingClientCounter =>
+      negotiationStatus == 'client_counter_pending';
 
   bool get hasBid => bidAmountPesewas != null || bidStatus != null;
   bool get bidAccepted => bidStatus == 'accepted';
@@ -110,6 +121,10 @@ class ArtisanJobEntry {
     String? bidStatus,
     String? bidSubmittedAt,
     String? bidExpiresAt,
+    String? negotiationStatus,
+    int? negotiationAmountPesewas,
+    int? negotiationDurationMinutes,
+    String? negotiationMessage,
   }) {
     return ArtisanJobEntry(
       job: job ?? this.job,
@@ -121,6 +136,12 @@ class ArtisanJobEntry {
       bidStatus: bidStatus ?? this.bidStatus,
       bidSubmittedAt: bidSubmittedAt ?? this.bidSubmittedAt,
       bidExpiresAt: bidExpiresAt ?? this.bidExpiresAt,
+      negotiationStatus: negotiationStatus ?? this.negotiationStatus,
+      negotiationAmountPesewas:
+          negotiationAmountPesewas ?? this.negotiationAmountPesewas,
+      negotiationDurationMinutes:
+          negotiationDurationMinutes ?? this.negotiationDurationMinutes,
+      negotiationMessage: negotiationMessage ?? this.negotiationMessage,
     );
   }
 }
@@ -315,6 +336,10 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
     // shape) and sometimes as `id` (raw bid record).
     final myBid = json['myBid'] ?? json['bid'];
     if (myBid is Map<String, dynamic>) {
+      final rawNegotiation = myBid['negotiation'];
+      final negotiation = rawNegotiation is Map<String, dynamic>
+          ? rawNegotiation
+          : const <String, dynamic>{};
       return ArtisanJobEntry(
         job: job,
         bidId: (myBid['bidId'] ?? myBid['id']) as String?,
@@ -325,6 +350,12 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
         bidStatus: myBid['status'] as String?,
         bidSubmittedAt: myBid['createdAt'] as String?,
         bidExpiresAt: myBid['expiresAt'] as String?,
+        negotiationStatus: negotiation['status'] as String? ?? 'none',
+        negotiationAmountPesewas:
+            (negotiation['amountPesewas'] as num?)?.toInt(),
+        negotiationDurationMinutes:
+            (negotiation['durationMinutes'] as num?)?.toInt(),
+        negotiationMessage: negotiation['message'] as String?,
       );
     }
     return ArtisanJobEntry(job: job);

@@ -160,6 +160,12 @@ class BidDetail {
 
   /// Human-readable duration estimate from the artisan.
   final String durationLabel;
+  final int durationMinutes;
+  final String negotiationStatus;
+  final int? negotiationAmountPesewas;
+  final int? negotiationDurationMinutes;
+  final String? negotiationMessage;
+  final bool negotiationSelectionBlocked;
 
   /// Human-readable availability, e.g. "Today, 2PM".
   final String availabilityLabel;
@@ -184,6 +190,12 @@ class BidDetail {
     required this.artisan,
     required this.breakdown,
     required this.durationLabel,
+    required this.durationMinutes,
+    this.negotiationStatus = 'none',
+    this.negotiationAmountPesewas,
+    this.negotiationDurationMinutes,
+    this.negotiationMessage,
+    this.negotiationSelectionBlocked = false,
     required this.availabilityLabel,
     this.artisanNote,
     this.noteTimestamp,
@@ -200,6 +212,7 @@ class BidDetail {
 class BidDetailActionState {
   final bool isAccepting;
   final bool isDeclining;
+  final bool isNegotiating;
   final bool materialItemsExpanded;
   final String? errorMessage;
 
@@ -224,6 +237,7 @@ class BidDetailActionState {
   const BidDetailActionState({
     this.isAccepting = false,
     this.isDeclining = false,
+    this.isNegotiating = false,
     this.materialItemsExpanded = false,
     this.errorMessage,
     this.isAwaitingConfirmation = false,
@@ -234,11 +248,12 @@ class BidDetailActionState {
     this.expiredDateLabel,
   });
 
-  bool get isBusy => isAccepting || isDeclining;
+  bool get isBusy => isAccepting || isDeclining || isNegotiating;
 
   BidDetailActionState copyWith({
     bool? isAccepting,
     bool? isDeclining,
+    bool? isNegotiating,
     bool? materialItemsExpanded,
     String? errorMessage,
     bool clearError = false,
@@ -252,6 +267,7 @@ class BidDetailActionState {
       BidDetailActionState(
         isAccepting: isAccepting ?? this.isAccepting,
         isDeclining: isDeclining ?? this.isDeclining,
+        isNegotiating: isNegotiating ?? this.isNegotiating,
         materialItemsExpanded:
             materialItemsExpanded ?? this.materialItemsExpanded,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -305,6 +321,41 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
         isAccepting: false,
         errorMessage: 'Failed to accept bid. Please try again.',
       );
+    }
+  }
+
+  Future<bool> counterBid({
+    required String jobId,
+    required String bidId,
+    required int amountPesewas,
+    required int durationMinutes,
+    String? message,
+  }) async {
+    if (state.isBusy) return false;
+    state = state.copyWith(isNegotiating: true, clearError: true);
+    try {
+      await _jobService.counterBid(
+        jobId,
+        bidId,
+        amountPesewas: amountPesewas,
+        durationMinutes: durationMinutes,
+        message: message,
+      );
+      state = state.copyWith(isNegotiating: false);
+      _ref.invalidate(bidsForJobProvider(jobId));
+      return true;
+    } on ApiException catch (error) {
+      state = state.copyWith(
+        isNegotiating: false,
+        errorMessage: userSafeApiErrorMessage(
+          error,
+          fallback:
+              'Could not send the counteroffer. Try again before the bid window closes.',
+          conflictMessage:
+              'The bid changed. Refresh and review the latest terms.',
+        ),
+      );
+      return false;
     }
   }
 
@@ -498,6 +549,12 @@ BidDetail _toBidDetail(ArtisanBid bid, {required JobDetail job}) {
     durationLabel: bid.durationMinutes > 0
         ? _formatDuration(bid.durationMinutes)
         : 'Not specified',
+    durationMinutes: bid.durationMinutes,
+    negotiationStatus: bid.negotiationStatus,
+    negotiationAmountPesewas: bid.negotiationAmountPesewas,
+    negotiationDurationMinutes: bid.negotiationDurationMinutes,
+    negotiationMessage: bid.negotiationMessage,
+    negotiationSelectionBlocked: bid.negotiationSelectionBlocked,
     availabilityLabel: bid.arrivesInMinutes > 0
         ? 'Arrives in ${bid.arrivesInMinutes} min'
         : 'Available now',
@@ -511,7 +568,15 @@ BidDetail _toBidDetail(ArtisanBid bid, {required JobDetail job}) {
 
 String _formatDuration(int minutes) {
   if (minutes < 60) return '$minutes min';
-  final h = minutes ~/ 60;
+  final days = minutes ~/ (24 * 60);
+  final h = (minutes % (24 * 60)) ~/ 60;
   final m = minutes % 60;
+  if (days > 0) {
+    return [
+      '${days}d',
+      if (h > 0) '${h}h',
+      if (m > 0) '${m}m',
+    ].join(' ');
+  }
   return m == 0 ? '${h}h' : '${h}h ${m}m';
 }

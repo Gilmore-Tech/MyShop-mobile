@@ -56,6 +56,14 @@ class ArtisanBid {
   final int? promoOriginalPricePesewas;
   final int? promoPricePesewas;
 
+  /// Latest structured negotiation turn. Older backends omit this object.
+  final String negotiationStatus;
+  final String? negotiationProposedBy;
+  final int? negotiationAmountPesewas;
+  final int? negotiationDurationMinutes;
+  final String? negotiationMessage;
+  final bool negotiationSelectionBlocked;
+
   const ArtisanBid({
     required this.bidId,
     required this.artisanId,
@@ -75,6 +83,12 @@ class ArtisanBid {
     this.promoName,
     this.promoOriginalPricePesewas,
     this.promoPricePesewas,
+    this.negotiationStatus = 'none',
+    this.negotiationProposedBy,
+    this.negotiationAmountPesewas,
+    this.negotiationDurationMinutes,
+    this.negotiationMessage,
+    this.negotiationSelectionBlocked = false,
   });
 
   /// True when we have a usable coordinate pair to plot / measure against.
@@ -298,6 +312,10 @@ class _BidsNotifier
 
     final rawPromo = data['promo'];
     final promo = rawPromo is Map<String, dynamic> ? rawPromo : null;
+    final rawNegotiation = data['negotiation'];
+    final negotiation = rawNegotiation is Map<String, dynamic>
+        ? rawNegotiation
+        : const <String, dynamic>{};
 
     String composeName() {
       final full = (artisan['fullName'] ?? artisan['name']) as String?;
@@ -362,6 +380,14 @@ class _BidsNotifier
       promoOriginalPricePesewas:
           (promo?['originalPricePesewas'] as num?)?.toInt(),
       promoPricePesewas: (promo?['promoPricePesewas'] as num?)?.toInt(),
+      negotiationStatus: negotiation['status'] as String? ?? 'none',
+      negotiationProposedBy: negotiation['proposedBy'] as String?,
+      negotiationAmountPesewas: (negotiation['amountPesewas'] as num?)?.toInt(),
+      negotiationDurationMinutes:
+          (negotiation['durationMinutes'] as num?)?.toInt(),
+      negotiationMessage: negotiation['message'] as String?,
+      negotiationSelectionBlocked:
+          negotiation['selectionBlocked'] as bool? ?? false,
     );
   }
 }

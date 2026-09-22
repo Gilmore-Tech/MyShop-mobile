@@ -6,23 +6,26 @@ import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/services/recovering_location_stream.dart';
 
 typedef OnlinePositionLoader = Future<Position> Function();
+typedef OnlinePositionStreamLoader = Stream<Position> Function();
 typedef LastKnownPositionLoader = Future<Position?> Function();
 
 /// A 10-second acquisition threshold leaves enough time for the 15-second
 /// durable writer and network latency while the server enforces its strict
 /// 30-second dispatch boundary.
 const Duration periodicOnlineFixMaxAge = Duration(seconds: 10);
-const Duration onlineEntryFixTimeout = Duration(seconds: 20);
 
-/// Entering the matching pool is an explicit user action and can tolerate a
-/// longer cold-start wait than the periodic writer. Eight seconds proved too
-/// short on real Android hardware indoors even with every permission granted.
-final onlineEntryPositionLoaderProvider = Provider<OnlinePositionLoader>((_) {
-  return () => Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: onlineEntryFixTimeout,
+/// Go Online owns a persistent native stream rather than a sequence of timed
+/// one-shot requests. The fused provider can therefore combine network, Wi-Fi
+/// and GPS readings for as long as necessary without sending the provider
+/// outside or making them tap the toggle repeatedly.
+final onlineEntryPositionStreamLoaderProvider =
+    Provider<OnlinePositionStreamLoader>((_) {
+  return () => recoveringLocationStream(
+        () => Geolocator.getPositionStream(
+          locationSettings: onlineEntryLocationSettings(defaultTargetPlatform),
         ),
+        initialDelay: const Duration(seconds: 1),
+        maxDelay: const Duration(seconds: 10),
       );
 });
 
@@ -75,6 +78,47 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
         notificationTitle: 'MyShop Provider is online',
         notificationText: 'Keeping your location active for jobs and trips.',
         notificationChannelName: 'Provider location',
+        // A number of Android devices put Wi-Fi to sleep shortly after the
+        // screen turns off even though the CPU wake lock remains held. Keep
+        // the network radio available while the provider is explicitly Online
+        // so fresh fixes can still reach the matcher in the background.
+        enableWifiLock: true,
+        enableWakeLock: true,
+        setOngoing: true,
+      ),
+    );
+  }
+
+  if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
+    return AppleSettings(
+      accuracy: LocationAccuracy.high,
+      activityType: ActivityType.automotiveNavigation,
+      distanceFilter: 0,
+      pauseLocationUpdatesAutomatically: false,
+      showBackgroundLocationIndicator: true,
+      allowBackgroundLocationUpdates: true,
+    );
+  }
+
+  return const LocationSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 0,
+  );
+}
+
+LocationSettings onlineEntryLocationSettings(TargetPlatform platform) {
+  if (platform == TargetPlatform.android) {
+    return AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 0,
+      intervalDuration: const Duration(seconds: 2),
+      forceLocationManager: false,
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: 'MyShop is getting your location',
+        notificationText:
+            'You will go Online automatically when your location is ready.',
+        notificationChannelName: 'Provider location',
+        enableWifiLock: true,
         enableWakeLock: true,
         setOngoing: true,
       ),

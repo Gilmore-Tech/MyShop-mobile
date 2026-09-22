@@ -64,6 +64,11 @@ class ProviderRecoveryOfflineResult {
 /// no longer required and this cache can be retired.
 final lastKnownPositionProvider = StateProvider<Position?>((_) => null);
 
+/// True only while an explicit Go Online request is automatically acquiring a
+/// dispatch-safe fix. This is presentation state, not server Online authority.
+final onlineLocationAcquisitionPendingProvider =
+    StateProvider<bool>((_) => false);
+
 // Tracks the last successful `status:'online'` POST so the heartbeat,
 // bridge kick-once, refreshHeartbeat, and goOnline don't all pile on
 // top of each other and trip the global IP throttler. File-scope so it
@@ -78,7 +83,7 @@ const Duration _kOnlineLocationPostMinGap = Duration(seconds: 3);
 
 /// Approved BR-30 authority for a fix used to enter the matching pool.
 const Duration onlineLocationMaxAge = Duration(seconds: 30);
-const double onlineLocationMaxAccuracyMeters = 50;
+const double onlineLocationMaxAccuracyMeters = 100;
 
 /// Converts the backend availability contract into stable, actionable copy.
 ///
@@ -94,6 +99,9 @@ String friendlyAvailabilityApiError(ApiException error) {
   }
 
   switch (error.errorCode) {
+    case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
+      return 'Your commission owing has reached the allowed limit. Pay down '
+          'the outstanding commission before going Online to receive new requests.';
     case 'NOT_VERIFIED':
       return 'The server could not confirm that this provider profile is '
           'eligible to go online. Refresh Documents & Verification. If every '
@@ -474,11 +482,18 @@ class AvailabilityController {
     // current_location to be non-null before it'll mark us online.
     Position position;
     try {
-      position = await resolveOnlineEntryPosition(
-        _ref.read(lastKnownPositionProvider),
-        lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
-        currentLoader: _ref.read(onlineEntryPositionLoaderProvider),
-      );
+      _ref.read(onlineLocationAcquisitionPendingProvider.notifier).state = true;
+      try {
+        position = await resolveOnlineEntryPosition(
+          _ref.read(lastKnownPositionProvider),
+          lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
+          positionStreamLoader:
+              _ref.read(onlineEntryPositionStreamLoaderProvider),
+        );
+      } finally {
+        _ref.read(onlineLocationAcquisitionPendingProvider.notifier).state =
+            false;
+      }
       assertRestoreCurrent();
       _ref.read(lastKnownPositionProvider.notifier).state = position;
     } on StaleAuthSessionException {
@@ -486,13 +501,8 @@ class AvailabilityController {
     } catch (e) {
       debugPrint('[Availability] online: position fetch failed — $e');
       if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
-      if (e is TimeoutException) {
-        return 'GPS could not get an accurate fix within '
-            '${onlineEntryFixTimeout.inSeconds} seconds. Move near a window '
-            'or outdoors, keep Location Services on, and try again.';
-      }
-      return "Couldn't get your location. Keep Location Services on and try "
-          'again.';
+      return "Couldn't start automatic location updates. Keep Location "
+          'Services on and try again.';
     }
 
     if (!isOnlineLocationFixAcceptable(position)) {
@@ -629,9 +639,11 @@ class AvailabilityController {
   }) async {
     try {
       if (Platform.isIOS) {
-        return _checkIosLocationReady(
+        final iosGate = await _checkIosLocationReady(
           allowPermissionPrompts: allowPermissionPrompts,
         );
+        if (iosGate != null) return iosGate;
+        return _checkPreciseLocationReady();
       }
 
       var permission = await Geolocator.checkPermission();
@@ -657,9 +669,19 @@ class AvailabilityController {
       if (!serviceEnabled) {
         return 'Turn on Location Services to go online.';
       }
+      return _checkPreciseLocationReady();
     } catch (error) {
       debugPrint('[Availability] location readiness check failed: $error');
       return "Couldn't check location access. Restart the app and try again.";
+    }
+  }
+
+  Future<String?> _checkPreciseLocationReady() async {
+    final accuracy = await Geolocator.getLocationAccuracy();
+    if (accuracy == LocationAccuracyStatus.reduced) {
+      return 'Precise location is off for MyShop Provider. Enable Precise '
+          'Location in app Settings; the app will then find your location '
+          'automatically.';
     }
     return null;
   }
@@ -820,10 +842,11 @@ class AvailabilityController {
     }
   }
 
-  /// Report device-authoritative location loss. The backend keeps active work
-  /// alive, removes all new-dispatch authority, and forces an idle provider
-  /// Offline. Local degraded state is immediate so a network outage cannot
-  /// hide the safety warning while the server's stale-fix detector catches up.
+  /// Report device-authoritative location loss. The backend keeps the explicit
+  /// Online session and active work intact while removing all new-dispatch
+  /// authority. A fresh accurate fix clears the fence and resumes dispatch
+  /// automatically. Local degraded state is immediate so a network outage
+  /// cannot hide the safety warning while server reconciliation catches up.
   Future<void> reportLocationUnavailable(
     LocationUnavailableReason reason,
   ) async {
@@ -1081,24 +1104,67 @@ class AvailabilityController {
 Future<Position> resolveOnlineEntryPosition(
   Position? cached, {
   required LastKnownPositionLoader lastKnownLoader,
-  required OnlinePositionLoader currentLoader,
+  required OnlinePositionStreamLoader positionStreamLoader,
   DateTime? now,
 }) async {
   if (cached != null && isOnlineLocationFixAcceptable(cached, now: now)) {
     return cached;
   }
 
-  try {
-    final lastKnown = await lastKnownLoader();
-    if (lastKnown != null &&
-        isOnlineLocationFixAcceptable(lastKnown, now: now)) {
-      return lastKnown;
+  Future<Position?> acceptableLastKnown() async {
+    try {
+      final lastKnown = await lastKnownLoader();
+      if (lastKnown != null &&
+          isOnlineLocationFixAcceptable(lastKnown, now: now)) {
+        return lastKnown;
+      }
+    } catch (error) {
+      debugPrint('[Availability] last-known position fetch failed — $error');
     }
-  } catch (error) {
-    debugPrint('[Availability] last-known position fetch failed — $error');
+    return null;
   }
 
-  return currentLoader();
+  final initialLastKnown = await acceptableLastKnown();
+  if (initialLastKnown != null) return initialLastKnown;
+  return firstAcceptableOnlinePosition(
+    positionStreamLoader(),
+    now: now,
+  );
+}
+
+@visibleForTesting
+Future<Position> firstAcceptableOnlinePosition(
+  Stream<Position> positions, {
+  DateTime? now,
+}) async {
+  final result = Completer<Position>();
+  late final StreamSubscription<Position> subscription;
+  subscription = positions.listen(
+    (position) {
+      if (!result.isCompleted &&
+          isOnlineLocationFixAcceptable(position, now: now)) {
+        result.complete(position);
+      }
+    },
+    onError: (Object error, StackTrace stack) {
+      // The production stream restarts native subscriptions with bounded
+      // backoff. A transient sensor/platform error must not send the provider
+      // back Offline or require another tap.
+      debugPrint('[Availability] Online location stream recovering — $error');
+    },
+    onDone: () {
+      if (!result.isCompleted) {
+        result.completeError(
+          StateError('Online location stream ended before a usable fix.'),
+        );
+      }
+    },
+  );
+  try {
+    return await result.future;
+  } finally {
+    await subscription.cancel();
+  }
 }
 
 final availabilityControllerProvider = Provider<AvailabilityController>((ref) {

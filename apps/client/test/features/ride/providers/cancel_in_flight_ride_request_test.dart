@@ -149,6 +149,27 @@ void main() {
     expect(container.read(activeRideIdProvider), 'ride-1');
     expect(container.read(bookingPhaseProvider), BookingPhase.failed);
   });
+
+  test(
+      'authoritative no-drivers terminal state dismisses without cancelling again',
+      () async {
+    final store = _RecordingRideBookingAttemptStore();
+    final container = ProviderContainer(
+      overrides: [
+        rideBookingAttemptStoreProvider.overrideWithValue(store),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(bookingPhaseProvider.notifier).fail();
+    container.read(bookingFailureExitModeProvider.notifier).state =
+        BookingFailureExitMode.terminalNoDrivers;
+    container.read(activeRideIdProvider.notifier).state = 'ride-ended';
+
+    expect(await dismissFailedRideRequest(container), isTrue);
+    expect(store.clearCalls, 1);
+    expect(container.read(activeRideIdProvider), isNull);
+    expect(container.read(bookingPhaseProvider), BookingPhase.idle);
+  });
 }
 
 Dio _cancellationDio({required String readBackStatus}) {

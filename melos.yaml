@@ -20,7 +20,11 @@ scripts:
     description: Check formatting
   
   test:
-    run: melos exec --dir-exists=test -- "flutter test"
+    # Multiple Flutter tools can race while validating a newly restored SDK
+    # cache and briefly observe an empty engine revision. Run package suites
+    # serially; each individual flutter test process still uses its own normal
+    # test concurrency.
+    run: melos exec --concurrency=1 --dir-exists=test -- "flutter test"
     description: Run tests in all packages
   
   build:client:android:
