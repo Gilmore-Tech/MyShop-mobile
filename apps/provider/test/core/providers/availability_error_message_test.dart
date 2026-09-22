@@ -57,8 +57,8 @@ void main() {
     );
     expect(
       friendlyAvailabilityApiError(inaccurate),
-      'GPS accuracy is too low. Move to an open area, wait for the location '
-      'signal to improve, and try again.',
+      'Location accuracy is still improving. Keep Location Services on while '
+      'MyShop gets a usable fix.',
     );
     expect(
       friendlyAvailabilityApiError(outOfOrder),
