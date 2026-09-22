@@ -132,8 +132,8 @@ String friendlyAvailabilityApiError(ApiException error) {
       return 'Your previous Online session ended. Go offline, then go online '
           'again before sending location.';
     case 'GPS_ACCURACY_REQUIRED':
-      return 'GPS accuracy is too low. Move to an open area, wait for the '
-          'location signal to improve, and try again.';
+      return 'Location accuracy is still improving. Keep Location Services '
+          'on while MyShop gets a usable fix.';
     case 'RATE_LIMIT_EXCEEDED':
       return 'Location was updated too quickly. Wait a few seconds and try '
           'again.';
@@ -263,8 +263,8 @@ String _providerEligibilityErrorCopy(Object? rawReasonCodes) {
         'a new GPS fix, and try again.';
   }
   if (codes.contains('GPS_ACCURACY_INSUFFICIENT')) {
-    return 'GPS accuracy is too low. Move to an open area, wait for the signal '
-        'to improve, and try again.';
+    return 'Location accuracy is still improving. Keep Location Services on '
+        'while MyShop gets a usable fix.';
   }
   if (codes.contains('DRIVER_ONLINE_SESSION_REQUIRED') ||
       codes.contains('ARTISAN_ONLINE_SESSION_REQUIRED')) {
@@ -484,12 +484,14 @@ class AvailabilityController {
     try {
       _ref.read(onlineLocationAcquisitionPendingProvider.notifier).state = true;
       try {
-        position = await resolveOnlineEntryPosition(
-          _ref.read(lastKnownPositionProvider),
-          lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
-          positionStreamLoader:
-              _ref.read(onlineEntryPositionStreamLoaderProvider),
-        );
+        do {
+          position = await resolveOnlineEntryPosition(
+            _ref.read(lastKnownPositionProvider),
+            lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
+            positionStreamLoader:
+                _ref.read(onlineEntryPositionStreamLoaderProvider),
+          );
+        } while (!isOnlineLocationFixAcceptable(position));
       } finally {
         _ref.read(onlineLocationAcquisitionPendingProvider.notifier).state =
             false;
@@ -503,12 +505,6 @@ class AvailabilityController {
       if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
       return "Couldn't start automatic location updates. Keep Location "
           'Services on and try again.';
-    }
-
-    if (!isOnlineLocationFixAcceptable(position)) {
-      if (!allowPermissionPrompts) throw const ProviderOnlineRestorePending();
-      return 'Your location is not accurate or recent enough to go online. '
-          'Move to an open area, wait for GPS to settle, and try again.';
     }
 
     final isArtisan = _ref.read(providerTypeProvider).isArtisan;
