@@ -7,15 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../services/directions_service.dart';
-
 /// A compact, non-interactive map used on authenticated incoming-request
 /// screens.
 ///
-/// The widget paints the useful decision context immediately: a job location,
-/// or a straight pickup-to-destination line for a ride. Ride previews then
-/// replace that line with the authenticated backend road route when it arrives.
-/// A route lookup never blocks the request card or extends its countdown.
+/// The widget paints only the useful decision context: a job location or the
+/// pickup and destination pins for a ride. It deliberately does not request or
+/// draw a route until the provider accepts the request. This keeps offer
+/// previews fast and avoids spending a paid route lookup on every candidate
+/// who receives the same offer.
 class IncomingRequestMapPreview extends ConsumerStatefulWidget {
   IncomingRequestMapPreview.route({
     super.key,
@@ -41,8 +40,6 @@ class IncomingRequestMapPreview extends ConsumerStatefulWidget {
   final LatLng? destination;
   final double height;
   final String semanticsLabel;
-
-  bool get showsRoute => destination != null;
 
   /// Backend models use `(0, 0)` as the defensive default for missing
   /// coordinates. Treat that pair as unavailable rather than showing a pin in
@@ -77,10 +74,6 @@ class IncomingRequestMapPreview extends ConsumerStatefulWidget {
 class _IncomingRequestMapPreviewState
     extends ConsumerState<IncomingRequestMapPreview> {
   GoogleMapController? _controller;
-  late List<LatLng> _routePoints;
-  bool _loadingRoadRoute = false;
-  bool _usingApproximateRoute = false;
-  int _routeGeneration = 0;
 
   bool get _hasValidOrigin => IncomingRequestMapPreview.isUsableCoordinate(
         widget.origin.latitude,
@@ -101,7 +94,6 @@ class _IncomingRequestMapPreviewState
   @override
   void initState() {
     super.initState();
-    _resetRoute();
   }
 
   @override
@@ -109,45 +101,8 @@ class _IncomingRequestMapPreviewState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.origin != widget.origin ||
         oldWidget.destination != widget.destination) {
-      _resetRoute();
       unawaited(_fitCamera());
     }
-  }
-
-  void _resetRoute() {
-    _routeGeneration += 1;
-    _routePoints = widget.destination == null
-        ? const <LatLng>[]
-        : <LatLng>[widget.origin, widget.destination!];
-    _loadingRoadRoute = widget.showsRoute && _hasUsableLocation;
-    _usingApproximateRoute = false;
-    if (_loadingRoadRoute) {
-      final generation = _routeGeneration;
-      scheduleMicrotask(() {
-        if (!mounted || generation != _routeGeneration) return;
-        unawaited(_loadRoadRoute(generation));
-      });
-    }
-  }
-
-  Future<void> _loadRoadRoute(int generation) async {
-    final destination = widget.destination;
-    if (destination == null || !_hasUsableLocation) return;
-
-    final route = await ref.read(directionsServiceProvider).fetchRoute(
-          origin: widget.origin,
-          destination: destination,
-        );
-    if (!mounted || generation != _routeGeneration) return;
-
-    setState(() {
-      _routePoints = route.polyline.length >= 2
-          ? route.polyline
-          : <LatLng>[widget.origin, destination];
-      _loadingRoadRoute = false;
-      _usingApproximateRoute = route.isFallback;
-    });
-    await _fitCamera();
   }
 
   Future<void> _fitCamera() async {
@@ -182,7 +137,6 @@ class _IncomingRequestMapPreviewState
 
   @override
   void dispose() {
-    _routeGeneration += 1;
     final controller = _controller;
     _controller = null;
     controller?.dispose();
@@ -215,19 +169,6 @@ class _IncomingRequestMapPreviewState
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         ),
     };
-    final polylines = destination == null
-        ? const <Polyline>{}
-        : <Polyline>{
-            Polyline(
-              polylineId: const PolylineId('request-route'),
-              points: _routePoints,
-              color: _usingApproximateRoute
-                  ? MyShopColors.textSecondary
-                  : MyShopColors.darkSlate,
-              width: 5,
-            ),
-          };
-
     return Semantics(
       container: true,
       image: true,
@@ -251,7 +192,7 @@ class _IncomingRequestMapPreviewState
                 ),
                 onMapCreated: _onMapCreated,
                 markers: markers,
-                polylines: polylines,
+                polylines: const <Polyline>{},
                 mapType: MapType.normal,
                 liteModeEnabled:
                     defaultTargetPlatform == TargetPlatform.android,
@@ -272,14 +213,10 @@ class _IncomingRequestMapPreviewState
               child: _MapStatusPill(
                 icon: destination == null
                     ? Icons.location_on_outlined
-                    : Icons.alt_route,
+                    : Icons.pin_drop_outlined,
                 label: destination == null
                     ? 'Job location'
-                    : _loadingRoadRoute
-                        ? 'Loading road route…'
-                        : _usingApproximateRoute
-                            ? 'Approximate route'
-                            : 'Route preview',
+                    : 'Pickup and destination',
               ),
             ),
           ],

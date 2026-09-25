@@ -846,8 +846,13 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   Set<Marker> _markers = const <Marker>{};
   Set<Polyline> _polylines = const <Polyline>{};
 
-  static const _routeRefreshMeters = 80.0;
-  static const _routeRefreshThrottle = Duration(seconds: 30);
+  // A route lookup is billable. Keep the current road route while the driver
+  // marker moves along it, then use a conservative safety refresh. Target
+  // changes and genuine off-route movement still refresh immediately.
+  static const _routeRefreshMeters = 500.0;
+  static const _routeRefreshThrottle = Duration(minutes: 5);
+  static const _forcedRouteRefreshCooldown = Duration(seconds: 30);
+  static const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
   /// Driver is "off-route" once they're this far from the nearest point
   /// on the route polyline. At that distance the Directions API's snap
@@ -951,13 +956,10 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   void _handleRecenter() {
     final driver = _driver;
     if (driver == null) return;
-    // Restore nav-mode follow: snap back to the driver with the same
-    // 3-D tilted camera the position-fix loop uses, and refresh the
-    // route in case the user drifted off-screen long enough that the
-    // cached polyline is stale.
+    // Restore nav-mode follow. Recentring is a camera action and must not
+    // spend another route lookup; off-route detection owns rerouting.
     _followCamera = true;
     _animateCameraToDriver(driver, _lastBearing);
-    _refreshRouteIfNeeded(driver, force: true);
   }
 
   /// Animate the camera into nav-mode pose (tilted + rotated + zoomed).
@@ -995,9 +997,16 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     final generation = _routeGeneration;
     if (_routeLoading) return;
 
-    if (!force) {
+    final lastAt = _lastRouteFetchAt;
+    if (force) {
+      if (_route != null &&
+          lastAt != null &&
+          DateTime.now().difference(lastAt) < _forcedRouteRefreshCooldown) {
+        return;
+      }
+    } else {
       final last = _lastRouteOrigin;
-      if (last != null && _route != null) {
+      if (last != null && _route != null && !_route!.isFallback) {
         final drift = Geolocator.distanceBetween(
           last.latitude,
           last.longitude,
@@ -1006,9 +1015,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         );
         if (drift < _routeRefreshMeters) return;
       }
-      final lastAt = _lastRouteFetchAt;
+      final refreshThrottle = _route?.isFallback == true
+          ? _fallbackRouteRetryInterval
+          : _routeRefreshThrottle;
       if (lastAt != null &&
-          DateTime.now().difference(lastAt) < _routeRefreshThrottle) {
+          DateTime.now().difference(lastAt) < refreshThrottle) {
         return;
       }
     }
@@ -1020,6 +1031,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: destination,
+            purpose: 'provider_ride_navigation',
           );
       if (!mounted || generation != _routeGeneration) return;
       if (route.isFallback && _route != null && !_route!.isFallback) {
@@ -1113,8 +1125,8 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
 
     // Off-route detection. The driver has wandered far enough from the
     // route polyline that we should recompute from their current GPS.
-    // Bypasses the throttle because waiting 30s with stale directions
-    // means the banner is lying to the driver about what to do next.
+    // Uses the short forced-refresh cooldown so noisy GPS cannot repeatedly
+    // spend route lookups while still correcting a genuine deviation quickly.
     final offBy = progress?.offRouteMeters;
     if (offBy != null && offBy > _offRouteThresholdMeters && !_routeLoading) {
       _voice.reset();
