@@ -48,6 +48,7 @@ class DirectionsService {
   Future<DirectionsRoute> fetchRoute({
     required LatLng origin,
     required LatLng destination,
+    String? purpose,
   }) async {
     final cancelToken = CancelToken();
     final timer = Timer(_requestTimeout, () {
@@ -63,6 +64,7 @@ class DirectionsService {
           'originLongitude': origin.longitude,
           'destinationLatitude': destination.latitude,
           'destinationLongitude': destination.longitude,
+          if (purpose != null) 'purpose': purpose,
         },
         cancelToken: cancelToken,
         options: Options(

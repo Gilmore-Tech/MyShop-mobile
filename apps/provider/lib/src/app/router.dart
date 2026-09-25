@@ -254,28 +254,45 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ProviderOtpVerificationScreen(),
       ),
       // Main shell with bottom navigation
-      ShellRoute(
-        builder: (context, state, child) => _DriverShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/home',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: _ProviderHomeSwitcher()),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            _DriverShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: _ProviderHomeSwitcher()),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/earnings',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: _ProviderEarningsSwitcher()),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/earnings',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: _ProviderEarningsSwitcher()),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/trips',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: _ProviderTripsSwitcher()),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/trips',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: _ProviderTripsSwitcher()),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/account',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: AccountSettingsScreen()),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/account',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: AccountSettingsScreen()),
+              ),
+            ],
           ),
         ],
       ),
@@ -1381,9 +1398,9 @@ class _ProviderEarningsSwitcher extends ConsumerWidget {
 /// Badge counts are driven by [navBadgeProvider]. When a tab is tapped its
 /// badge is cleared automatically — just like any normal notification badge.
 class _DriverShell extends ConsumerStatefulWidget {
-  const _DriverShell({required this.child});
+  const _DriverShell({required this.navigationShell});
 
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
   @override
   ConsumerState<_DriverShell> createState() => _DriverShellState();
@@ -1391,8 +1408,6 @@ class _DriverShell extends ConsumerStatefulWidget {
 
 class _DriverShellState extends ConsumerState<_DriverShell>
     with WidgetsBindingObserver {
-  static const _tabs = ['/home', '/earnings', '/trips', '/account'];
-
   String? _lastVerificationRefreshLocation;
   bool _verificationRefreshQueued = false;
   bool _pendingNotificationReadQueued = false;
@@ -1437,18 +1452,19 @@ class _DriverShellState extends ConsumerState<_DriverShell>
     });
   }
 
-  int _currentIndex(String location) {
-    final index = _tabs.indexWhere((t) => location.startsWith(t));
-    return index >= 0 ? index : 0;
-  }
-
-  void _onTabTap(BuildContext context, String path) {
+  void _onTabTap(BuildContext context, int index, String path) {
     ref.read(navBadgeProvider.notifier).clear(path);
     final location = GoRouterState.of(context).uri.path;
     if (location == path) {
       _scheduleVerificationRefresh(force: true);
     }
-    context.go(path);
+    widget.navigationShell.goBranch(
+      index,
+      // Main-tab taps always return to the clean branch root. This strips a
+      // notification-origin query marker instead of preserving it across tab
+      // switches, while IndexedStack keeps the branch widget itself alive.
+      initialLocation: true,
+    );
   }
 
   void _scheduleVerificationRefresh({String? location, bool force = false}) {
@@ -1524,14 +1540,17 @@ class _DriverShellState extends ConsumerState<_DriverShell>
     final location = uri.path;
     _scheduleVerificationRefresh(location: location);
 
-    final currentIndex = _currentIndex(location);
+    final currentIndex = widget.navigationShell.currentIndex;
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final badges = ref.watch(navBadgeProvider);
 
     final openedFromNotification =
         providerPrimaryShellOpenedFromNotification(uri);
     final shell = Scaffold(
-      body: IncomingRequestListener(child: widget.child),
+      // Indexed branches remain mounted, so switching tabs does not create a
+      // fresh native Google Map (and another billable map load) each time the
+      // provider returns Home.
+      body: IncomingRequestListener(child: widget.navigationShell),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF2FFFFFF),
@@ -1558,28 +1577,28 @@ class _DriverShellState extends ConsumerState<_DriverShell>
                         label: 'Jobs',
                         isActive: currentIndex == 0,
                         badgeCount: badges['/home'],
-                        onTap: () => _onTabTap(context, '/home'),
+                        onTap: () => _onTabTap(context, 0, '/home'),
                       ),
                       _NavTab(
                         icon: Icons.account_balance_wallet_outlined,
                         label: 'Earnings',
                         isActive: currentIndex == 1,
                         badgeCount: badges['/earnings'],
-                        onTap: () => _onTabTap(context, '/earnings'),
+                        onTap: () => _onTabTap(context, 1, '/earnings'),
                       ),
                       _NavTab(
                         icon: Icons.assignment_outlined,
                         label: 'My Jobs',
                         isActive: currentIndex == 2,
                         badgeCount: badges['/trips'],
-                        onTap: () => _onTabTap(context, '/trips'),
+                        onTap: () => _onTabTap(context, 2, '/trips'),
                       ),
                       _NavTab(
                         icon: Icons.account_circle_outlined,
                         label: 'Account',
                         isActive: currentIndex == 3,
                         badgeCount: badges['/account'],
-                        onTap: () => _onTabTap(context, '/account'),
+                        onTap: () => _onTabTap(context, 3, '/account'),
                       ),
                     ]
                   : [
@@ -1588,28 +1607,28 @@ class _DriverShellState extends ConsumerState<_DriverShell>
                         label: 'Home',
                         isActive: currentIndex == 0,
                         badgeCount: badges['/home'],
-                        onTap: () => _onTabTap(context, '/home'),
+                        onTap: () => _onTabTap(context, 0, '/home'),
                       ),
                       _NavTab(
                         icon: Icons.account_balance_wallet_outlined,
                         label: 'Earnings',
                         isActive: currentIndex == 1,
                         badgeCount: badges['/earnings'],
-                        onTap: () => _onTabTap(context, '/earnings'),
+                        onTap: () => _onTabTap(context, 1, '/earnings'),
                       ),
                       _NavTab(
                         icon: Icons.history,
                         label: 'Trips',
                         isActive: currentIndex == 2,
                         badgeCount: badges['/trips'],
-                        onTap: () => _onTabTap(context, '/trips'),
+                        onTap: () => _onTabTap(context, 2, '/trips'),
                       ),
                       _NavTab(
                         icon: Icons.account_circle_outlined,
                         label: 'Account',
                         isActive: currentIndex == 3,
                         badgeCount: badges['/account'],
-                        onTap: () => _onTabTap(context, '/account'),
+                        onTap: () => _onTabTap(context, 3, '/account'),
                       ),
                     ],
             ),

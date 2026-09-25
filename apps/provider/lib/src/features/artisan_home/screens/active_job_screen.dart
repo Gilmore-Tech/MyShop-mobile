@@ -558,8 +558,10 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   Set<Marker> _markers = const <Marker>{};
   Set<Polyline> _polylines = const <Polyline>{};
 
-  static const _routeRefreshMeters = 80.0;
-  static const _routeRefreshThrottle = Duration(seconds: 30);
+  static const _routeRefreshMeters = 500.0;
+  static const _routeRefreshThrottle = Duration(minutes: 5);
+  static const _forcedRouteRefreshCooldown = Duration(seconds: 30);
+  static const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
   /// Driver/artisan is "off-route" once they're this far from the
   /// nearest point on the route polyline — triggers a forced re-fetch
@@ -616,12 +618,10 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   void _handleRecenter() {
     final artisan = _artisan;
     if (artisan == null) return;
-    // Restore nav follow: snap to the artisan with the 2D rotated pose
-    // and re-fetch the route so the polyline reflects their current
-    // position right away.
+    // Restore nav follow. Recentring is cosmetic; off-route detection owns
+    // rerouting so this button never creates a paid route request.
     _followCamera = true;
     _animateCameraToArtisan(artisan, _lastBearing);
-    _refreshRouteIfNeeded(artisan, force: true);
   }
 
   /// Animate the camera into nav-mode pose (top-down + rotated +
@@ -653,9 +653,16 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   }) async {
     if (_routeLoading) return;
 
-    if (!force) {
+    final lastAt = _lastRouteFetchAt;
+    if (force) {
+      if (_route != null &&
+          lastAt != null &&
+          DateTime.now().difference(lastAt) < _forcedRouteRefreshCooldown) {
+        return;
+      }
+    } else {
       final last = _lastRouteOrigin;
-      if (last != null && _route != null) {
+      if (last != null && _route != null && !_route!.isFallback) {
         final drift = Geolocator.distanceBetween(
           last.latitude,
           last.longitude,
@@ -664,9 +671,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         );
         if (drift < _routeRefreshMeters) return;
       }
-      final lastAt = _lastRouteFetchAt;
+      final refreshThrottle = _route?.isFallback == true
+          ? _fallbackRouteRetryInterval
+          : _routeRefreshThrottle;
       if (lastAt != null &&
-          DateTime.now().difference(lastAt) < _routeRefreshThrottle) {
+          DateTime.now().difference(lastAt) < refreshThrottle) {
         return;
       }
     }
@@ -677,6 +686,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: widget.destination,
+            purpose: 'provider_job_navigation',
           );
       if (!mounted) return;
       setState(() {

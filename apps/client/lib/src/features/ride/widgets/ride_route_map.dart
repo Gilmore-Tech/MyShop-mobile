@@ -80,8 +80,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// we don't want to keep yanking it back.
   bool _initialBoundsFit = false;
 
-  /// Decoded polyline for the driver→nextWaypoint route. Re-fetched when
-  /// the driver drifts more than `_routeRefreshMeters` OR the phase flips
+  /// Decoded polyline for the driver→nextWaypoint route. Re-fetched after a
+  /// conservative movement/time safety interval OR when the phase flips
   /// (en-route ↔ in-progress, which changes the target). Cleared while
   /// the fetch is in flight so we never render two routes at once.
   List<LatLng> _routePolyline = const [];
@@ -91,11 +91,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   int _routeGeneration = 0;
   int? _routeFetchGeneration;
 
-  /// Throttle constants — route refreshes still hit a paid backend Google
-  /// Routes call, so avoid refreshing on every GPS bump. 100 m of driver drift
-  /// or 30 s elapsed since the last fetch, whichever comes first.
-  static const _routeRefreshMeters = 100.0;
-  static const _routeRefreshThrottle = Duration(seconds: 30);
+  /// Route refreshes hit a paid backend Google Routes call. The live marker
+  /// remains real-time; the decorative road line gets a five-minute/500 m
+  /// safety refresh and always refreshes when its target changes.
+  static const _routeRefreshMeters = 500.0;
+  static const _routeRefreshThrottle = Duration(minutes: 5);
+  static const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
   @override
   void initState() {
@@ -193,8 +194,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// decoded polyline in state so the map paints it.
   ///
   /// Throttled to avoid hammering Google Directions on every GPS tick —
-  /// skips if the driver hasn't moved 100 m since the last fetch AND
-  /// less than 30 s has passed AND the phase target hasn't flipped.
+  /// skips unless the driver has moved 500 m and five minutes have passed,
+  /// while phase/target changes continue to invalidate immediately.
   Future<void> _syncRoute(LiveDriverPosition pos) async {
     final generation = _routeGeneration;
     final target = _targetForPhase();
@@ -204,11 +205,19 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // Skip refetch when we already have a fresh-enough route.
     final lastFrom = _lastRoutedFrom;
     final phaseChanged = _lastRoutedPhase != widget.phase;
-    if (lastFrom != null && !phaseChanged && _routePolyline.isNotEmpty) {
-      final drift = _haversineMeters(lastFrom, origin);
-      if (drift < _routeRefreshMeters) return;
+    if (!phaseChanged && _routePolyline.isNotEmpty) {
       final lastAt = _lastRouteFetchAt;
+      if (lastFrom == null) {
+        if (lastAt != null &&
+            DateTime.now().difference(lastAt) < _fallbackRouteRetryInterval) {
+          return;
+        }
+      } else {
+        final drift = _haversineMeters(lastFrom, origin);
+        if (drift < _routeRefreshMeters) return;
+      }
       if (lastAt != null &&
+          lastFrom != null &&
           DateTime.now().difference(lastAt) < _routeRefreshThrottle) {
         return;
       }
@@ -221,6 +230,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: target,
+            purpose: 'client_ride_tracking',
           );
       if (!mounted ||
           generation != _routeGeneration ||

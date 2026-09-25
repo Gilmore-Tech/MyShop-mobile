@@ -65,4 +65,30 @@ void main() {
     expect(find.byType(GoogleMap), findsNothing);
     expect(find.textContaining('0.0000'), findsNothing);
   });
+
+  testWidgets('unaccepted ride shows pins without drawing a route',
+      (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: IncomingRequestMapPreview.route(
+              pickupLatitude: 5.6037,
+              pickupLongitude: -0.1870,
+              destinationLatitude: 5.5600,
+              destinationLongitude: -0.2050,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final map = tester.widget<GoogleMap>(find.byType(GoogleMap));
+    expect(map.markers.map((marker) => marker.markerId.value), {
+      'pickup',
+      'destination',
+    });
+    expect(map.polylines, isEmpty);
+    expect(find.text('Pickup and destination'), findsOneWidget);
+  });
 }

@@ -15,7 +15,9 @@ import '../providers/bid_detail_provider.dart';
 // freshly-polled one. Slightly less than the 10 s poll interval so motion
 // finishes before the next update arrives, avoiding jerk.
 const _markerInterpolationDuration = Duration(milliseconds: 8500);
-const _routeRefreshDistanceMeters = 50.0;
+const _routeRefreshDistanceMeters = 250.0;
+const _routeRefreshInterval = Duration(minutes: 2);
+const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
 /// Full-screen tracking map for an artisan who has bid on a job.
 /// The artisan pin interpolates smoothly between polled positions (à la
@@ -107,6 +109,7 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
   LatLng? _lastRoutedFrom;
   LatLng? _lastRoutedTo;
   bool _routeFetchInFlight = false;
+  DateTime? _lastRouteFetchAt;
   bool _routeIsFallback = false;
   String? _routeWarning;
   int? _routeDistanceMeters;
@@ -145,6 +148,7 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
       _routeDurationSeconds = null;
       _routeWarning = null;
       _routeIsFallback = false;
+      _lastRouteFetchAt = null;
     }
   }
 
@@ -206,7 +210,15 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
       destination.latitude,
       destination.longitude,
     );
-    return originDrift >= _routeRefreshDistanceMeters || destinationDrift >= 5;
+    if (destinationDrift >= 5) return true;
+    final lastFetchAt = _lastRouteFetchAt;
+    if (_routeIsFallback) {
+      return lastFetchAt == null ||
+          DateTime.now().difference(lastFetchAt) >= _fallbackRouteRetryInterval;
+    }
+    return originDrift >= _routeRefreshDistanceMeters &&
+        (lastFetchAt == null ||
+            DateTime.now().difference(lastFetchAt) >= _routeRefreshInterval);
   }
 
   void _scheduleRouteFetch(LatLng origin, LatLng destination) {
@@ -225,9 +237,11 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
 
   Future<void> _loadRoadRoute(LatLng origin, LatLng destination) async {
     try {
+      _lastRouteFetchAt = DateTime.now();
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: origin,
             destination: destination,
+            purpose: 'client_job_tracking',
           );
       if (!mounted || route.polyline.length < 2) return;
 
