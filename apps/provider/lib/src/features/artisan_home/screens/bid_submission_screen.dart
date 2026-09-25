@@ -53,6 +53,36 @@ String formatBidDuration(int minutes) {
   ].join(' ');
 }
 
+enum BidDurationUnit { hours, days }
+
+const int maxBidDurationDays = 15;
+const int maxBidDurationHours = 23;
+
+int bidDurationMinutes({
+  required int quantity,
+  required BidDurationUnit unit,
+}) {
+  return switch (unit) {
+    BidDurationUnit.hours => quantity * 60,
+    BidDurationUnit.days => quantity * 24 * 60,
+  };
+}
+
+({BidDurationUnit unit, int quantity}) bidDurationSelectionFromMinutes(
+  int minutes,
+) {
+  if (minutes >= 24 * 60) {
+    return (
+      unit: BidDurationUnit.days,
+      quantity: (minutes / (24 * 60)).ceil().clamp(1, maxBidDurationDays),
+    );
+  }
+  return (
+    unit: BidDurationUnit.hours,
+    quantity: (minutes / 60).ceil().clamp(1, maxBidDurationHours),
+  );
+}
+
 /// Submit bid bottom sheet — shown over the Request Details screen.
 ///
 /// PRD Reference: PRD 5.3 — bid submission with category-minimum validation,
@@ -1084,9 +1114,10 @@ class _NumberField extends StatelessWidget {
   }
 }
 
-/// Read-only duration field. Tapping opens a bottom-sheet with day, hour and
-/// minute wheels. This supports longer artisan work while keeping the exact
-/// server-owned 15-minute to 15-day range visible and typo-proof.
+/// Read-only duration field. The picker asks the artisan whether the work is
+/// measured in hours or days, then lets them choose a quantity. The API still
+/// receives minutes so existing clients and the server contract remain
+/// compatible.
 class _DurationPickerField extends StatelessWidget {
   const _DurationPickerField({
     required this.minutes,
@@ -1095,9 +1126,6 @@ class _DurationPickerField extends StatelessWidget {
 
   final int minutes;
   final ValueChanged<int> onChanged;
-
-  static const _maxDays = 15;
-  static const _minuteStep = 5;
 
   String get _display => formatBidDuration(minutes);
 
@@ -1111,8 +1139,6 @@ class _DurationPickerField extends StatelessWidget {
       ),
       builder: (sheetContext) => _DurationPickerSheet(
         initialMinutes: minutes,
-        maxDays: _maxDays,
-        minuteStep: _minuteStep,
       ),
     );
     if (picked != null) onChanged(picked);
@@ -1167,73 +1193,61 @@ class _DurationPickerField extends StatelessWidget {
 class _DurationPickerSheet extends StatefulWidget {
   const _DurationPickerSheet({
     required this.initialMinutes,
-    required this.maxDays,
-    required this.minuteStep,
   });
 
   final int initialMinutes;
-  final int maxDays;
-  final int minuteStep;
 
   @override
   State<_DurationPickerSheet> createState() => _DurationPickerSheetState();
 }
 
 class _DurationPickerSheetState extends State<_DurationPickerSheet> {
-  late int _days;
-  late int _hours;
-  late int _minuteIndex;
-  late final FixedExtentScrollController _dayCtrl;
-  late final FixedExtentScrollController _hourCtrl;
-  late final FixedExtentScrollController _minuteCtrl;
-
-  List<int> get _minuteValues => List.generate(
-        60 ~/ widget.minuteStep,
-        (i) => i * widget.minuteStep,
-      );
+  late BidDurationUnit _unit;
+  late int _quantity;
+  late FixedExtentScrollController _quantityController;
 
   @override
   void initState() {
     super.initState();
-    final init = widget.initialMinutes.clamp(0, widget.maxDays * 24 * 60);
-    _days = init ~/ (24 * 60);
-    _hours = (init % (24 * 60)) ~/ 60;
-    final remainder = init % 60;
-    _minuteIndex = _minuteValues
-        .indexOf((remainder ~/ widget.minuteStep) * widget.minuteStep);
-    if (_minuteIndex < 0) _minuteIndex = 0;
-    _dayCtrl = FixedExtentScrollController(initialItem: _days);
-    _hourCtrl = FixedExtentScrollController(initialItem: _hours);
-    _minuteCtrl = FixedExtentScrollController(initialItem: _minuteIndex);
+    final selection = bidDurationSelectionFromMinutes(widget.initialMinutes);
+    _unit = selection.unit;
+    _quantity = selection.quantity;
+    _quantityController = FixedExtentScrollController(
+      initialItem: _quantity - 1,
+    );
   }
 
   @override
   void dispose() {
-    _dayCtrl.dispose();
-    _hourCtrl.dispose();
-    _minuteCtrl.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 
-  int get _selectedMinutes =>
-      _days * 24 * 60 + _hours * 60 + _minuteValues[_minuteIndex];
+  int get _maximumQuantity => switch (_unit) {
+        BidDurationUnit.hours => maxBidDurationHours,
+        BidDurationUnit.days => maxBidDurationDays,
+      };
 
-  void _setDays(int days) {
+  int get _selectedMinutes => bidDurationMinutes(
+        quantity: _quantity,
+        unit: _unit,
+      );
+
+  void _setUnit(BidDurationUnit unit) {
+    if (_unit == unit) return;
+    final previousController = _quantityController;
     setState(() {
-      _days = days;
-      if (_days == widget.maxDays) {
-        _hours = 0;
-        _minuteIndex = 0;
-        _hourCtrl.jumpToItem(0);
-        _minuteCtrl.jumpToItem(0);
-      }
+      _unit = unit;
+      _quantity = 1;
+      _quantityController = FixedExtentScrollController();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      previousController.dispose();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final canConfirm =
-        _selectedMinutes >= 15 && _selectedMinutes <= widget.maxDays * 24 * 60;
     return SafeArea(
       top: false,
       child: Padding(
@@ -1265,50 +1279,52 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
             const SizedBox(height: 4),
             Text(
               'How long you expect the job to take. '
-              'Range: 15 minutes to ${widget.maxDays} days.',
+              'Choose hours for shorter work or days for longer work.',
               style: MyShopTypography.body2,
             ),
             const SizedBox(height: MyShopSpacing.md),
+            SegmentedButton<BidDurationUnit>(
+              segments: const [
+                ButtonSegment(
+                  value: BidDurationUnit.hours,
+                  label: Text('Hours'),
+                  icon: Icon(Icons.schedule_outlined),
+                ),
+                ButtonSegment(
+                  value: BidDurationUnit.days,
+                  label: Text('Days'),
+                  icon: Icon(Icons.calendar_today_outlined),
+                ),
+              ],
+              selected: {_unit},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) => _setUnit(selection.single),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            Text(
+              _unit == BidDurationUnit.hours
+                  ? 'Select 1 to $maxBidDurationHours hours.'
+                  : 'Select 1 to $maxBidDurationDays days.',
+              textAlign: TextAlign.center,
+              style: MyShopTypography.body2.copyWith(
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
             SizedBox(
-              height: 180,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _WheelColumn(
-                      controller: _dayCtrl,
-                      itemCount: widget.maxDays + 1,
-                      label: 'd',
-                      formatter: (i) => i.toString(),
-                      onChanged: _setDays,
-                    ),
-                  ),
-                  Expanded(
-                    child: _WheelColumn(
-                      controller: _hourCtrl,
-                      itemCount: 24,
-                      label: 'h',
-                      formatter: (i) => i.toString(),
-                      onChanged: (i) => setState(() => _hours = i),
-                    ),
-                  ),
-                  Expanded(
-                    child: _WheelColumn(
-                      controller: _minuteCtrl,
-                      itemCount: _minuteValues.length,
-                      label: 'm',
-                      formatter: (i) =>
-                          _minuteValues[i].toString().padLeft(2, '0'),
-                      onChanged: (i) => setState(() => _minuteIndex = i),
-                    ),
-                  ),
-                ],
+              height: 176,
+              child: _WheelColumn(
+                key: ValueKey(_unit),
+                controller: _quantityController,
+                itemCount: _maximumQuantity,
+                label: _unit == BidDurationUnit.hours ? ' hour' : ' day',
+                formatter: (i) => '${i + 1}',
+                onChanged: (i) => setState(() => _quantity = i + 1),
               ),
             ),
             const SizedBox(height: MyShopSpacing.md),
             ElevatedButton(
-              onPressed: canConfirm
-                  ? () => Navigator.of(context).pop(_selectedMinutes)
-                  : null,
+              onPressed: () => Navigator.of(context).pop(_selectedMinutes),
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: MyShopColors.textOnPrimary,
@@ -1319,9 +1335,7 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
                 ),
               ),
               child: Text(
-                canConfirm
-                    ? 'Set ${formatBidDuration(_selectedMinutes)}'
-                    : 'Pick 15 minutes to ${widget.maxDays} days',
+                'Set ${formatBidDuration(_selectedMinutes)}',
                 style: MyShopTypography.button.copyWith(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
@@ -1337,6 +1351,7 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
 
 class _WheelColumn extends StatelessWidget {
   const _WheelColumn({
+    super.key,
     required this.controller,
     required this.itemCount,
     required this.label,
@@ -1364,7 +1379,7 @@ class _WheelColumn extends StatelessWidget {
         builder: (context, index) {
           return Center(
             child: Text(
-              '${formatter(index)}$label',
+              '${formatter(index)}$label${index == 0 ? '' : 's'}',
               style: MyShopTypography.h2.copyWith(
                 fontWeight: FontWeight.w800,
                 fontSize: 22,
