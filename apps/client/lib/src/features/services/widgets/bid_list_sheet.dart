@@ -535,7 +535,7 @@ class _BidCard extends ConsumerWidget {
                   color: MyShopColors.textSecondary,
                 ),
               ),
-              if (bid.durationMinutes > 0) ...[
+              if (bid.currentTermsDurationMinutes > 0) ...[
                 SizedBox(width: w * 0.026),
                 Icon(
                   Icons.schedule_rounded,
@@ -544,7 +544,7 @@ class _BidCard extends ConsumerWidget {
                 ),
                 SizedBox(width: w * 0.015),
                 Text(
-                  'Est. ${_durationLabel(bid.durationMinutes)}',
+                  'Est. ${formatArtisanWorkDuration(bid.currentTermsDurationMinutes)}',
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
@@ -612,21 +612,6 @@ String _etaLabel(int minutes) {
   final hours = minutes ~/ 60;
   final rem = minutes % 60;
   return rem == 0 ? 'Arrives in ${hours}h' : 'Arrives in ${hours}h ${rem}m';
-}
-
-String _durationLabel(int minutes) {
-  if (minutes < 60) return '$minutes min';
-  final days = minutes ~/ (24 * 60);
-  final hours = (minutes % (24 * 60)) ~/ 60;
-  final rem = minutes % 60;
-  if (days > 0) {
-    return [
-      '${days}d',
-      if (hours > 0) '${hours}h',
-      if (rem > 0) '${rem}m',
-    ].join(' ');
-  }
-  return rem == 0 ? '${hours}h' : '${hours}h ${rem}m';
 }
 
 // ── Artisan Avatar ────────────────────────────────────────────────────────────

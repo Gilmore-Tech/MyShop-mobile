@@ -96,21 +96,40 @@ class ArtisanBid {
 
   bool get hasRating => reviewCount > 0 && rating > 0;
 
+  /// A client counter is the current proposal until the artisan answers it.
+  /// An artisan counter is immediately selectable and is also persisted into
+  /// the bid itself by the backend. Prefer these latest terms on every bid
+  /// surface so neither party is shown the superseded opening amount.
+  bool get hasActiveNegotiatedTerms =>
+      (negotiationStatus == 'client_counter_pending' ||
+          negotiationStatus == 'artisan_counter') &&
+      negotiationAmountPesewas != null &&
+      negotiationDurationMinutes != null;
+
+  int get currentTermsAmountPesewas =>
+      hasActiveNegotiatedTerms ? negotiationAmountPesewas! : amountPesewas;
+
+  int get currentTermsDurationMinutes =>
+      hasActiveNegotiatedTerms ? negotiationDurationMinutes! : durationMinutes;
+
   /// True when the bid carries a promo price worth showing as a dual
   /// price (original struck through next to the discounted price).
   bool get hasPromo =>
+      !hasActiveNegotiatedTerms &&
       promoPricePesewas != null &&
       promoOriginalPricePesewas != null &&
       promoOriginalPricePesewas! > promoPricePesewas!;
 
   /// The price the client actually pays — promo price when present.
-  int get effectiveAmountPesewas => promoPricePesewas ?? amountPesewas;
+  int get effectiveAmountPesewas => hasActiveNegotiatedTerms
+      ? currentTermsAmountPesewas
+      : (promoPricePesewas ?? amountPesewas);
 
   static String _ghs(int pesewas) =>
       'GHS ${(pesewas / 100).toStringAsFixed(0)}';
 
   /// Display amount e.g. "GHS 240"
-  String get amountDisplay => _ghs(amountPesewas);
+  String get amountDisplay => _ghs(currentTermsAmountPesewas);
 
   /// Discounted price display, e.g. "GHS 210". Falls back to
   /// [amountDisplay] when no promo.

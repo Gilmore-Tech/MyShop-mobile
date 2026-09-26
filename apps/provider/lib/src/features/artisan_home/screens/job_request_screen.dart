@@ -120,85 +120,21 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     required int durationMinutes,
     String? message,
   }) async {
-    final amount = TextEditingController(
-      text: (amountPesewas / 100).toStringAsFixed(2),
+    final proposal = await showArtisanCounterofferDialog(
+      context,
+      initialAmountPesewas: amountPesewas,
+      initialDurationMinutes: durationMinutes,
+      initialMessage: message,
     );
-    final duration = TextEditingController(text: durationMinutes.toString());
-    final note = TextEditingController(text: message ?? '');
-    final proposal =
-        await showDialog<({int amount, int duration, String note})>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Send a counteroffer'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration:
-                    const InputDecoration(labelText: 'Proposed total (GHS)'),
-              ),
-              TextField(
-                controller: duration,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Proposed duration (minutes)',
-                ),
-              ),
-              TextField(
-                controller: note,
-                maxLength: 500,
-                decoration:
-                    const InputDecoration(labelText: 'Message (optional)'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final ghs = double.tryParse(amount.text.trim());
-              final minutes = int.tryParse(duration.text.trim());
-              if (ghs == null ||
-                  ghs <= 0 ||
-                  minutes == null ||
-                  minutes < 15 ||
-                  minutes > 21600) {
-                return;
-              }
-              Navigator.pop(
-                dialogContext,
-                (
-                  amount: (ghs * 100).round(),
-                  duration: minutes,
-                  note: note.text.trim(),
-                ),
-              );
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-    amount.dispose();
-    duration.dispose();
-    note.dispose();
     if (proposal == null || !mounted) return;
     setState(() => _respondingToNegotiation = true);
     try {
       await ref.read(jobServiceProvider).counterBid(
             jobId,
             bidId,
-            amountPesewas: proposal.amount,
-            durationMinutes: proposal.duration,
-            message: proposal.note,
+            amountPesewas: proposal.amountPesewas,
+            durationMinutes: proposal.durationMinutes,
+            message: proposal.message,
           );
       await ref.read(artisanJobsProvider.notifier).load();
     } on ApiException catch (error) {
@@ -653,13 +589,14 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       onCounter: () => _sendArtisanCounter(
                         jobId: effectiveJob.id,
                         bidId: liveEntry!.bidId!,
-                        amountPesewas: liveEntry.bidAmountPesewas ??
-                            liveEntry.negotiationAmountPesewas ??
+                        amountPesewas: liveEntry.negotiationAmountPesewas ??
+                            liveEntry.bidAmountPesewas ??
                             0,
-                        durationMinutes: liveEntry.bidDurationMinutes ??
-                            liveEntry.negotiationDurationMinutes ??
+                        durationMinutes: liveEntry.negotiationDurationMinutes ??
+                            liveEntry.bidDurationMinutes ??
                             15,
-                        message: liveEntry.bidMessage,
+                        message: liveEntry.negotiationMessage ??
+                            liveEntry.bidMessage,
                       ),
                     ),
                     const SizedBox(height: MyShopSpacing.md),
@@ -957,7 +894,7 @@ class _ClientCounterofferCard extends StatelessWidget {
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
-            'GHS ${(amountPesewas / 100).toStringAsFixed(2)} · ${formatBidDuration(durationMinutes)}',
+            'GHS ${(amountPesewas / 100).toStringAsFixed(2)} · ${formatArtisanWorkDuration(durationMinutes)}',
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
             ),
