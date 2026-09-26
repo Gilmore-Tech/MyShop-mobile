@@ -17,6 +17,7 @@ class MyShopCallButton extends StatelessWidget {
     super.key,
     required this.phoneNumber,
     this.onInAppCall,
+    this.resolvePhoneNumber,
     this.size = 44,
     this.color = MyShopColors.success,
     this.semanticLabel = 'Call',
@@ -24,6 +25,12 @@ class MyShopCallButton extends StatelessWidget {
 
   final String? phoneNumber;
   final VoidCallback? onInAppCall;
+
+  /// Optional active-booking contact refresh. This is used when a lean list
+  /// payload mounted the button before the private booking detail (and its
+  /// dialable number) arrived. The call choice waits for that single refresh
+  /// instead of silently jumping straight into an in-app call.
+  final Future<String?> Function()? resolvePhoneNumber;
   final double size;
   final Color color;
   final String semanticLabel;
@@ -31,7 +38,9 @@ class MyShopCallButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final number = normalizeDialablePhoneNumber(phoneNumber);
-    if (number.isEmpty && onInAppCall == null) return const SizedBox.shrink();
+    if (number.isEmpty && onInAppCall == null && resolvePhoneNumber == null) {
+      return const SizedBox.shrink();
+    }
 
     return Semantics(
       button: true,
@@ -57,12 +66,24 @@ class MyShopCallButton extends StatelessWidget {
 
   Future<void> _handleTap(BuildContext context, String number) async {
     final inApp = onInAppCall;
-    if (number.isEmpty) {
+    var resolvedNumber = number;
+    if (resolvedNumber.isEmpty && resolvePhoneNumber != null) {
+      resolvedNumber = normalizeDialablePhoneNumber(
+        await resolvePhoneNumber!.call(),
+      );
+      if (!context.mounted) return;
+    }
+    // A screen that supplied a resolver expects a deliberate channel choice.
+    // If its contact refresh is temporarily unavailable, keep the phone row
+    // visible but disabled instead of unexpectedly launching an in-app call.
+    final shouldOfferChoice = inApp != null &&
+        (resolvedNumber.isNotEmpty || resolvePhoneNumber != null);
+    if (!shouldOfferChoice && resolvedNumber.isEmpty) {
       inApp?.call();
       return;
     }
     if (inApp == null) {
-      await dialPhoneNumber(context, number);
+      await dialPhoneNumber(context, resolvedNumber);
       return;
     }
 
@@ -110,9 +131,12 @@ class MyShopCallButton extends StatelessWidget {
                   iconBg: MyShopColors.darkSlate,
                   iconColor: MyShopColors.textOnDarkSlate,
                   title: 'Phone call',
-                  subtitle: number,
-                  onTap: () =>
-                      Navigator.of(sheetContext).pop(_CallChoice.phone),
+                  subtitle: resolvedNumber.isEmpty
+                      ? 'Phone number unavailable'
+                      : resolvedNumber,
+                  onTap: resolvedNumber.isEmpty
+                      ? null
+                      : () => Navigator.of(sheetContext).pop(_CallChoice.phone),
                 ),
               ],
             ),
@@ -125,7 +149,7 @@ class MyShopCallButton extends StatelessWidget {
       case _CallChoice.inApp:
         inApp();
       case _CallChoice.phone:
-        await dialPhoneNumber(context, number);
+        await dialPhoneNumber(context, resolvedNumber);
       case null:
         break;
     }
@@ -151,53 +175,57 @@ class _CallChoiceTile extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(MyShopSpacing.md),
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: iconBg,
-                shape: BoxShape.circle,
+    final enabled = onTap != null;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(MyShopSpacing.md),
+          decoration: BoxDecoration(
+            color: MyShopColors.surfaceWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: MyShopColors.divider),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
-            const SizedBox(width: MyShopSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: MyShopTypography.h3.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+              const SizedBox(width: MyShopSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: MyShopTypography.h3.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: MyShopTypography.body2),
-                ],
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: MyShopTypography.body2),
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: MyShopColors.textSecondary,
-            ),
-          ],
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: MyShopColors.textSecondary,
+              ),
+            ],
+          ),
         ),
       ),
     );

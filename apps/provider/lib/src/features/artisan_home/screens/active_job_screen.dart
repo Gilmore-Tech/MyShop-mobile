@@ -1461,6 +1461,14 @@ class _BottomPanel extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _JobTimeline(current: job.status),
+          if ((job.agreedDurationMinutes ?? 0) > 0) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            JobAgreedDuration(
+              durationLabel: formatArtisanWorkDuration(
+                job.agreedDurationMinutes!,
+              ),
+            ),
+          ],
           // Show the live "Time on job" pill from the moment the artisan
           // taps "Start job" and through any later phases. Hidden until
           // `startedAt` is populated (either by the local stamp in the
@@ -1498,6 +1506,13 @@ class _BottomPanel extends ConsumerWidget {
               const SizedBox(width: 10),
               MyShopCallButton(
                 phoneNumber: job.clientPhone,
+                resolvePhoneNumber: () async {
+                  final refreshed = await ref
+                      .read(activeJobProvider.notifier)
+                      .refreshFromServer();
+                  return refreshed?.clientPhone ??
+                      ref.read(activeJobProvider).job?.clientPhone;
+                },
                 size: 48,
                 semanticLabel: 'Call client',
                 onInAppCall: () {

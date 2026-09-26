@@ -306,6 +306,12 @@ class _BottomSheet extends StatelessWidget {
             ),
           ),
           SizedBox(height: h * 0.020),
+          if (job.completionLabel != null && job.completionLabel != '—') ...[
+            JobAgreedDuration(
+              durationLabel: job.completionLabel!,
+            ),
+            SizedBox(height: h * 0.020),
+          ],
           if (showEtaPill) ...[
             Container(
               padding: EdgeInsets.symmetric(

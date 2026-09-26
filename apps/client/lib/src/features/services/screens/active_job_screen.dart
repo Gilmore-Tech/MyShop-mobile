@@ -432,30 +432,49 @@ class _StatsRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(w * 0.031),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _StatCell(
-              icon: job.phase == ActiveJobPhase.enRoute
-                  ? Icons.access_time_rounded
-                  : Icons.timer_outlined,
-              label: job.phase.statLabel,
-              value: job.statValue,
-              w: w,
-              h: h,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCell(
+                  icon: job.phase == ActiveJobPhase.enRoute
+                      ? Icons.access_time_rounded
+                      : Icons.timer_outlined,
+                  label: job.phase.statLabel,
+                  value: job.statValue,
+                  w: w,
+                  h: h,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: h * 0.050,
+                color: MyShopColors.divider,
+              ),
+              Expanded(
+                child: _StatCell(
+                  icon: Icons.calendar_today_outlined,
+                  label: 'SCHEDULE',
+                  value: job.scheduleLabel,
+                  w: w,
+                  h: h,
+                  align: CrossAxisAlignment.end,
+                ),
+              ),
+            ],
           ),
-          Container(width: 1, height: h * 0.050, color: MyShopColors.divider),
-          Expanded(
-            child: _StatCell(
-              icon: Icons.calendar_today_outlined,
-              label: 'SCHEDULE',
-              value: job.scheduleLabel,
-              w: w,
-              h: h,
-              align: CrossAxisAlignment.end,
+          if (job.phase == ActiveJobPhase.enRoute &&
+              job.completionLabel != null &&
+              job.completionLabel != '—') ...[
+            SizedBox(height: h * 0.012),
+            const Divider(height: 1, color: MyShopColors.divider),
+            SizedBox(height: h * 0.012),
+            JobAgreedDuration(
+              durationLabel: job.completionLabel!,
+              compact: true,
             ),
-          ),
+          ],
         ],
       ),
     );
