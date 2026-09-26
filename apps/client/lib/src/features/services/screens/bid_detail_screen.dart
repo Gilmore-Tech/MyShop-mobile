@@ -1586,98 +1586,22 @@ class _PendingActionContent extends StatelessWidget {
   });
 
   Future<void> _negotiate(BuildContext context) async {
-    final amount = TextEditingController(
-      text: ((bid.negotiationAmountPesewas ?? bid.breakdown.totalPesewas) / 100)
-          .toStringAsFixed(2),
+    final proposal = await showArtisanCounterofferDialog(
+      context,
+      title: 'Negotiate this bid',
+      initialAmountPesewas:
+          bid.negotiationAmountPesewas ?? bid.breakdown.totalPesewas,
+      initialDurationMinutes:
+          bid.negotiationDurationMinutes ?? bid.durationMinutes,
+      initialMessage: bid.negotiationMessage,
     );
-    final duration = TextEditingController(
-      text: (bid.negotiationDurationMinutes ?? bid.durationMinutes).toString(),
-    );
-    final note = TextEditingController(text: bid.negotiationMessage ?? '');
-    final proposal =
-        await showModalBottomSheet<({int amount, int duration, String note})>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Negotiate this bid',
-                style: Theme.of(sheetContext).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            const Text(
-                'Your counteroffer uses the existing bid deadline. Sending it does not add more time.'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: amount,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration:
-                  const InputDecoration(labelText: 'Proposed total (GHS)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: duration,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                  labelText: 'Proposed duration (minutes)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: note,
-              maxLength: 500,
-              decoration:
-                  const InputDecoration(labelText: 'Message (optional)'),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () {
-                final ghs = double.tryParse(amount.text.trim());
-                final minutes = int.tryParse(duration.text.trim());
-                if (ghs == null ||
-                    ghs <= 0 ||
-                    minutes == null ||
-                    minutes < 15 ||
-                    minutes > 21600) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Enter a valid amount and a duration from 15 minutes to 15 days.')),
-                  );
-                  return;
-                }
-                Navigator.pop(
-                  sheetContext,
-                  (
-                    amount: (ghs * 100).round(),
-                    duration: minutes,
-                    note: note.text.trim(),
-                  ),
-                );
-              },
-              child: const Text('Send counteroffer'),
-            ),
-          ],
-        ),
-      ),
-    );
-    amount.dispose();
-    duration.dispose();
-    note.dispose();
     if (proposal == null || !context.mounted) return;
     final sent = await ref.read(bidDetailActionProvider.notifier).counterBid(
           jobId: bid.jobId,
           bidId: bid.bidId,
-          amountPesewas: proposal.amount,
-          durationMinutes: proposal.duration,
-          message: proposal.note,
+          amountPesewas: proposal.amountPesewas,
+          durationMinutes: proposal.durationMinutes,
+          message: proposal.message,
         );
     if (sent && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
