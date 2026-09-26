@@ -9,6 +9,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
+import '../../../app/router.dart' show jobRequestRouteLocation;
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
 import '../../../core/services/job_offer_receipt_service.dart';
@@ -265,7 +266,10 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
 
   void _viewDetails(BuildContext context) {
     Navigator.of(context).pop();
-    context.push('/job-request', extra: widget.job);
+    context.push(
+      jobRequestRouteLocation(widget.job.id),
+      extra: widget.job,
+    );
   }
 
   Future<void> _skip() async {

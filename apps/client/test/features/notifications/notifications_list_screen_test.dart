@@ -232,6 +232,7 @@ Future<void> _openTrayInbox(WidgetTester tester, GoRouter router) async {
 void main() {
   const jobId = '11111111-1111-4111-8111-111111111111';
   const rideId = '22222222-2222-4222-8222-222222222222';
+  const bidId = '33333333-3333-4333-8333-333333333333';
 
   test('inbox action resolver allows known events and validated ids only', () {
     final supplement = clientInboxActionFor(
@@ -243,6 +244,23 @@ void main() {
     );
     expect(supplement?.label, 'Review supplement');
     expect(supplement?.route, '/services/job/$jobId/supplement');
+
+    final counteroffer = clientInboxActionFor(
+      eventType: 'job.bid_negotiation',
+      payload: const {
+        NotificationPayload.keyJobId: jobId,
+        NotificationPayload.keyBidId: bidId,
+      },
+    );
+    expect(counteroffer?.label, 'Review offer');
+    expect(counteroffer?.route, '/services/job/$jobId/bids/$bidId');
+    expect(
+      clientInboxActionFor(
+        eventType: 'job.bid_negotiation',
+        payload: const {NotificationPayload.keyJobId: jobId},
+      ),
+      isNull,
+    );
 
     final rating = clientInboxActionFor(
       eventType: 'rating.prompt',

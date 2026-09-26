@@ -493,6 +493,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               openBidSheet: extra.openBidSheet,
             );
           }
+          if (jobRequestIdentityFromUri(state.uri) case final identity?) {
+            // GoRouter cannot restore a runtime Job object after Android/iOS
+            // suspends or recreates the app. Keep the authoritative job id in
+            // the URI and let JobRequestScreen hydrate the latest record.
+            return JobRequestScreen(
+              job: Job(
+                id: identity.jobId,
+                status: JobStatus.open,
+                categoryId: '',
+                description: '',
+                latitude: 0,
+                longitude: 0,
+              ),
+              openBidSheet: identity.openBidSheet,
+            );
+          }
           // No valid payload — bounce back to home rather than render a blank.
           return const _InvalidJobRequestScreen();
         },
@@ -691,6 +707,37 @@ RideRequestRouteIdentity? rideRequestIdentityFromUri(Uri uri) {
     rideId: rideId,
     expiresAt:
         rawDeadline == null ? null : DateTime.tryParse(rawDeadline)?.toUtc(),
+  );
+}
+
+typedef JobRequestRouteIdentity = ({
+  String jobId,
+  bool openBidSheet,
+});
+
+/// Builds a durable artisan-request route. The URI identity survives process
+/// restoration even when GoRouter discards the non-serializable [Job] extra.
+String jobRequestRouteLocation(
+  String jobId, {
+  bool openBidSheet = false,
+}) {
+  final trimmedJobId = jobId.trim();
+  return Uri(
+    path: '/job-request',
+    queryParameters: {
+      if (trimmedJobId.isNotEmpty) 'jobId': trimmedJobId,
+      if (openBidSheet) 'openBidSheet': 'true',
+    },
+  ).toString();
+}
+
+@visibleForTesting
+JobRequestRouteIdentity? jobRequestIdentityFromUri(Uri uri) {
+  final jobId = uri.queryParameters['jobId']?.trim();
+  if (jobId == null || jobId.isEmpty) return null;
+  return (
+    jobId: jobId,
+    openBidSheet: uri.queryParameters['openBidSheet'] == 'true',
   );
 }
 

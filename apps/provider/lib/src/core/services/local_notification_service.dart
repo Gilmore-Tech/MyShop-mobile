@@ -40,6 +40,9 @@ class NotificationPayload {
   /// New artisan job request that the provider qualifies for.
   static const typeJobRequest = 'job_request';
 
+  /// Client/artisan counteroffer or negotiation response.
+  static const typeJobBidNegotiation = 'job_bid_negotiation';
+
   /// New ride request that the driver qualifies for.
   static const typeRideRequest = 'ride_request';
 
@@ -625,6 +628,17 @@ ProviderInboxAction? providerInboxActionFor({
     payload,
     const [NotificationPayload.keyJobId, 'job_id'],
   );
+  if (type == NotificationPayload.typeJobBidNegotiation) {
+    return jobId == null
+        ? null
+        : _providerInboxRoute(
+            'Review offer',
+            Uri(
+              path: '/job-request',
+              queryParameters: {'jobId': jobId},
+            ).toString(),
+          );
+  }
   if (type == NotificationPayload.typeJobManuallyAssigned) {
     final mode = (payload['mode'] ?? payload['assignmentMode'])
         ?.toString()

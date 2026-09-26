@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../app/router.dart' show jobRequestRouteLocation;
 import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/job_offer_receipt_service.dart';
@@ -288,7 +289,11 @@ class _ProviderNotificationsScreenState
             );
       if (!context.mounted) return;
       if (openAsManualRequest) {
-        await _openResolvedRoute(context, '/job-request', extra: job);
+        await _openResolvedRoute(
+          context,
+          jobRequestRouteLocation(job.id),
+          extra: job,
+        );
       } else {
         if (!providerInboxJobStatusCanOpenActive(job.status)) {
           final message = switch (job.status) {
