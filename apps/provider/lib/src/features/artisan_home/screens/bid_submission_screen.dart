@@ -13,7 +13,8 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../app/router.dart' show JobRequestRouteExtra;
+import '../../../app/router.dart'
+    show JobRequestRouteExtra, jobRequestRouteLocation;
 import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
@@ -613,7 +614,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     }
 
     rootContext.pushReplacement(
-      '/job-request',
+      jobRequestRouteLocation(widget.job.id),
       extra: JobRequestRouteExtra(
         job: widget.job,
         bidStatus: BidStatus.pending,

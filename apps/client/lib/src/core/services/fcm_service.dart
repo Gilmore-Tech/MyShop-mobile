@@ -274,6 +274,8 @@ String _fallbackTitle(String type) {
       return 'Ride cancelled';
     case NotificationPayload.typeJobBidSubmitted:
       return 'New bid on your job';
+    case NotificationPayload.typeJobBidNegotiation:
+      return 'Bid counteroffer';
     case NotificationPayload.typeJobArtisanEnRoute:
       return 'Artisan is on the way';
     case NotificationPayload.typeJobArtisanArrived:
@@ -331,6 +333,8 @@ String _fallbackBody(String type) {
       return 'Confirm the work to release payment.';
     case NotificationPayload.typeJobBidSubmitted:
       return 'An artisan has placed a bid on your request.';
+    case NotificationPayload.typeJobBidNegotiation:
+      return 'Review the latest price and duration before the bid closes.';
     case NotificationPayload.typeJobNoBidsEscalated:
       return 'No bids yet — our team is finding an artisan for you.';
     case NotificationPayload.typeJobArtisanNoShow:
@@ -1261,6 +1265,19 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // ── Job / artisan timeline ────────────────────────────────────────
       case NotificationPayload.typeJobBidSubmitted:
         if (jobId != null) {
+          await pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
+        } else {
+          await openTrayDestination(router, AppRoutes.activity);
+        }
+        break;
+      case NotificationPayload.typeJobBidNegotiation:
+        final bidId =
+            (payload[NotificationPayload.keyBidId] ?? payload['bid_id'])
+                ?.toString()
+                .trim();
+        if (jobId != null && bidId != null && bidId.isNotEmpty) {
+          await pushDeepLink(router, AppRoutes.jobBidsPath(jobId, bidId));
+        } else if (jobId != null) {
           await pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
         } else {
           await openTrayDestination(router, AppRoutes.activity);

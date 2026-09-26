@@ -4,7 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../../app/router.dart' show JobRequestRouteExtra;
+import '../../../app/router.dart'
+    show JobRequestRouteExtra, jobRequestRouteLocation;
 import '../../../core/providers/nav_badge_provider.dart';
 import '../../artisan_home/providers/active_job_provider.dart';
 import '../../artisan_home/widgets/bid_status_banner.dart';
@@ -353,7 +354,7 @@ class _JobCard extends ConsumerWidget {
         // screen shows the right banner (pending / accepted / not selected).
         final status = _bidStatusFor(entry);
         context.push(
-          '/job-request',
+          jobRequestRouteLocation(job.id),
           extra: JobRequestRouteExtra(
             job: job,
             bidStatus: status,

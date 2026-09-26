@@ -58,6 +58,9 @@ class NotificationPayload {
   /// Backend emits `job.bid_received`.
   static const typeJobBidSubmitted = 'job_bid_received';
 
+  /// Artisan/client counteroffer or negotiation response.
+  static const typeJobBidNegotiation = 'job_bid_negotiation';
+
   /// Artisan is en route to the job location.
   static const typeJobArtisanEnRoute = 'job_artisan_en_route';
 
@@ -510,6 +513,18 @@ ClientInboxAction? clientInboxActionFor({
       'booking_id',
     ],
   );
+  if (type == NotificationPayload.typeJobBidNegotiation) {
+    final bidId = _clientInboxEntityId(
+      payload,
+      const [NotificationPayload.keyBidId, 'bid_id'],
+    );
+    return jobId == null || bidId == null
+        ? null
+        : _clientInboxRoute(
+            'Review offer',
+            '/services/job/$jobId/bids/$bidId',
+          );
+  }
   if (type == NotificationPayload.typeJobSupplementRequested) {
     return jobId == null
         ? null

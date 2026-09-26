@@ -111,6 +111,16 @@ class _InvalidFallbackHarness {
 }
 
 void main() {
+  test('job request URI preserves identity and bid-sheet intent', () {
+    final uri = Uri.parse(
+      jobRequestRouteLocation('job/with spaces', openBidSheet: true),
+    );
+    final identity = jobRequestIdentityFromUri(uri);
+
+    expect(identity?.jobId, 'job/with spaces');
+    expect(identity?.openBidSheet, isTrue);
+  });
+
   test('ride request URI preserves identity and absolute deadline', () {
     final deadline = DateTime.utc(2026, 7, 30, 12, 0, 30);
     final uri = Uri.parse(
