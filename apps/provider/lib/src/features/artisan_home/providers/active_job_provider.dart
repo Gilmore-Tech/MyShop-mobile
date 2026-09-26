@@ -104,10 +104,18 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       state = state.copyWith(
         job: current.copyWith(
           clientName: current.clientName ?? fresh.clientName,
-          clientPhone: current.clientPhone ?? fresh.clientPhone,
+          // The lean job feed can contain a masked/non-dialable contact.
+          // Once the assigned-artisan detail endpoint exposes the active-job
+          // number, always prefer that authoritative value.
+          clientPhone: _preferActivePhone(
+            current.clientPhone,
+            fresh.clientPhone,
+          ),
           clientPhotoUrl: current.clientPhotoUrl ?? fresh.clientPhotoUrl,
           categoryName: current.categoryName ?? fresh.categoryName,
           addressText: current.addressText ?? fresh.addressText,
+          agreedDurationMinutes:
+              fresh.agreedDurationMinutes ?? current.agreedDurationMinutes,
         ),
       );
     } catch (e) {
@@ -225,6 +233,14 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
           // time we hit the server.
           startedAt: fresh.startedAt ?? current.startedAt,
           completedAt: fresh.completedAt ?? current.completedAt,
+          clientName: current.clientName ?? fresh.clientName,
+          clientPhone: _preferActivePhone(
+            current.clientPhone,
+            fresh.clientPhone,
+          ),
+          clientPhotoUrl: current.clientPhotoUrl ?? fresh.clientPhotoUrl,
+          agreedDurationMinutes:
+              fresh.agreedDurationMinutes ?? current.agreedDurationMinutes,
           clientPaymentAcknowledgedAt: fresh.clientPaymentAcknowledgedAt,
           clientPaymentMethod: fresh.clientPaymentMethod,
         ),
@@ -243,6 +259,12 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       );
       return null;
     }
+  }
+
+  String? _preferActivePhone(String? current, String? fresh) {
+    final freshValue = fresh?.trim();
+    if (freshValue != null && freshValue.isNotEmpty) return freshValue;
+    return current;
   }
 
   /// Confirm receipt of a cash payment. Calls

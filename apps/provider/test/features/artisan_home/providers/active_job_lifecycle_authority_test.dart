@@ -128,6 +128,28 @@ void main() {
     );
   });
 
+  test('active detail refresh replaces a masked phone and hydrates duration',
+      () async {
+    final service = _FakeJobService()
+      ..jobResponse = {
+        ..._jobJson('confirmed'),
+        'clientPhone': '+233501234567',
+        'acceptedBid': {'durationMinutes': 3 * 24 * 60},
+      };
+    final container = ProviderContainer(
+      overrides: [jobServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+    final notifier = container.read(activeJobProvider.notifier);
+    notifier.setJob(_job(JobStatus.confirmed, clientPhone: '***4567'));
+
+    await notifier.refreshFromServer();
+
+    final active = container.read(activeJobProvider).job;
+    expect(active?.clientPhone, '+233501234567');
+    expect(active?.agreedDurationMinutes, 4320);
+  });
+
   test('malformed acknowledgement does not invent an artisan job status',
       () async {
     final service = _FakeJobService()

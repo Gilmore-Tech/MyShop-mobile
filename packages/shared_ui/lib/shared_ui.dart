@@ -22,6 +22,7 @@ export 'src/widgets/myshop_error_body.dart';
 export 'src/widgets/myshop_call_button.dart';
 export 'src/widgets/myshop_in_app_call_view.dart';
 export 'src/widgets/job_elapsed_time.dart';
+export 'src/widgets/job_agreed_duration.dart';
 export 'src/widgets/mandatory_app_update_screen.dart';
 export 'src/widgets/myshop_service_notice_banner.dart';
 export 'src/widgets/artisan_counteroffer_dialog.dart';

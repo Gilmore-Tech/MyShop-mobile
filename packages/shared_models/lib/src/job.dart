@@ -72,6 +72,7 @@ class Job {
     this.clientPhone,
     this.clientPhotoUrl,
     this.agreedPricePesewas,
+    this.agreedDurationMinutes,
     this.shareToken,
     this.artisansNotified,
     this.createdAt,
@@ -108,9 +109,19 @@ class Job {
       }
     }
 
+    final clientUserMap = clientMap?['user'] as Map<String, dynamic>?;
     final resolvedClientPhone = json['clientPhone'] as String? ??
+        json['clientPhoneNumber'] as String? ??
         clientMap?['phone'] as String? ??
+        clientMap?['phoneNumber'] as String? ??
+        clientUserMap?['phoneNormalized'] as String? ??
         clientMap?['maskedPhone'] as String?;
+
+    final acceptedBid = (json['acceptedBid'] as Map<String, dynamic>?) ??
+        (json['selectedBid'] as Map<String, dynamic>?);
+    final agreedDurationMinutes =
+        (json['agreedDurationMinutes'] as num?)?.toInt() ??
+            (acceptedBid?['durationMinutes'] as num?)?.toInt();
 
     final resolvedClientPhotoUrl = json['clientPhotoUrl'] as String? ??
         clientMap?['profilePhotoUrl'] as String? ??
@@ -148,6 +159,7 @@ class Job {
       clientPhone: resolvedClientPhone,
       clientPhotoUrl: resolvedClientPhotoUrl,
       agreedPricePesewas: json['agreedPricePesewas'] as int?,
+      agreedDurationMinutes: agreedDurationMinutes,
       shareToken: json['shareToken'] as String?,
       artisansNotified: json['artisansNotified'] as int?,
       createdAt: json['createdAt'] as String?,
@@ -186,6 +198,11 @@ class Job {
   final String? clientPhone;
   final String? clientPhotoUrl;
   final int? agreedPricePesewas;
+
+  /// Duration accepted by the client and artisan for this job, in minutes.
+  /// This is deliberately separate from the live elapsed-time counter: it is
+  /// the plan agreed during bidding, not how long the work has run so far.
+  final int? agreedDurationMinutes;
   final String? shareToken;
   final int? artisansNotified;
   final String? createdAt;
@@ -274,6 +291,7 @@ class Job {
     String? clientPhone,
     String? clientPhotoUrl,
     int? agreedPricePesewas,
+    int? agreedDurationMinutes,
     String? shareToken,
     int? artisansNotified,
     String? createdAt,
@@ -302,6 +320,8 @@ class Job {
       clientPhone: clientPhone ?? this.clientPhone,
       clientPhotoUrl: clientPhotoUrl ?? this.clientPhotoUrl,
       agreedPricePesewas: agreedPricePesewas ?? this.agreedPricePesewas,
+      agreedDurationMinutes:
+          agreedDurationMinutes ?? this.agreedDurationMinutes,
       shareToken: shareToken ?? this.shareToken,
       artisansNotified: artisansNotified ?? this.artisansNotified,
       createdAt: createdAt ?? this.createdAt,
