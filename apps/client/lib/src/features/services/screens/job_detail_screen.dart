@@ -126,6 +126,7 @@ class _JobDetailBody extends StatelessWidget {
           jobId: job.id,
           jobTitle: job.title,
           selectedArtisanId: job.selectedArtisanId,
+          selectedBidId: job.selectedBidId,
           bidCount: job.bids.count,
           assignmentPhase: job.assignment?.phase,
           status: job.status,
@@ -1204,6 +1205,7 @@ class _BottomActionBar extends ConsumerWidget {
   final String jobId;
   final String jobTitle;
   final String? selectedArtisanId;
+  final String? selectedBidId;
   final int bidCount;
   final JobAssignmentPhase? assignmentPhase;
   final JobStatus status;
@@ -1223,6 +1225,7 @@ class _BottomActionBar extends ConsumerWidget {
     required this.jobId,
     required this.jobTitle,
     required this.selectedArtisanId,
+    required this.selectedBidId,
     required this.bidCount,
     required this.assignmentPhase,
     required this.status,
@@ -1240,7 +1243,8 @@ class _BottomActionBar extends ConsumerWidget {
           orElse: () => bidCount,
         );
     final hasSelectedArtisan =
-        selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
+        (selectedArtisanId != null && selectedArtisanId!.isNotEmpty) ||
+            (selectedBidId != null && selectedBidId!.isNotEmpty);
 
     final Widget content;
     if (isPaymentAcknowledgedPending) {
@@ -1274,7 +1278,8 @@ class _BottomActionBar extends ConsumerWidget {
     } else if (hasSelectedArtisan) {
       content = _ViewSelectedBidButton(
         jobId: jobId,
-        selectedArtisanId: selectedArtisanId!,
+        selectedArtisanId: selectedArtisanId,
+        selectedBidId: selectedBidId,
         w: w,
         h: h,
       );
@@ -1903,17 +1908,19 @@ class _AwaitingPaymentReceiptTile extends StatelessWidget {
   }
 }
 
-/// Replacement CTA shown once the client has selected a bid. Finds the
-/// accepted bid by matching [selectedArtisanId] against the bid list and
-/// navigates to that bid's detail screen.
+/// Replacement CTA shown once the client has selected a bid. It uses the
+/// accepted bid ID from job detail when available, then falls back to the
+/// accepted bid status for compatibility with older API responses.
 class _ViewSelectedBidButton extends ConsumerWidget {
   final String jobId;
-  final String selectedArtisanId;
+  final String? selectedArtisanId;
+  final String? selectedBidId;
   final double w;
   final double h;
   const _ViewSelectedBidButton({
     required this.jobId,
     required this.selectedArtisanId,
+    required this.selectedBidId,
     required this.w,
     required this.h,
   });
@@ -1922,23 +1929,14 @@ class _ViewSelectedBidButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bidsAsync = ref.watch(bidsForJobProvider(jobId));
     final bids = bidsAsync.asData?.value ?? const <ArtisanBid>[];
-    ArtisanBid? selected;
-    for (final bid in bids) {
-      if (bid.artisanId == selectedArtisanId) {
-        selected = bid;
-        break;
-      }
-    }
-    final canOpen = selected != null;
+    final resolvedBidId = _resolveSelectedBidId(bids);
 
     return GestureDetector(
-      onTap: canOpen
-          ? () {
-              context.push(AppRoutes.jobBidsPath(jobId, selected!.bidId));
-            }
-          : null,
+      onTap: () => _openSelectedQuote(context, ref, resolvedBidId),
       child: Container(
-        height: h * 0.062,
+        // Two labelled lines need slightly more room than the single-line
+        // action buttons, especially with platform font metrics.
+        height: h * 0.072,
         padding: EdgeInsets.symmetric(horizontal: w * 0.041),
         decoration: BoxDecoration(
           color: MyShopColors.darkSlate,
@@ -1968,7 +1966,7 @@ class _ViewSelectedBidButton extends ConsumerWidget {
                   ),
                   SizedBox(height: h * 0.002),
                   Text(
-                    canOpen ? 'View Selected Quote' : 'Loading selected quote…',
+                    'View Selected Quote',
                     style: TextStyle(
                       fontSize: w * 0.038,
                       fontWeight: FontWeight.w700,
@@ -1987,6 +1985,50 @@ class _ViewSelectedBidButton extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String? _resolveSelectedBidId(List<ArtisanBid> bids) {
+    final exactBidId = selectedBidId?.trim();
+    if (exactBidId != null && exactBidId.isNotEmpty) return exactBidId;
+
+    // Older job-detail responses did not include `acceptedBid.id`. Prefer the
+    // accepted status before comparing artisan IDs because the job endpoint
+    // emits a user ID while the bid endpoint emits an artisan-profile ID.
+    for (final bid in bids) {
+      if (bid.rawStatus == 'accepted') return bid.bidId;
+    }
+    for (final bid in bids) {
+      if (selectedArtisanId != null && bid.artisanId == selectedArtisanId) {
+        return bid.bidId;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openSelectedQuote(
+    BuildContext context,
+    WidgetRef ref,
+    String? currentBidId,
+  ) async {
+    var bidId = currentBidId;
+    if (bidId == null) {
+      try {
+        final bids = await ref.read(bidsForJobProvider(jobId).future);
+        bidId = _resolveSelectedBidId(bids);
+      } catch (_) {
+        // The safe retry message below also covers a temporary list failure.
+      }
+    }
+    if (!context.mounted) return;
+    if (bidId == null || bidId.isEmpty) {
+      MyShopToast.show(
+        context,
+        message: 'The selected quote is still loading. Please try again.',
+        type: ToastType.error,
+      );
+      return;
+    }
+    context.push(AppRoutes.jobBidsPath(jobId, bidId));
   }
 }
 

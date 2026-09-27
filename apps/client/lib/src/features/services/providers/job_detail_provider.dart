@@ -143,6 +143,11 @@ class JobDetail {
   /// is still open / queued. Used to resolve the accepted bid for display.
   final String? selectedArtisanId;
 
+  /// Exact accepted bid ID from the private job-detail response. This is the
+  /// authoritative route key for the selected quote; unlike artisan IDs it
+  /// does not change between user-account and artisan-profile namespaces.
+  final String? selectedBidId;
+
   /// Server-authored state for an admin-directed quote request.
   final JobAssignment? assignment;
 
@@ -173,6 +178,7 @@ class JobDetail {
     required this.bids,
     required this.timeline,
     this.selectedArtisanId,
+    this.selectedBidId,
     this.assignment,
     this.clientPaymentAcknowledgedAt,
     this.clientPaymentMethod,
@@ -192,7 +198,8 @@ class JobDetail {
   /// assignment. After this point the job detail screen swaps "View Bids" for
   /// "View Selected Bid".
   bool get hasSelectedArtisan =>
-      selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
+      (selectedArtisanId != null && selectedArtisanId!.isNotEmpty) ||
+      (selectedBidId != null && selectedBidId!.isNotEmpty);
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -267,6 +274,10 @@ class _JobDetailNotifier
     final assignment = data['assignment'] is Map<String, dynamic>
         ? JobAssignment.fromJson(data['assignment'] as Map<String, dynamic>)
         : null;
+    final acceptedBid = (data['acceptedBid'] as Map<String, dynamic>?) ??
+        (data['selectedBid'] as Map<String, dynamic>?);
+    final selectedBidId =
+        (acceptedBid?['bidId'] ?? acceptedBid?['id']) as String?;
 
     // When the client has acknowledged payment but the job hasn't been
     // marked completed yet (cash flow waiting on the artisan, or a
@@ -312,6 +323,7 @@ class _JobDetailNotifier
       ),
       selectedArtisanId:
           (data['assignedArtisanId'] ?? data['artisanId']) as String?,
+      selectedBidId: selectedBidId,
       assignment: assignment,
       clientPaymentAcknowledgedAt: clientPaymentAck,
       clientPaymentMethod: clientPaymentMethod,
