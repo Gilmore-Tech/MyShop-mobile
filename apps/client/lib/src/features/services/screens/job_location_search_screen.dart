@@ -42,6 +42,7 @@ class _JobLocationSearchScreenState
   List<PlaceSuggestion> _suggestions = [];
   bool _isLoading = false;
   Timer? _debounce;
+  int _searchGeneration = 0;
 
   @override
   void initState() {
@@ -59,7 +60,9 @@ class _JobLocationSearchScreenState
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
-    if (query.trim().isEmpty) {
+    final normalized = query.trim();
+    final generation = ++_searchGeneration;
+    if (normalized.length < 3) {
       setState(() {
         _suggestions = [];
         _isLoading = false;
@@ -67,10 +70,10 @@ class _JobLocationSearchScreenState
       return;
     }
     setState(() => _isLoading = true);
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
+    _debounce = Timer(const Duration(milliseconds: 600), () async {
       final places = ref.read(googlePlacesServiceProvider);
-      final results = await places.autocomplete(query);
-      if (!mounted) return;
+      final results = await places.autocomplete(normalized);
+      if (!mounted || generation != _searchGeneration) return;
       setState(() {
         _suggestions = results;
         _isLoading = false;

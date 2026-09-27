@@ -54,7 +54,7 @@ extension ActiveJobPhaseX on ActiveJobPhase {
   /// Left stat cell label.
   String get statLabel => switch (this) {
         ActiveJobPhase.enRoute => 'ESTIMATED ARRIVAL',
-        _ => 'EST. COMPLETION',
+        _ => 'AGREED DURATION',
       };
 }
 
@@ -180,7 +180,8 @@ class ActiveJobData {
   /// Left stat cell value when enRoute, e.g. "12 mins away".
   final String? etaLabel;
 
-  /// Left stat cell value for all other phases, e.g. "4hrs".
+  /// Duration accepted by both parties during bidding, e.g. "2 days".
+  /// This is the agreed plan, not the live time already spent on the job.
   final String? completionLabel;
 
   /// Right stat cell — always "Today, HH:MM AM/PM".

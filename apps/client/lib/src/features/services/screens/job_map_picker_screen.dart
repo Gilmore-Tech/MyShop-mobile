@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -31,6 +34,9 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
   String _address = '';
   bool _isGeocoding = false;
   bool _centerOnUserOnMapReady = false;
+  Timer? _geocodeDebounce;
+  LatLng? _lastGeocodedCenter;
+  int _geocodeGeneration = 0;
 
   @override
   void initState() {
@@ -52,6 +58,14 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _geocodeDebounce?.cancel();
+    _geocodeGeneration += 1;
+    _mapController?.dispose();
+    super.dispose();
+  }
+
   Future<void> _goToMyLocation() async {
     final position = await ref
         .read(currentLocationServiceProvider)
@@ -62,24 +76,47 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
   }
 
   void _onCameraIdle() {
-    _reverseGeocode(_currentCenter);
+    _scheduleReverseGeocode(_currentCenter);
   }
 
   void _onCameraMove(CameraPosition position) {
     _currentCenter = position.target;
   }
 
-  Future<void> _reverseGeocode(LatLng position) async {
+  void _scheduleReverseGeocode(LatLng position) {
+    _geocodeDebounce?.cancel();
+    final last = _lastGeocodedCenter;
+    if (last != null &&
+        _address.isNotEmpty &&
+        Geolocator.distanceBetween(
+              last.latitude,
+              last.longitude,
+              position.latitude,
+              position.longitude,
+            ) <
+            15) {
+      return;
+    }
+    final generation = ++_geocodeGeneration;
+    _geocodeDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _reverseGeocode(position, generation),
+    );
+  }
+
+  Future<void> _reverseGeocode(LatLng position, int generation) async {
+    if (!mounted || generation != _geocodeGeneration) return;
     setState(() => _isGeocoding = true);
     final places = ref.read(googlePlacesServiceProvider);
     final result = await places.reverseGeocode(
       position.latitude,
       position.longitude,
     );
-    if (!mounted) return;
+    if (!mounted || generation != _geocodeGeneration) return;
     setState(() {
       _address = result ?? 'Unknown location';
       _isGeocoding = false;
+      _lastGeocodedCenter = position;
     });
   }
 

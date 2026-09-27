@@ -64,6 +64,7 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
   bool _isSearching = false;
   bool _isSaving = false;
   String? _errorMessage;
+  int _searchGeneration = 0;
 
   @override
   void dispose() {
@@ -92,7 +93,9 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
-    if (query.trim().isEmpty) {
+    final normalized = query.trim();
+    final generation = ++_searchGeneration;
+    if (normalized.length < 3) {
       setState(() {
         _suggestions = const [];
         _isSearching = false;
@@ -100,10 +103,10 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
       return;
     }
     setState(() => _isSearching = true);
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
+    _debounce = Timer(const Duration(milliseconds: 600), () async {
       final places = ref.read(googlePlacesServiceProvider);
-      final results = await places.autocomplete(query.trim());
-      if (!mounted) return;
+      final results = await places.autocomplete(normalized);
+      if (!mounted || generation != _searchGeneration) return;
       setState(() {
         _suggestions = results;
         _isSearching = false;

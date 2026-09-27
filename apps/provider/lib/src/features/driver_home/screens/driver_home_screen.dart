@@ -45,6 +45,7 @@ class DriverHomeScreen extends ConsumerStatefulWidget {
 class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     with TickerProviderStateMixin {
   final Completer<GoogleMapController> _mapController = Completer();
+  GoogleMapController? _googleMapController;
 
   // Kumasi, Ashanti Region — fallback centre when location is unavailable.
   static const _kumasiCenter = LatLng(6.6885, -1.6244);
@@ -92,6 +93,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       ..removeListener(_onAnimationTick)
       ..dispose();
     _programmaticCameraMoveTimer?.cancel();
+    _googleMapController?.dispose();
     super.dispose();
   }
 
@@ -389,6 +391,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                 zoom: 15,
               ),
               onMapCreated: (controller) {
+                _googleMapController = controller;
                 if (!_mapController.isCompleted) {
                   _mapController.complete(controller);
                 }

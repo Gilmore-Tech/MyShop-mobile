@@ -18,6 +18,7 @@ import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/artisan_home/widgets/bid_status_banner.dart';
+import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
@@ -1097,6 +1098,8 @@ String _fallbackTitle(String type) {
   switch (type) {
     case NotificationPayload.typeJobRequest:
       return 'New job request';
+    case NotificationPayload.typeJobBidNegotiation:
+      return 'Bid counteroffer';
     case NotificationPayload.typeRideRequest:
       return 'New ride request';
     case NotificationPayload.typeBidAccepted:
@@ -1175,6 +1178,8 @@ String _fallbackBody(String type) {
   switch (type) {
     case NotificationPayload.typeJobRequest:
       return 'A client has requested your services.';
+    case NotificationPayload.typeJobBidNegotiation:
+      return 'Review the latest price and duration before the bid closes.';
     case NotificationPayload.typeRideRequest:
       return 'A passenger needs a ride.';
     case NotificationPayload.typeBidAccepted:
@@ -3092,7 +3097,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         expiresAt: deadline?.toIso8601String(),
       );
       await openSystemTrayDestination(
-        '/job-request',
+        jobRequestRouteLocation(jobId, openBidSheet: openBidSheet),
         extra: JobRequestRouteExtra(
           job: stub,
           bidStatus: BidStatus.none,
@@ -3452,6 +3457,20 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         await openJobRequest(openBidSheet: false);
         break;
 
+      case NotificationPayload.typeJobBidNegotiation:
+        // Counteroffers are persisted bid state, not ephemeral incoming
+        // offers. Open the durable job route and refresh My Jobs so the latest
+        // negotiated price/duration is visible as hydration completes.
+        if (jobIdFromPayload() == null) {
+          await openSystemTrayDestination('/trips');
+          break;
+        }
+        if (ref.exists(artisanJobsProvider)) {
+          unawaited(ref.read(artisanJobsProvider.notifier).silentReload());
+        }
+        await openJobRequest(openBidSheet: false);
+        break;
+
       case NotificationPayload.typeRideRequest:
         // Backend may send the ride id under `rideId` (camel) or `ride_id`
         // (snake) depending on which emitter wrote the push.
@@ -3599,7 +3618,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         try {
           final data = await ref.read(jobServiceProvider).getJob(jobId);
           final job = Job.fromJson(data);
-          await openSystemTrayDestination('/job-request', extra: job);
+          await openSystemTrayDestination(
+            jobRequestRouteLocation(job.id),
+            extra: job,
+          );
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');
@@ -3631,7 +3653,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             break;
           }
           final job = Job.fromJson(data);
-          await openSystemTrayDestination('/job-request', extra: job);
+          await openSystemTrayDestination(
+            jobRequestRouteLocation(job.id),
+            extra: job,
+          );
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');

@@ -541,15 +541,15 @@ BidDetail _toBidDetail(ArtisanBid bid, {required JobDetail job}) {
     // Until the API splits it out, surface the whole amount as the service fee
     // and zero-out materials + VAT so the breakdown UI collapses gracefully.
     breakdown: BidBreakdown(
-      serviceFeePesewas: bid.amountPesewas,
+      serviceFeePesewas: bid.effectiveAmountPesewas,
       materialsFeePesewas: 0,
       materialItems: const [],
       vatRate: 0.0,
     ),
-    durationLabel: bid.durationMinutes > 0
-        ? _formatDuration(bid.durationMinutes)
+    durationLabel: bid.currentTermsDurationMinutes > 0
+        ? formatArtisanWorkDuration(bid.currentTermsDurationMinutes)
         : 'Not specified',
-    durationMinutes: bid.durationMinutes,
+    durationMinutes: bid.currentTermsDurationMinutes,
     negotiationStatus: bid.negotiationStatus,
     negotiationAmountPesewas: bid.negotiationAmountPesewas,
     negotiationDurationMinutes: bid.negotiationDurationMinutes,
@@ -564,19 +564,4 @@ BidDetail _toBidDetail(ArtisanBid bid, {required JobDetail job}) {
     jobLatitude: job.hasCoordinates ? job.latitude : null,
     jobLongitude: job.hasCoordinates ? job.longitude : null,
   );
-}
-
-String _formatDuration(int minutes) {
-  if (minutes < 60) return '$minutes min';
-  final days = minutes ~/ (24 * 60);
-  final h = (minutes % (24 * 60)) ~/ 60;
-  final m = minutes % 60;
-  if (days > 0) {
-    return [
-      '${days}d',
-      if (h > 0) '${h}h',
-      if (m > 0) '${m}m',
-    ].join(' ');
-  }
-  return m == 0 ? '${h}h' : '${h}h ${m}m';
 }

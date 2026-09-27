@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/constants/mapbox_config.dart';
@@ -47,6 +48,9 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   String _address = '';
   bool _isGeocoding = false;
   bool _centerOnUserOnMapReady = false;
+  Timer? _geocodeDebounce;
+  LatLng? _lastGeocodedCenter;
+  int _geocodeGeneration = 0;
 
   bool get _isPickup => widget.field == RideSearchField.pickup;
   bool get _isStopEdit => widget.stopId != null;
@@ -62,7 +66,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       _address = existing.address;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _reverseGeocode(_currentCenter);
+        _scheduleReverseGeocode(_currentCenter, immediate: true);
       });
       return;
     }
@@ -77,8 +81,16 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _centerOnUserOnMapReady) return;
-      _reverseGeocode(_currentCenter);
+      _scheduleReverseGeocode(_currentCenter, immediate: true);
     });
+  }
+
+  @override
+  void dispose() {
+    _geocodeDebounce?.cancel();
+    _geocodeGeneration += 1;
+    _mapController?.dispose();
+    super.dispose();
   }
 
   Future<void> _goToMyLocation() async {
@@ -87,7 +99,9 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
         .ensure(forceRefresh: true);
     if (!mounted) return;
     if (position == null) {
-      if (_address.isEmpty) await _reverseGeocode(_currentCenter);
+      if (_address.isEmpty) {
+        _scheduleReverseGeocode(_currentCenter, immediate: true);
+      }
       return;
     }
     final target = LatLng(position.latitude, position.longitude);
@@ -95,7 +109,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     _currentCenter = target;
     await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
     if (!mounted) return;
-    await _reverseGeocode(target);
+    _scheduleReverseGeocode(target, immediate: true);
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -103,21 +117,47 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   }
 
   void _onCameraIdle() {
-    _reverseGeocode(_currentCenter);
+    _scheduleReverseGeocode(_currentCenter);
   }
 
-  Future<void> _reverseGeocode(LatLng position) async {
+  void _scheduleReverseGeocode(
+    LatLng position, {
+    bool immediate = false,
+  }) {
+    _geocodeDebounce?.cancel();
+    final last = _lastGeocodedCenter;
+    if (last != null &&
+        _address.isNotEmpty &&
+        Geolocator.distanceBetween(
+              last.latitude,
+              last.longitude,
+              position.latitude,
+              position.longitude,
+            ) <
+            15) {
+      return;
+    }
+    final generation = ++_geocodeGeneration;
+    _geocodeDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 600),
+      () => _reverseGeocode(position, generation),
+    );
+  }
+
+  Future<void> _reverseGeocode(LatLng position, int generation) async {
+    if (!mounted || generation != _geocodeGeneration) return;
     setState(() => _isGeocoding = true);
     final places = ref.read(googlePlacesServiceProvider);
     final result = await places.reverseGeocodePlace(
       position.latitude,
       position.longitude,
     );
-    if (!mounted) return;
+    if (!mounted || generation != _geocodeGeneration) return;
     setState(() {
       _name = result?.name ?? 'Selected location';
       _address = result?.address ?? 'Unknown location';
       _isGeocoding = false;
+      _lastGeocodedCenter = position;
     });
   }
 
@@ -165,7 +205,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       unawaited(_mapController?.animateCamera(
         CameraUpdate.newLatLngZoom(target, 16),
       ));
-      unawaited(_reverseGeocode(target));
+      _scheduleReverseGeocode(target, immediate: true);
     });
 
     final topPad = MediaQuery.paddingOf(context).top;

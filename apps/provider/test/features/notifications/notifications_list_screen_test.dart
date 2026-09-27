@@ -207,6 +207,23 @@ void main() {
     resetJobOfferReceiptMemoryForTesting();
   });
 
+  test('counteroffer inbox action retains a durable validated job id', () {
+    final action = providerInboxActionFor(
+      eventType: 'job.bid_negotiation',
+      payload: const {NotificationPayload.keyJobId: _jobId},
+    );
+
+    expect(action?.label, 'Review offer');
+    expect(action?.route, '/job-request?jobId=$_jobId');
+    expect(
+      providerInboxActionFor(
+        eventType: 'job.bid_negotiation',
+        payload: const {NotificationPayload.keyJobId: 'not-a-uuid'},
+      ),
+      isNull,
+    );
+  });
+
   test('historical CTA admits only genuinely active job statuses', () {
     for (final status in const [
       JobStatus.confirmed,

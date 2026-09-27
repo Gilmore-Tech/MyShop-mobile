@@ -470,6 +470,7 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
       final route = await ref.read(directionsServiceProvider).fetchRoute(
             origin: LatLng(widget.pickupLat, widget.pickupLng),
             destination: LatLng(widget.dropoffLat, widget.dropoffLng),
+            purpose: 'provider_trip_history',
           );
       // Diagnostic — tells us at a glance whether Directions returned a
       // real road route (many points, isFallback=false) or the straight-
