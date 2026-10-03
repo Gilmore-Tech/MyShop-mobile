@@ -11,8 +11,8 @@ import 'package:intl/intl.dart';
 import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
 import '../../../core/services/google_places_service.dart';
-import '../../../core/utils/ride_service_area.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../notifications/widgets/client_notification_bell.dart';
 import '../../ride/providers/ride_search_provider.dart';
@@ -35,13 +35,14 @@ class HomeScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
     final currentPosition = ref.watch(currentDevicePositionProvider);
+    final operationalRegion = ref.watch(currentOperationalRegionProvider);
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Current location';
-    final showRideAreaBanner = currentPosition != null &&
-        isLikelyOutsideRideServiceArea(
-          latitude: currentPosition.latitude,
-          longitude: currentPosition.longitude,
-        );
+    final hasLocation = currentPosition != null;
+    final region = operationalRegion.value;
+    final regionResolved = !hasLocation || operationalRegion.hasValue;
+    final outsideOperationalArea =
+        hasLocation && operationalRegion.hasValue && region == null;
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -56,23 +57,44 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(height: h * 0.03),
-                    if (showRideAreaBanner) ...[
+                    if (outsideOperationalArea) ...[
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: _RideServiceAreaBanner(),
+                        child: _OperationalAreaBanner(),
+                      ),
+                      SizedBox(height: h * 0.02),
+                    ] else if (operationalRegion.hasError && hasLocation) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _RegionCheckFailedBanner(
+                          onRetry: () => ref.invalidate(
+                            currentOperationalRegionProvider,
+                          ),
+                        ),
                       ),
                       SizedBox(height: h * 0.02),
                     ] else
                       SizedBox(height: h * 0.02),
-                    LocationSearchCard(
-                      pickupLabel: pickupName,
-                      onPickupTap: () =>
-                          context.push(AppRoutes.rideSearchPath('pickup')),
-                      onPickupPinTap: () =>
-                          context.push(AppRoutes.ridePinPickerPath('pickup')),
-                    ),
+                    if (!hasLocation || region?.ridesEnabled == true)
+                      LocationSearchCard(
+                        pickupLabel: pickupName,
+                        onPickupTap: () =>
+                            context.push(AppRoutes.rideSearchPath('pickup')),
+                        onPickupPinTap: () =>
+                            context.push(AppRoutes.ridePinPickerPath('pickup')),
+                      ),
                     SizedBox(height: h * 0.05),
-                    _ServiceCardsRow(),
+                    if (!regionResolved && hasLocation)
+                      const _ServiceAvailabilityLoading()
+                    else if (operationalRegion.hasError && hasLocation)
+                      const SizedBox.shrink()
+                    else
+                      _ServiceCardsRow(
+                        ridesEnabled:
+                            !hasLocation || region?.ridesEnabled == true,
+                        jobsEnabled:
+                            !hasLocation || region?.jobsEnabled == true,
+                      ),
                     SizedBox(height: h * 0.028),
                     // Promos live right under the booking cards, above recent
                     // activity. The whole section (header included) renders
@@ -95,8 +117,8 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _RideServiceAreaBanner extends StatelessWidget {
-  const _RideServiceAreaBanner();
+class _OperationalAreaBanner extends StatelessWidget {
+  const _OperationalAreaBanner();
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +147,7 @@ class _RideServiceAreaBanner extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Rides may not be available here yet',
+                  'MyShop is not available here yet',
                   style: TextStyle(
                     color: MyShopColors.textPrimary,
                     fontSize: 13,
@@ -134,9 +156,8 @@ class _RideServiceAreaBanner extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Ride booking currently operates in $rideServiceAreaName. '
-                  'If your pickup or destination is outside the service area, '
-                  'fare estimates will not be available.',
+                  'Move into an active MyShop operational area to request a '
+                  'ride or artisan service.',
                   style: TextStyle(
                     color: MyShopColors.textSecondary,
                     fontSize: 12,
@@ -146,6 +167,41 @@ class _RideServiceAreaBanner extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegionCheckFailedBanner extends StatelessWidget {
+  const _RegionCheckFailedBanner({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: MyShopColors.warningLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MyShopColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'We could not confirm the services available at your current '
+              'location. Check your connection and try again.',
+              style: TextStyle(
+                color: MyShopColors.textPrimary,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );
@@ -253,6 +309,14 @@ class _Avatar extends StatelessWidget {
 // ── Service cards ─────────────────────────────────────────────────────────────
 
 class _ServiceCardsRow extends ConsumerStatefulWidget {
+  const _ServiceCardsRow({
+    required this.ridesEnabled,
+    required this.jobsEnabled,
+  });
+
+  final bool ridesEnabled;
+  final bool jobsEnabled;
+
   @override
   ConsumerState<_ServiceCardsRow> createState() => _ServiceCardsRowState();
 }
@@ -270,19 +334,22 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
         children: [
-          Expanded(
-            child: ServiceCard(
-              type: ServiceCardType.ride,
-              onTap: _openRide,
+          if (widget.ridesEnabled)
+            Expanded(
+              child: ServiceCard(
+                type: ServiceCardType.ride,
+                onTap: _openRide,
+              ),
             ),
-          ),
-          SizedBox(width: w * 0.031),
-          Expanded(
-            child: ServiceCard(
-              type: ServiceCardType.artisan,
-              onTap: () => context.go(AppRoutes.services),
+          if (widget.ridesEnabled && widget.jobsEnabled)
+            SizedBox(width: w * 0.031),
+          if (widget.jobsEnabled)
+            Expanded(
+              child: ServiceCard(
+                type: ServiceCardType.artisan,
+                onTap: () => context.go(AppRoutes.services),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -428,6 +495,28 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
         position.accuracy <= _maximumAutomaticPickupAccuracyMetres &&
         !age.isNegative &&
         age <= _maximumAutomaticPickupAge;
+  }
+}
+
+class _ServiceAvailabilityLoading extends StatelessWidget {
+  const _ServiceAvailabilityLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: width * 0.041),
+      child: Container(
+        key: const Key('service-availability-loading'),
+        height: 180,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(width * 0.031),
+        ),
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(),
+      ),
+    );
   }
 }
 

@@ -88,6 +88,7 @@ class RideDestinationChangePreview {
     this.tokenExpiresAt,
     this.promo,
     this.toll,
+    this.remoteAreaAdjustment,
   });
 
   factory RideDestinationChangePreview.fromJson(Map<String, dynamic> json) {
@@ -143,6 +144,8 @@ class RideDestinationChangePreview {
       ),
       promo: _promoFrom(json, pricing),
       toll: RideToll.fromRideJson({...pricing, ...json}),
+      remoteAreaAdjustment:
+          RideRemoteAreaAdjustment.fromRideJson({...pricing, ...json}),
     );
 
     final suppliedDelta = _optionalInt(
@@ -166,6 +169,7 @@ class RideDestinationChangePreview {
   final int projectedDurationSeconds;
   final RideDestinationPromo? promo;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   int get fareDeltaPesewas => newFarePesewas - oldFarePesewas;
   double get projectedDistanceKm => projectedDistanceMeters / 1000;
@@ -191,6 +195,7 @@ class RideRouteUpdate {
     this.projectedDurationSeconds,
     this.promo,
     this.toll,
+    this.remoteAreaAdjustment,
     this.changedAt,
   });
 
@@ -243,6 +248,8 @@ class RideRouteUpdate {
       ),
       promo: _promoFrom(json, pricing),
       toll: RideToll.fromRideJson({...pricing, ...json}),
+      remoteAreaAdjustment:
+          RideRemoteAreaAdjustment.fromRideJson({...pricing, ...json}),
       changedAt: _optionalDate(json['changedAt'] ?? json['updatedAt']),
     );
   }
@@ -257,6 +264,7 @@ class RideRouteUpdate {
   final int? projectedDurationSeconds;
   final RideDestinationPromo? promo;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
   final DateTime? changedAt;
 
   bool get hasRouteProjection => destination != null;

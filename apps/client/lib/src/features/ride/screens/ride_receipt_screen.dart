@@ -464,6 +464,14 @@ class _RideBreakdownSection extends StatelessWidget {
               w: w,
             ),
           ],
+          if ((receipt.remoteAreaAdjustment?.amountPesewas ?? 0) > 0) ...[
+            SizedBox(height: h * 0.012),
+            _LineItem(
+              label: receipt.remoteAreaAdjustment!.label,
+              amount: receipt.remoteAreaAdjustmentDisplay,
+              w: w,
+            ),
+          ],
           if (receipt.promoDiscountPesewas > 0) ...[
             SizedBox(height: h * 0.012),
             _LineItem(

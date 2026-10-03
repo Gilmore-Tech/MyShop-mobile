@@ -81,6 +81,7 @@ class FareRecalculation {
   final double? projectedDistanceKm;
   final models.RideDestinationPromo? promo;
   final models.RideToll? toll;
+  final models.RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   const FareRecalculation({
     required this.originalFarePesewas,
@@ -93,6 +94,7 @@ class FareRecalculation {
     this.projectedDistanceKm,
     this.promo,
     this.toll,
+    this.remoteAreaAdjustment,
   });
 
   factory FareRecalculation.fromDestinationPreview(
@@ -109,6 +111,7 @@ class FareRecalculation {
       projectedDistanceKm: preview.projectedDistanceKm,
       promo: preview.promo,
       toll: preview.toll,
+      remoteAreaAdjustment: preview.remoteAreaAdjustment,
     );
   }
 

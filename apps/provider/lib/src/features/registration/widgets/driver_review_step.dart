@@ -27,7 +27,8 @@ class DriverReviewStep extends ConsumerWidget {
 
     // Resolve ride-category slugs to display names (falls back to the slug
     // until the options list loads).
-    final rideCatOptions = ref.watch(rideCategoryOptionsProvider).valueOrNull;
+    final rideCatOptions =
+        ref.watch(rideCategoryOptionsProvider(draft.regionId)).valueOrNull;
     final rideCatNames = {
       for (final o in rideCatOptions ?? const []) o.slug: o.name,
     };
@@ -115,7 +116,7 @@ class DriverReviewStep extends ConsumerWidget {
           ReviewSectionCard(
             icon: Icons.local_taxi_outlined,
             title: 'Ride categories',
-            onEdit: () => onEditStep(2),
+            onEdit: () => onEditStep(3),
             rows: [
               ReviewRow(label: 'Categories', value: rideCategories),
             ],
@@ -124,7 +125,7 @@ class DriverReviewStep extends ConsumerWidget {
           ReviewSectionCard(
             icon: Icons.location_on_outlined,
             title: 'Your region',
-            onEdit: () => onEditStep(3),
+            onEdit: () => onEditStep(2),
             rows: [
               ReviewRow(label: 'Region', value: regionName),
             ],

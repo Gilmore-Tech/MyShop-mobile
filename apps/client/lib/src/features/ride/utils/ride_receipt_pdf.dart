@@ -223,6 +223,8 @@ pw.Widget _breakdownTable(RideReceiptData r) {
     ('Booking Fee', r.bookingFeeDisplay),
     ('Taxes & Levies', r.taxesDisplay),
     if ((r.toll?.amountPesewas ?? 0) > 0) (r.toll!.label, r.tollDisplay),
+    if ((r.remoteAreaAdjustment?.amountPesewas ?? 0) > 0)
+      (r.remoteAreaAdjustment!.label, r.remoteAreaAdjustmentDisplay),
     if (r.promoDiscountPesewas > 0)
       ('Promotional Discount', r.promoDiscountDisplay),
     if (r.loyaltyDiscountPesewas > 0)

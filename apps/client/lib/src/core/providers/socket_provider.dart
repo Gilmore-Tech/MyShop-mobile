@@ -273,6 +273,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         promoDiscountPesewas: fare.promoDiscountPesewas,
         loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
         toll: fare.toll,
+        remoteAreaAdjustment: fare.remoteAreaAdjustment,
         vehicleShortName: driver['vehicleShortName'] as String? ?? '',
         confirmedFarePesewas: fare.totalFarePesewas,
         paymentMethod: data['paymentMethod'] as String? ?? 'Cash',

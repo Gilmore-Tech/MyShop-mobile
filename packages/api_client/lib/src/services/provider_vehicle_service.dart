@@ -325,7 +325,7 @@ class ProviderVehicleService {
 
   Future<List<ProviderRideCategoryChoice>> listActiveRideCategories() async {
     try {
-      final response = await _dio.get('/ride-categories');
+      final response = await _dio.get('/providers/me/ride-categories');
       final data = _unwrap(response);
       if (data is! List) {
         throw const FormatException('Invalid active ride category response');

@@ -933,6 +933,9 @@ class _FareBreakdownCard extends StatelessWidget {
     final showBookingFee = hasSnapshot && s.bookingFeePesewas > 0;
     final showSurge = surge > 1.0;
     final toll = hasSnapshot ? s.toll ?? trip.toll : trip.toll;
+    final remoteAreaAdjustment = hasSnapshot
+        ? s.remoteAreaAdjustment ?? trip.remoteAreaAdjustment
+        : trip.remoteAreaAdjustment;
 
     // Full trip fare and client payment are different provider facts. The
     // detail fetch may refresh each independently, but totalPaid must never
@@ -1075,6 +1078,13 @@ class _FareBreakdownCard extends StatelessWidget {
                   _FareLine(
                     label: '${toll!.label} (100% to you)',
                     amount: _ghs(toll.amountPesewas),
+                  ),
+                ],
+                if ((remoteAreaAdjustment?.amountPesewas ?? 0) > 0) ...[
+                  const SizedBox(height: 16),
+                  _FareLine(
+                    label: '${remoteAreaAdjustment!.label} (100% to you)',
+                    amount: _ghs(remoteAreaAdjustment.amountPesewas),
                   ),
                 ],
 
@@ -1482,6 +1492,7 @@ class _RideSnapshot {
     this.financialsFinal,
     this.commissionIsEffective = false,
     this.toll,
+    this.remoteAreaAdjustment,
     required this.surgeMultiplier,
     this.promoApplied = false,
   });
@@ -1526,6 +1537,7 @@ class _RideSnapshot {
       financialsFinal: ride.financialsFinal,
       commissionIsEffective: ride.effectiveCommissionPesewas != null,
       toll: ride.toll,
+      remoteAreaAdjustment: ride.remoteAreaAdjustment,
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
       promoApplied: ride.promoApplied,
     );
@@ -1548,6 +1560,7 @@ class _RideSnapshot {
   final bool? financialsFinal;
   final bool commissionIsEffective;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
   final double surgeMultiplier;
 
   /// True when a promo discount was applied to the rider's price. The
@@ -1593,6 +1606,7 @@ class TripDetailData {
     this.financialsFinal,
     this.commissionIsEffective = false,
     this.toll,
+    this.remoteAreaAdjustment,
   });
 
   final String tripId;
@@ -1627,4 +1641,5 @@ class TripDetailData {
   final bool? financialsFinal;
   final bool commissionIsEffective;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 }

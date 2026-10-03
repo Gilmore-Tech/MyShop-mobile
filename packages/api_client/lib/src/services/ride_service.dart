@@ -125,9 +125,16 @@ class RideService {
   /// GET /ride-categories — Public list of active ride categories (tiers).
   /// Used by the booking sheet and driver signup. Returns an empty list if the
   /// endpoint is unavailable so older backends degrade gracefully.
-  Future<List<Map<String, dynamic>>> listRideCategories() async {
+  Future<List<Map<String, dynamic>>> listRideCategories({
+    String? regionId,
+  }) async {
     try {
-      final response = await _dio.get('/ride-categories');
+      final response = await _dio.get(
+        '/ride-categories',
+        queryParameters: {
+          if (regionId != null && regionId.isNotEmpty) 'regionId': regionId,
+        },
+      );
       final data = _unwrap(response);
       if (data is List) return data.cast<Map<String, dynamic>>();
       return [];

@@ -224,7 +224,14 @@ class _ProviderPhoneInputScreenState
     } else {
       final role = signUpRole ?? ProviderType.driver;
       final regions = ref.read(regionsProvider).valueOrNull;
-      final regionSelectionRequired = regions != null && regions.length > 1;
+      final roleRegions = regions == null
+          ? null
+          : regionsForProviderRole(
+              regions,
+              driver: role == ProviderType.driver,
+            );
+      final regionSelectionRequired =
+          roleRegions != null && roleRegions.length > 1;
       final draftIssue = role == ProviderType.driver
           ? firstDriverRegistrationIssue(
               ref.read(driverRegistrationProvider),

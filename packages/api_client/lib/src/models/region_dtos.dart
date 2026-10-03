@@ -12,6 +12,9 @@ class Region {
     required this.id,
     required this.name,
     required this.code,
+    this.ridesEnabled = true,
+    this.jobsEnabled = true,
+    this.serviceAreaName,
   });
 
   factory Region.fromJson(Map<String, dynamic> json) {
@@ -19,10 +22,16 @@ class Region {
       id: json['id'] as String,
       name: json['name'] as String,
       code: json['code'] as String? ?? '',
+      ridesEnabled: json['ridesEnabled'] as bool? ?? true,
+      jobsEnabled: json['jobsEnabled'] as bool? ?? true,
+      serviceAreaName: json['serviceAreaName'] as String?,
     );
   }
 
   final String id; // UUID — sent as regionId on register
   final String name; // display label for the picker (e.g. "Ashanti")
   final String code; // stable slug (e.g. "ashanti")
+  final bool ridesEnabled;
+  final bool jobsEnabled;
+  final String? serviceAreaName;
 }

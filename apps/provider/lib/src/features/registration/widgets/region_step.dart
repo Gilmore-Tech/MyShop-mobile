@@ -15,12 +15,19 @@ class DriverRegionStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(driverRegistrationProvider);
     return _RegionStep(
+      driver: true,
       selectedRegionId: draft.regionId,
       onSelect: (id) {
         final latest = ref.read(driverRegistrationProvider);
-        ref
-            .read(driverRegistrationProvider.notifier)
-            .update(latest.copyWith(regionId: id));
+        ref.read(driverRegistrationProvider.notifier).update(
+              latest.copyWith(
+                regionId: id,
+                // Category availability is region-owned. Changing the home
+                // region must not carry selections from the prior region.
+                rideCategories:
+                    latest.regionId == id ? latest.rideCategories : const [],
+              ),
+            );
       },
     );
   }
@@ -35,6 +42,7 @@ class ArtisanRegionStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(artisanRegistrationProvider);
     return _RegionStep(
+      driver: false,
       selectedRegionId: draft.regionId,
       onSelect: (id) {
         final latest = ref.read(artisanRegistrationProvider);
@@ -55,11 +63,13 @@ class ArtisanRegionStep extends ConsumerWidget {
 /// with no `regionId` (the backend defaults to the pilot region).
 class _RegionStep extends ConsumerWidget {
   const _RegionStep({
+    required this.driver,
     required this.selectedRegionId,
     required this.onSelect,
   });
 
   final String selectedRegionId;
+  final bool driver;
   final ValueChanged<String> onSelect;
 
   @override
@@ -103,7 +113,11 @@ class _RegionStep extends ConsumerWidget {
                 ],
               ),
             ),
-            data: (list) {
+            data: (allRegions) {
+              final list = regionsForProviderRole(
+                allRegions,
+                driver: driver,
+              );
               if (list.isEmpty) {
                 return const Text('No regions are available right now.');
               }

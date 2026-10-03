@@ -43,6 +43,7 @@ class RideDetailData {
   final int promoDiscountPesewas;
   final int loyaltyDiscountPesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
   final int totalFarePesewas;
   final String paymentMethod;
 
@@ -68,6 +69,7 @@ class RideDetailData {
     required this.promoDiscountPesewas,
     required this.loyaltyDiscountPesewas,
     this.toll,
+    this.remoteAreaAdjustment,
     required this.totalFarePesewas,
     required this.paymentMethod,
   });
@@ -78,6 +80,8 @@ class RideDetailData {
   String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
   String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
   String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
+  String get remoteAreaAdjustmentDisplay =>
+      _fmt(remoteAreaAdjustment?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get distanceDisplay => '${distanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$durationMins min';
@@ -198,6 +202,7 @@ class _RideDetailNotifier
       loyaltyDiscountPesewas:
           (ride['loyaltyDiscountPesewas'] as num?)?.toInt() ?? 0,
       toll: RideToll.fromRideJson(ride),
+      remoteAreaAdjustment: RideRemoteAreaAdjustment.fromRideJson(ride),
       totalFarePesewas: (ride['totalPaidPesewas'] as num?)?.toInt() ??
           (ride['amountPaidPesewas'] as num?)?.toInt() ??
           (ride['totalFare'] as num?)?.toInt() ??
