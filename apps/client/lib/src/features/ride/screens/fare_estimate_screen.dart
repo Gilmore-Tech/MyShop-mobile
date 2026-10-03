@@ -479,7 +479,8 @@ class _VehicleSelectionSection extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (selectedOption?.hasToll == true) ...[
+                if (selectedOption?.hasToll == true ||
+                    selectedOption?.hasRemoteAreaAdjustment == true) ...[
                   const SizedBox(height: 4),
                   _SelectedFareBreakdown(option: selectedOption!),
                 ],
@@ -499,7 +500,8 @@ class _SelectedFareBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final charge = option.toll!;
+    final toll = option.toll;
+    final remoteArea = option.remoteAreaAdjustment;
     return Container(
       key: const Key('selected-fare-breakdown'),
       width: double.infinity,
@@ -527,11 +529,22 @@ class _SelectedFareBreakdown extends StatelessWidget {
             amount: option.transportFareDisplay,
           ),
           const SizedBox(height: 10),
-          _EstimateAmountRow(
-            key: const Key('selected-toll-line'),
-            label: charge.label,
-            amount: 'GH₵ ${(charge.amountPesewas / 100).toStringAsFixed(2)}',
-          ),
+          if (toll != null) ...[
+            _EstimateAmountRow(
+              key: const Key('selected-toll-line'),
+              label: toll.label,
+              amount: 'GH₵ ${(toll.amountPesewas / 100).toStringAsFixed(2)}',
+            ),
+          ],
+          if (remoteArea != null) ...[
+            if (toll != null) const SizedBox(height: 10),
+            _EstimateAmountRow(
+              key: const Key('selected-remote-area-line'),
+              label: remoteArea.label,
+              amount:
+                  'GH₵ ${(remoteArea.amountPesewas / 100).toStringAsFixed(2)}',
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Divider(height: 1, color: MyShopColors.divider),

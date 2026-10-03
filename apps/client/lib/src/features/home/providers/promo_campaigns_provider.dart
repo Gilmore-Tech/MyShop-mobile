@@ -4,6 +4,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
 
 /// Active promotional campaigns for the home banner carousel.
 ///
@@ -16,6 +17,8 @@ final activePromoCampaignsProvider =
   var refresh = Timer(const Duration(minutes: 1), ref.invalidateSelf);
   ref.onDispose(() => refresh.cancel());
   try {
+    final region = await ref.watch(currentOperationalRegionProvider.future);
+    if (region == null || !region.ridesEnabled) return const [];
     final campaigns =
         await ref.watch(promoServiceProvider).getActiveCampaigns();
     refresh.cancel();

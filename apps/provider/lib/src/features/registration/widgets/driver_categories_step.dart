@@ -18,7 +18,7 @@ class DriverCategoriesStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(driverRegistrationProvider);
     final showAll = ref.watch(showRegistrationErrorsProvider);
-    final options = ref.watch(rideCategoryOptionsProvider);
+    final options = ref.watch(rideCategoryOptionsProvider(draft.regionId));
 
     void toggle(String slug) {
       // Fresh-read merge (same pattern as the profile/vehicle steps) so a
@@ -66,8 +66,9 @@ class DriverCategoriesStep extends ConsumerWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () =>
-                        ref.invalidate(rideCategoryOptionsProvider),
+                    onPressed: () => ref.invalidate(
+                      rideCategoryOptionsProvider(draft.regionId),
+                    ),
                     child: const Text('Retry'),
                   ),
                 ],

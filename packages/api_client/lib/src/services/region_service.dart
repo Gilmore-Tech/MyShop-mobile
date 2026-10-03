@@ -31,4 +31,35 @@ class RegionService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// Resolve and persist the signed-in account's current operational region.
+  Future<Region?> resolveCurrentRegion({
+    required double latitude,
+    required double longitude,
+    required String service,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/regions/resolve',
+        data: {
+          'latitude': latitude,
+          'longitude': longitude,
+          'service': service,
+        },
+      );
+      final body = response.data as Map<String, dynamic>;
+      final data = body['data'];
+      final payload = data is Map ? data['region'] : null;
+      if (payload is! Map) return null;
+      return Region.fromJson(
+        <String, dynamic>{
+          for (final entry in payload.entries)
+            entry.key.toString(): entry.value,
+        },
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

@@ -539,6 +539,15 @@ class _TripCard extends StatelessWidget {
                               color: MyShopColors.textSecondary,
                             ),
                           ),
+                        if ((trip.remoteAreaAdjustment?.amountPesewas ?? 0) > 0)
+                          Text(
+                            '${trip.remoteAreaAdjustment!.label} included',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: MyShopColors.textSecondary,
+                            ),
+                          ),
                       ],
                     )
                   else
@@ -819,6 +828,7 @@ TripDetailData _rideToTripDetailData(Ride r) {
     financialsFinal: r.financialsFinal,
     commissionIsEffective: r.effectiveCommissionPesewas != null,
     toll: r.toll,
+    remoteAreaAdjustment: r.remoteAreaAdjustment,
   );
 }
 

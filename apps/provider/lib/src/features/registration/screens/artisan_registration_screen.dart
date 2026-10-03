@@ -73,7 +73,10 @@ class _ArtisanRegistrationScreenState
         // and hasn't picked one; a single (auto-selected) or unavailable
         // list never blocks (backend defaults to the pilot region).
         final regions = ref.read(regionsProvider).valueOrNull;
-        if (regions != null && regions.length > 1) {
+        final artisanRegions = regions == null
+            ? null
+            : regionsForProviderRole(regions, driver: false);
+        if (artisanRegions != null && artisanRegions.length > 1) {
           return d.regionId.isNotEmpty;
         }
         return true;

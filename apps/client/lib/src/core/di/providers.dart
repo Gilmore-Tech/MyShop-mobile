@@ -95,6 +95,10 @@ final rideServiceProvider = Provider<RideService>((ref) {
   return RideService(ref.watch(dioProvider));
 });
 
+final regionServiceProvider = Provider<RegionService>((ref) {
+  return RegionService(ref.watch(dioProvider));
+});
+
 /// Privacy-minimal durable handle for an ambiguous ride-create response.
 final rideBookingAttemptStoreProvider = Provider<RideBookingAttemptStore>(
   (_) => RideBookingAttemptStore(),

@@ -12,7 +12,8 @@ class FareBreakdownCard extends StatelessWidget {
     final hasBreakdown = driver.baseFarePesewas +
             driver.distanceFarePesewas +
             driver.bookingFeePesewas +
-            (driver.toll?.amountPesewas ?? 0) >
+            (driver.toll?.amountPesewas ?? 0) +
+            (driver.remoteAreaAdjustment?.amountPesewas ?? 0) >
         0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -36,6 +37,13 @@ class FareBreakdownCard extends StatelessWidget {
             if ((driver.toll?.amountPesewas ?? 0) > 0) ...[
               const SizedBox(height: 10),
               _FareRow(label: driver.toll!.label, amount: driver.tollDisplay),
+            ],
+            if ((driver.remoteAreaAdjustment?.amountPesewas ?? 0) > 0) ...[
+              const SizedBox(height: 10),
+              _FareRow(
+                label: driver.remoteAreaAdjustment!.label,
+                amount: driver.remoteAreaAdjustmentDisplay,
+              ),
             ],
             if (driver.promoDiscountPesewas > 0) ...[
               const SizedBox(height: 10),

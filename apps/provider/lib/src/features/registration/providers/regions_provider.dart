@@ -14,3 +14,11 @@ import '../../../core/di/providers.dart';
 final regionsProvider = FutureProvider<List<Region>>((ref) async {
   return ref.read(regionServiceProvider).getRegions();
 });
+
+List<Region> regionsForProviderRole(
+  List<Region> regions, {
+  required bool driver,
+}) =>
+    regions
+        .where((region) => driver ? region.ridesEnabled : region.jobsEnabled)
+        .toList(growable: false);
