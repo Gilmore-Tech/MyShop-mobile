@@ -56,7 +56,7 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
     super.build(context);
     final draft = ref.watch(artisanRegistrationProvider);
     final showAll = ref.watch(showRegistrationErrorsProvider);
-    final categoriesAsync = ref.watch(categoriesProvider);
+    final categoriesAsync = ref.watch(categoriesProvider(draft.regionId));
 
     return RegistrationStepCard(
       child: Column(
@@ -112,7 +112,8 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
                 TextButton(
-                  onPressed: () => ref.invalidate(categoriesProvider),
+                  onPressed: () =>
+                      ref.invalidate(categoriesProvider(draft.regionId)),
                   child: const Text('Retry'),
                 ),
               ],

@@ -10,9 +10,14 @@ class CategoryService {
   final Dio _dio;
 
   /// Returns the full category tree (top-level + children).
-  Future<List<ServiceCategory>> getCategories() async {
+  Future<List<ServiceCategory>> getCategories({String? regionId}) async {
     try {
-      final response = await _dio.get('/categories');
+      final response = await _dio.get(
+        '/categories',
+        queryParameters: {
+          if (regionId != null && regionId.isNotEmpty) 'regionId': regionId,
+        },
+      );
       final body = response.data as Map<String, dynamic>;
       final data = body['data'] as List<dynamic>;
       return data
