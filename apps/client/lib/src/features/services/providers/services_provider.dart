@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
 
 // ── Service Category (UI model) ─────────────────────────────────────────────
 // PRD 4.5: 10 categories seeded in DB. min_bid_pesewas configurable by admin.
@@ -221,9 +222,12 @@ final serviceCategoriesProvider =
 class _CategoriesNotifier extends AsyncNotifier<List<ServiceCategory>> {
   @override
   Future<List<ServiceCategory>> build() async {
+    final region = await ref.watch(currentOperationalRegionProvider.future);
+    if (region == null || !region.jobsEnabled) return const [];
     try {
       final categoryService = ref.watch(categoryServiceProvider);
-      final apiCategories = await categoryService.getCategories();
+      final apiCategories =
+          await categoryService.getCategories(regionId: region.id);
 
       return apiCategories.map((cat) {
         return ServiceCategory(

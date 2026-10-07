@@ -32,7 +32,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          categoriesProvider.overrideWith((_) async => const []),
+          categoriesProvider.overrideWith((_, __) async => const []),
         ],
         child: const MaterialApp(
           home: Scaffold(body: ArtisanBusinessStep()),

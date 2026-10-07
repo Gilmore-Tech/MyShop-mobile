@@ -10,8 +10,11 @@ final categoryServiceProvider = Provider<CategoryService>((ref) {
 
 /// Fetches the full service category tree from GET /v1/categories.
 /// Cached for the lifetime of the provider — call `ref.invalidate` to refresh.
-final categoriesProvider = FutureProvider<List<ServiceCategory>>((ref) async {
-  return ref.watch(categoryServiceProvider).getCategories();
+final categoriesProvider =
+    FutureProvider.family<List<ServiceCategory>, String>((ref, regionId) async {
+  return ref.watch(categoryServiceProvider).getCategories(
+        regionId: regionId.isEmpty ? null : regionId,
+      );
 });
 
 /// Flattened list of selectable (leaf) categories.
@@ -20,8 +23,8 @@ final categoriesProvider = FutureProvider<List<ServiceCategory>>((ref) async {
 /// For categories with children (e.g. "Repairs"), only the children
 /// are selectable — the parent is used as a group header.
 final selectableCategoriesProvider =
-    Provider<AsyncValue<List<ServiceCategory>>>((ref) {
-  return ref.watch(categoriesProvider).whenData((categories) {
+    Provider.family<AsyncValue<List<ServiceCategory>>, String>((ref, regionId) {
+  return ref.watch(categoriesProvider(regionId)).whenData((categories) {
     final result = <ServiceCategory>[];
     for (final cat in categories) {
       if (cat.hasChildren) {
