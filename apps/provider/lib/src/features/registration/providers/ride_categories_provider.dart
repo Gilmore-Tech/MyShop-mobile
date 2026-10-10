@@ -18,9 +18,10 @@ class RideCategoryOption {
 /// Fetches the active ride categories (GET /ride-categories) the driver can opt
 /// into at signup. Each selection is admin-verified before it becomes matchable.
 final rideCategoryOptionsProvider =
-    FutureProvider<List<RideCategoryOption>>((ref) async {
+    FutureProvider.family<List<RideCategoryOption>, String?>(
+        (ref, regionId) async {
   final rideService = ref.read(rideServiceProvider);
-  final raw = await rideService.listRideCategories();
+  final raw = await rideService.listRideCategories(regionId: regionId);
   return raw
       .map((c) => RideCategoryOption(
             slug: c['slug'] as String,

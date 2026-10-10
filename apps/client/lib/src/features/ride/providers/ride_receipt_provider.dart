@@ -2,7 +2,8 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_models/shared_models.dart' show RideToll;
+import 'package:shared_models/shared_models.dart'
+    show RideRemoteAreaAdjustment, RideToll;
 
 import '../../../core/di/providers.dart';
 import 'ride_provider.dart' show RideFareFields;
@@ -35,6 +36,7 @@ class RideReceiptData {
   final int bookingFeePesewas;
   final int taxesPesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
   final int promoDiscountPesewas;
   final int loyaltyDiscountPesewas;
   final int totalPaidPesewas;
@@ -56,6 +58,7 @@ class RideReceiptData {
     required this.bookingFeePesewas,
     required this.taxesPesewas,
     this.toll,
+    this.remoteAreaAdjustment,
     required this.promoDiscountPesewas,
     required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
@@ -71,6 +74,8 @@ class RideReceiptData {
   String get bookingFeeDisplay => _fmt(bookingFeePesewas);
   String get taxesDisplay => _fmt(taxesPesewas);
   String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
+  String get remoteAreaAdjustmentDisplay =>
+      _fmt(remoteAreaAdjustment?.amountPesewas ?? 0);
   String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
   String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
   String get totalPaidDisplay => _fmt(totalPaidPesewas);
@@ -120,6 +125,7 @@ class _RideReceiptNotifier
         bookingFeePesewas: fare.bookingFeePesewas,
         taxesPesewas: fare.taxesPesewas,
         toll: fare.toll,
+        remoteAreaAdjustment: fare.remoteAreaAdjustment,
         promoDiscountPesewas: fare.promoDiscountPesewas,
         loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
         totalPaidPesewas: fare.totalFarePesewas,

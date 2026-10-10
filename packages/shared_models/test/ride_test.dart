@@ -2,6 +2,48 @@ import 'package:shared_models/shared_models.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('parses a positive remote-area adjustment without inventing one', () {
+    final affected = Ride.fromJson({
+      'id': 'ride-remote-area',
+      'status': 'requested',
+      'estimatedFarePesewas': 6500,
+      'remoteAreaAdjustment': {
+        'label': 'Nursing college remote-area adjustment',
+        'amountPesewas': 1500,
+        'ratePercent': 30,
+        'matchedAt': 'pickup',
+      },
+    });
+    final ordinary = Ride.fromJson({
+      'id': 'ride-ordinary',
+      'status': 'requested',
+      'estimatedFarePesewas': 5000,
+    });
+
+    expect(affected.remoteAreaAdjustment?.amountPesewas, 1500);
+    expect(affected.remoteAreaAdjustment?.ratePercent, 30);
+    expect(affected.remoteAreaAdjustment?.matchedAt, 'pickup');
+    expect(affected.remoteAreaAdjustment?.amountDisplay, 'GHS 15');
+    expect(ordinary.remoteAreaAdjustment, isNull);
+  });
+
+  test('rejects non-positive remote-area money from the display model', () {
+    for (final amount in <Object?>[null, 0, -1, 1.5, '0']) {
+      final ride = Ride.fromJson({
+        'id': 'ride-invalid-remote-$amount',
+        'status': 'requested',
+        'remoteAreaAdjustment': {
+          'label': 'Remote area',
+          'amountPesewas': amount,
+          'ratePercent': 30,
+          'matchedAt': 'dropoff',
+        },
+      });
+
+      expect(ride.remoteAreaAdjustment, isNull, reason: 'amount=$amount');
+    }
+  });
+
   test('parses canonical and transitional positive ride tolls only', () {
     final canonical = Ride.fromJson({
       'id': 'ride-toll-canonical',

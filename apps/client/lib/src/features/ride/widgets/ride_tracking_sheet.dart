@@ -198,6 +198,19 @@ class _FareRow extends StatelessWidget {
                     ),
                   ),
                 ],
+                if ((driver.remoteAreaAdjustment?.amountPesewas ?? 0) > 0) ...[
+                  SizedBox(height: h * 0.004),
+                  Text(
+                    '${driver.remoteAreaAdjustment!.label}: '
+                    '${driver.remoteAreaAdjustmentDisplay} included',
+                    key: const Key('active-ride-remote-area-line'),
+                    style: TextStyle(
+                      fontSize: w * 0.029,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
                 SizedBox(height: h * 0.007),
                 _PaymentMethod(method: driver.paymentMethod),
               ],

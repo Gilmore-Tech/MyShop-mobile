@@ -19,7 +19,8 @@ class ArtisanReviewStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(artisanRegistrationProvider);
 
-    final allCategories = ref.watch(categoriesProvider).valueOrNull ?? [];
+    final allCategories =
+        ref.watch(categoriesProvider(draft.regionId)).valueOrNull ?? [];
     final nameMap = <String, String>{};
     for (final cat in allCategories) {
       nameMap[cat.id] = cat.name;

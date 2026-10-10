@@ -48,6 +48,14 @@ class FareRecalculationCard extends StatelessWidget {
                     value: fare.toll!.amountDisplay,
                   ),
                 ],
+                if (fare.remoteAreaAdjustment != null) ...[
+                  const SizedBox(height: 8),
+                  _PricingDetailRow(
+                    label: fare.remoteAreaAdjustment!.label,
+                    value:
+                        'GH₵ ${(fare.remoteAreaAdjustment!.amountPesewas / 100).toStringAsFixed(2)}',
+                  ),
+                ],
               ],
             ),
           ),

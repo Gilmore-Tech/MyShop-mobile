@@ -14,7 +14,7 @@ import '../widgets/region_step.dart';
 import '../widgets/registration_step_scaffold.dart';
 
 /// Driver onboarding — 5-step wizard
-/// (Profile → Vehicle → Categories → Region → Review).
+/// (Profile → Vehicle → Region → Categories → Review).
 class DriverRegistrationScreen extends ConsumerStatefulWidget {
   const DriverRegistrationScreen({
     super.key,
@@ -33,16 +33,16 @@ class _DriverRegistrationScreenState
   static const _steps = <MyShopStepItem>[
     MyShopStepItem(label: 'Profile', icon: Icons.person_outline),
     MyShopStepItem(label: 'Vehicle', icon: Icons.directions_car_outlined),
-    MyShopStepItem(label: 'Categories', icon: Icons.local_taxi_outlined),
     MyShopStepItem(label: 'Region', icon: Icons.location_on_outlined),
+    MyShopStepItem(label: 'Categories', icon: Icons.local_taxi_outlined),
     MyShopStepItem(label: 'Review', icon: Icons.fact_check_outlined),
   ];
 
   static const _stepTitles = <(String, String)>[
     ('Your profile', 'Tell us about yourself'),
     ('Vehicle details', "About the car you'll drive"),
-    ('Ride categories', 'Choose the rides you want'),
     ('Your region', 'Where you operate'),
+    ('Ride categories', 'Choose the rides available in your region'),
     ('Almost done!', 'Review and confirm'),
   ];
 
@@ -75,17 +75,20 @@ class _DriverRegistrationScreenState
             Validators.licensePlate(d.vehiclePlate) == null &&
             d.vehicleColor.isNotEmpty;
       case 2:
-        return d.rideCategories.isNotEmpty;
-      case 3:
         // Region is a pre-selected confirmation in the pilot. Only block
         // when the user genuinely has more than one region to choose from
         // and hasn't picked one; a single (auto-selected) or unavailable
         // list never blocks (backend defaults to the pilot region).
         final regions = ref.read(regionsProvider).valueOrNull;
-        if (regions != null && regions.length > 1) {
+        final driverRegions = regions == null
+            ? null
+            : regionsForProviderRole(regions, driver: true);
+        if (driverRegions != null && driverRegions.length > 1) {
           return d.regionId.isNotEmpty;
         }
         return true;
+      case 3:
+        return d.rideCategories.isNotEmpty;
       default:
         return d.isComplete;
     }
@@ -173,8 +176,8 @@ class _DriverRegistrationScreenState
           children: [
             const DriverProfileStep(),
             const DriverVehicleStep(),
-            const DriverCategoriesStep(),
             const DriverRegionStep(),
+            const DriverCategoriesStep(),
             DriverReviewStep(onEditStep: _goTo),
           ],
         ),

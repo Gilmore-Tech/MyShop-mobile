@@ -12,10 +12,12 @@ import 'package:myshop_client/src/app/router.dart';
 import 'package:myshop_client/src/core/di/providers.dart';
 import 'package:myshop_client/src/core/providers/current_location_label_provider.dart';
 import 'package:myshop_client/src/core/providers/current_location_provider.dart';
+import 'package:myshop_client/src/core/providers/current_operational_region_provider.dart';
 import 'package:myshop_client/src/core/services/google_places_service.dart';
 import 'package:myshop_client/src/features/home/providers/home_provider.dart';
 import 'package:myshop_client/src/features/home/providers/promo_campaigns_provider.dart';
 import 'package:myshop_client/src/features/home/screens/home_screen.dart';
+import 'package:myshop_client/src/features/home/widgets/location_search_card.dart';
 import 'package:myshop_client/src/features/notifications/providers/notifications_provider.dart';
 import 'package:myshop_client/src/features/profile/providers/profile_provider.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_search_provider.dart';
@@ -74,6 +76,15 @@ Position _position({
   );
 }
 
+const _ashantiRegion = Region(
+  id: 'region-ashanti',
+  name: 'Ashanti Region',
+  code: 'ashanti',
+  ridesEnabled: true,
+  jobsEnabled: true,
+  serviceAreaName: 'Kumasi/Ashanti',
+);
+
 void main() {
   Future<ProviderContainer> pumpHome(
     WidgetTester tester, {
@@ -84,6 +95,8 @@ void main() {
     GooglePlacesService? placesService,
     bool useRealCurrentLocationLabel = false,
     int unreadNotificationCount = 0,
+    Region? operationalRegion = _ashantiRegion,
+    bool outsideOperationalArea = false,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -122,6 +135,9 @@ void main() {
             ),
           specialOffersProvider.overrideWith(_EmptyOffersNotifier.new),
           activePromoCampaignsProvider.overrideWith((_) async => campaigns),
+          currentOperationalRegionProvider.overrideWith(
+            (_) async => outsideOperationalArea ? null : operationalRegion,
+          ),
           homeRecentActivityProvider.overrideWith(
             () => _RecentActivityNotifier(activity),
           ),
@@ -209,6 +225,48 @@ void main() {
       (tester) async {
     await pumpHome(tester);
     expect(find.text('PROMOS'), findsNothing);
+  });
+
+  testWidgets('shows rides but hides artisan services in ride-only Sunyani',
+      (tester) async {
+    await pumpHome(
+      tester,
+      currentPosition: _position(
+        latitude: 7.3349,
+        longitude: -2.3268,
+        timestamp: DateTime.now(),
+      ),
+      operationalRegion: const Region(
+        id: 'region-bono',
+        name: 'Bono Region',
+        code: 'bono',
+        ridesEnabled: true,
+        jobsEnabled: false,
+        serviceAreaName: 'Sunyani',
+      ),
+    );
+
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+    expect(find.text('MyShop Artisan'), findsNothing);
+    expect(find.byType(LocationSearchCard), findsOneWidget);
+  });
+
+  testWidgets('hides service entry points outside an operational boundary',
+      (tester) async {
+    await pumpHome(
+      tester,
+      currentPosition: _position(
+        latitude: 5.6037,
+        longitude: -0.1870,
+        timestamp: DateTime.now(),
+      ),
+      outsideOperationalArea: true,
+    );
+
+    expect(find.text('MyShop is not available here yet'), findsOneWidget);
+    expect(find.text('Book Akwaaba Ride'), findsNothing);
+    expect(find.text('MyShop Artisan'), findsNothing);
+    expect(find.byType(LocationSearchCard), findsNothing);
   });
 
   testWidgets(

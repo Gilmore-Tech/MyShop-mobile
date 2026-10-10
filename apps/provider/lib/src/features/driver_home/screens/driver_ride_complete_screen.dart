@@ -37,6 +37,7 @@ TripSummary providerTripSummaryFromRide(Ride ride) {
     promoPesewas: ride.promoDiscountPesewas ?? 0,
     loyaltyPesewas: ride.loyaltyDiscountPesewas ?? 0,
     toll: ride.toll,
+    remoteAreaAdjustment: ride.remoteAreaAdjustment,
     promoApplied: ride.promoApplied,
     totalFarePesewas: tripFare,
     collectFromClientPesewas:
@@ -433,12 +434,18 @@ class _DriverRideCompleteScreenState
                     label: '${s.toll!.label} (100% to you)',
                     amount: s.toll!.amountPesewas,
                   ),
+                if ((s.remoteAreaAdjustment?.amountPesewas ?? 0) > 0)
+                  _FareRow(
+                    label: '${s.remoteAreaAdjustment!.label} (100% to you)',
+                    amount: s.remoteAreaAdjustment!.amountPesewas,
+                  ),
                 if (s.baseFarePesewas +
                         s.distanceFarePesewas +
                         s.timeFarePesewas +
                         s.surgeFarePesewas +
                         s.taxesPesewas +
-                        (s.toll?.amountPesewas ?? 0) >
+                        (s.toll?.amountPesewas ?? 0) +
+                        (s.remoteAreaAdjustment?.amountPesewas ?? 0) >
                     0)
                   const Divider(height: 24),
                 // The headline is the inclusive trip fare. The promo line

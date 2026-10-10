@@ -1,7 +1,8 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_models/shared_models.dart' show RideToll;
+import 'package:shared_models/shared_models.dart'
+    show RideRemoteAreaAdjustment, RideToll;
 
 import '../../../core/di/providers.dart';
 import 'edit_trip_provider.dart';
@@ -97,6 +98,10 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     final promoMap = promo is Map<String, dynamic> ? promo : null;
     final toll = RideToll.fromRideJson(cat) ??
         (categories.length == 1 ? topLevelToll : null);
+    final remoteAreaAdjustment = RideRemoteAreaAdjustment.fromRideJson(cat) ??
+        (categories.length == 1
+            ? RideRemoteAreaAdjustment.fromRideJson(result)
+            : null);
     final estimatedFare = (cat['estimatedFarePesewas'] as num).toInt();
     final candidateTransportFare = _readNum(
           cat,
@@ -107,7 +112,10 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
             : null);
     final transportFare = candidateTransportFare != null &&
             candidateTransportFare >= 0 &&
-            candidateTransportFare + (toll?.amountPesewas ?? 0) == estimatedFare
+            candidateTransportFare +
+                    (toll?.amountPesewas ?? 0) +
+                    (remoteAreaAdjustment?.amountPesewas ?? 0) ==
+                estimatedFare
         ? candidateTransportFare
         : null;
     return VehicleOption(
@@ -119,6 +127,7 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
       farePesewas: estimatedFare,
       transportFarePesewas: transportFare,
       toll: toll,
+      remoteAreaAdjustment: remoteAreaAdjustment,
       estimatedTime: '$eta min',
       // Motorcycle tiers are identified by slug convention (none seeded today).
       isMotorcycle: slug.contains('moto'),

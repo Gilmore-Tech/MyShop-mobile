@@ -4,7 +4,11 @@ import 'dart:developer' as developer;
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart'
-    show RideRouteUpdate, RideToll, kFreeWaitAtPickupSeconds;
+    show
+        RideRemoteAreaAdjustment,
+        RideRouteUpdate,
+        RideToll,
+        kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -42,6 +46,7 @@ class VehicleOption {
   final int farePesewas; // 100 pesewas = ₵1
   final int? transportFarePesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
   final String estimatedTime;
   final bool isMotorcycle;
 
@@ -76,6 +81,7 @@ class VehicleOption {
     required this.farePesewas,
     this.transportFarePesewas,
     this.toll,
+    this.remoteAreaAdjustment,
     required this.estimatedTime,
     required this.isMotorcycle,
     this.distanceKm = 0,
@@ -96,19 +102,25 @@ class VehicleOption {
 
   int get effectiveTransportFarePesewas {
     final tollAmount = toll?.amountPesewas ?? 0;
+    final remoteAreaAmount = remoteAreaAdjustment?.amountPesewas ?? 0;
     final candidate = transportFarePesewas;
     if (candidate != null &&
         candidate >= 0 &&
-        candidate + tollAmount == farePesewas) {
+        candidate + tollAmount + remoteAreaAmount == farePesewas) {
       return candidate;
     }
-    return (farePesewas - tollAmount).clamp(0, farePesewas).toInt();
+    return (farePesewas - tollAmount - remoteAreaAmount)
+        .clamp(0, farePesewas)
+        .toInt();
   }
 
   bool get hasToll {
     final amount = toll?.amountPesewas ?? 0;
     return amount > 0 && amount <= farePesewas;
   }
+
+  bool get hasRemoteAreaAdjustment =>
+      (remoteAreaAdjustment?.amountPesewas ?? 0) > 0;
 
   String get fareDisplay {
     final ghs = farePesewas / 100;
@@ -194,6 +206,7 @@ class MatchedDriver {
   final int promoDiscountPesewas;
   final int loyaltyDiscountPesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   /// Short vehicle name shown during active tracking, e.g. "Toyota Vitz"
   final String vehicleShortName;
@@ -226,6 +239,7 @@ class MatchedDriver {
     this.promoDiscountPesewas = 0,
     this.loyaltyDiscountPesewas = 0,
     this.toll,
+    this.remoteAreaAdjustment,
     this.vehicleShortName = '',
     this.confirmedFarePesewas = 0,
     this.paymentMethod = 'MTN Mobile Money',
@@ -238,7 +252,8 @@ class MatchedDriver {
       bookingFeePesewas +
       (toll?.amountPesewas ?? 0) -
       promoDiscountPesewas -
-      loyaltyDiscountPesewas;
+      loyaltyDiscountPesewas +
+      (remoteAreaAdjustment?.amountPesewas ?? 0);
 
   /// Active ride fare — confirmed amount or falls back to estimate
   int get activeFarePesewas =>
@@ -255,6 +270,8 @@ class MatchedDriver {
   String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
   String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
   String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
+  String get remoteAreaAdjustmentDisplay =>
+      _fmt(remoteAreaAdjustment?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get activeFareDisplay => _fmt(activeFarePesewas);
 
@@ -263,6 +280,7 @@ class MatchedDriver {
     int? confirmedFarePesewas,
     int? promoDiscountPesewas,
     RideToll? toll,
+    RideRemoteAreaAdjustment? remoteAreaAdjustment,
     bool replaceRouteDiscounts = false,
   }) {
     return MatchedDriver(
@@ -286,6 +304,9 @@ class MatchedDriver {
           : this.promoDiscountPesewas,
       loyaltyDiscountPesewas: loyaltyDiscountPesewas,
       toll: replaceRouteDiscounts ? toll : (toll ?? this.toll),
+      remoteAreaAdjustment: replaceRouteDiscounts
+          ? remoteAreaAdjustment
+          : (remoteAreaAdjustment ?? this.remoteAreaAdjustment),
       vehicleShortName: vehicleShortName,
       confirmedFarePesewas: confirmedFarePesewas ?? this.confirmedFarePesewas,
       paymentMethod: paymentMethod,
@@ -310,6 +331,7 @@ class RideFareFields {
     required this.surgeFarePesewas,
     required this.subtotalPesewas,
     this.toll,
+    this.remoteAreaAdjustment,
   });
 
   factory RideFareFields.fromSnapshot(Map<String, dynamic> snapshot) {
@@ -331,6 +353,8 @@ class RideFareFields {
     final surgeFare =
         _readInt(snapshot, const ['surgeFarePesewas', 'surgeFare']);
     final toll = RideToll.fromRideJson(snapshot);
+    final remoteAreaAdjustment =
+        RideRemoteAreaAdjustment.fromRideJson(snapshot);
     final componentTotal = baseFare +
         distanceFare +
         timeFare +
@@ -339,7 +363,10 @@ class RideFareFields {
         surgeFare -
         promoDiscount -
         loyaltyDiscount +
-        (toll?.amountPesewas ?? 0);
+        (toll?.amountPesewas ?? 0) +
+        (remoteAreaAdjustment?.amountPesewas ?? 0);
+    final protectedAdjustmentTotal =
+        (toll?.amountPesewas ?? 0) + (remoteAreaAdjustment?.amountPesewas ?? 0);
     final total = _readInt(
       snapshot,
       const [
@@ -396,11 +423,12 @@ class RideFareFields {
                 promoDiscount +
                 loyaltyDiscount -
                 taxes -
-                (toll?.amountPesewas ?? 0))
+                protectedAdjustmentTotal)
             .clamp(0, 9007199254740991)
             .toInt(),
       ),
       toll: toll,
+      remoteAreaAdjustment: remoteAreaAdjustment,
     );
   }
 
@@ -418,6 +446,7 @@ class RideFareFields {
   final int surgeFarePesewas;
   final int subtotalPesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 }
 
 int _readInt(
@@ -579,6 +608,7 @@ class RideReceipt {
   final int subtotalPesewas;
   final int taxesPesewas;
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   /// Positive value — displayed as a deduction (–GHS X.XX)
   final int promoDiscountPesewas;
@@ -610,6 +640,7 @@ class RideReceipt {
     required this.subtotalPesewas,
     required this.taxesPesewas,
     this.toll,
+    this.remoteAreaAdjustment,
     required this.promoDiscountPesewas,
     required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
@@ -722,6 +753,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     subtotalPesewas: fare.subtotalPesewas,
     taxesPesewas: fare.taxesPesewas,
     toll: fare.toll,
+    remoteAreaAdjustment: fare.remoteAreaAdjustment,
     promoDiscountPesewas: fare.promoDiscountPesewas,
     loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
     totalPaidPesewas: fare.totalFarePesewas,
@@ -1147,6 +1179,7 @@ bool applyActiveRideRouteUpdate(
           distanceMeters == null ? null : distanceMeters.toDouble() / 1000,
       promoDiscountPesewas: update.promo?.discountPesewas,
       toll: update.toll,
+      remoteAreaAdjustment: update.remoteAreaAdjustment,
       replaceRouteDiscounts: true,
     );
   }
@@ -1879,6 +1912,7 @@ Future<void> _hydrateFromRest(
       promoDiscountPesewas: fare.promoDiscountPesewas,
       loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
       toll: fare.toll,
+      remoteAreaAdjustment: fare.remoteAreaAdjustment,
       vehicleShortName: driver['vehicleShortName'] as String? ?? '',
       confirmedFarePesewas: fare.totalFarePesewas,
       paymentMethod: json['paymentMethod'] as String? ?? 'Cash',

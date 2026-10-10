@@ -85,6 +85,46 @@ class RideToll {
   }
 }
 
+/// Server-authored remote-area adjustment included only for affected rides.
+/// It is non-discountable, non-commissionable, and paid fully to the driver.
+class RideRemoteAreaAdjustment {
+  const RideRemoteAreaAdjustment({
+    required this.label,
+    required this.amountPesewas,
+    required this.ratePercent,
+    required this.matchedAt,
+  });
+
+  static RideRemoteAreaAdjustment? fromRideJson(Map<String, dynamic> json) {
+    final value = json['remoteAreaAdjustment'];
+    if (value is! Map) return null;
+    final map = <String, dynamic>{
+      for (final entry in value.entries) entry.key.toString(): entry.value,
+    };
+    final amount = RideToll._positiveMoney(map['amountPesewas']);
+    if (amount == null) return null;
+    final rate = switch (map['ratePercent']) {
+      final num value when value.isFinite && value > 0 => value.toDouble(),
+      final String value => double.tryParse(value),
+      _ => null,
+    };
+    final matchedAt = map['matchedAt'] == 'pickup' ? 'pickup' : 'dropoff';
+    return RideRemoteAreaAdjustment(
+      label: RideToll._displayLabel(map['label']),
+      amountPesewas: amount,
+      ratePercent: rate != null && rate > 0 ? rate : 0,
+      matchedAt: matchedAt,
+    );
+  }
+
+  final String label;
+  final int amountPesewas;
+  final double ratePercent;
+  final String matchedAt;
+
+  String get amountDisplay => _formatGhs(amountPesewas);
+}
+
 /// Ride model representing a ride-hailing trip.
 /// Money stored as int in pesewas (100 pesewas = GH₵1).
 class Ride {
@@ -108,6 +148,7 @@ class Ride {
     this.loyaltyDiscountPesewas,
     this.platformDiscountPesewas,
     this.toll,
+    this.remoteAreaAdjustment,
     this.promoApplied = false,
     this.clientPayableEstimatePesewas,
     this.estimatedProviderEarningsPesewas,
@@ -290,6 +331,7 @@ class Ride {
       loyaltyDiscountPesewas: _optionalInt(json['loyaltyDiscountPesewas']),
       platformDiscountPesewas: _optionalInt(json['platformDiscountPesewas']),
       toll: RideToll.fromRideJson(json),
+      remoteAreaAdjustment: RideRemoteAreaAdjustment.fromRideJson(json),
       // Older payloads lack the explicit flag — infer from a non-zero discount.
       promoApplied: json['promoApplied'] == true ||
           (_optionalInt(json['promoDiscountPesewas']) ?? 0) > 0,
@@ -399,6 +441,7 @@ class Ride {
   /// total. A missing, malformed, or non-positive charge is represented as
   /// null so UI surfaces can omit the row entirely for legacy/no-charge rides.
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   int get tollFeePesewas => toll?.amountPesewas ?? 0;
   bool get hasToll => tollFeePesewas > 0;
@@ -580,6 +623,7 @@ class Ride {
     int? promoDiscountPesewas,
     bool? promoApplied,
     RideToll? toll,
+    RideRemoteAreaAdjustment? remoteAreaAdjustment,
     bool replaceRouteAdjustments = false,
     double? estimatedDistanceKm,
     int? estimatedDurationMins,
@@ -607,6 +651,9 @@ class Ride {
       loyaltyDiscountPesewas: loyaltyDiscountPesewas,
       platformDiscountPesewas: platformDiscountPesewas,
       toll: replaceRouteAdjustments ? toll : this.toll,
+      remoteAreaAdjustment: replaceRouteAdjustments
+          ? remoteAreaAdjustment
+          : this.remoteAreaAdjustment,
       promoApplied:
           replaceRouteAdjustments ? (promoApplied ?? false) : this.promoApplied,
       clientPayableEstimatePesewas:
@@ -752,6 +799,7 @@ class TripSummary {
     this.promoPesewas = 0,
     this.loyaltyPesewas = 0,
     this.toll,
+    this.remoteAreaAdjustment,
     this.promoApplied = false,
     required this.totalFarePesewas,
     this.collectFromClientPesewas,
@@ -785,6 +833,7 @@ class TripSummary {
   /// Commission/earnings remain backend-authored and are never recalculated
   /// from this value on-device.
   final RideToll? toll;
+  final RideRemoteAreaAdjustment? remoteAreaAdjustment;
 
   /// True when a platform promo discounted what the client pays. The provider
   /// is still paid on the full [totalFarePesewas] (BR-49).

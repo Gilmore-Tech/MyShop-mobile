@@ -434,6 +434,13 @@ class _FareCard extends StatelessWidget {
               w: w,
               h: h,
             ),
+          if ((data.remoteAreaAdjustment?.amountPesewas ?? 0) > 0)
+            _FareRow(
+              label: data.remoteAreaAdjustment!.label,
+              value: data.remoteAreaAdjustmentDisplay,
+              w: w,
+              h: h,
+            ),
           if (data.promoDiscountPesewas > 0)
             _FareRow(
               label: 'Promotional discount',
