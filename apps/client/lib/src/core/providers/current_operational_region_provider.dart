@@ -4,6 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../di/providers.dart';
 import 'current_location_provider.dart';
 
+const operationalAreaUnavailableTitle =
+    'MyShop is not available in your region yet';
+const operationalAreaUnavailableMessage =
+    'You can explore MyShop, but ride and artisan bookings are not available '
+    'at your current location yet.';
+
 /// Resolves the client's physical operational region from the shared device
 /// fix. Service availability comes from the returned region flags; the
 /// resolution itself is deliberately service-neutral so a ride-only region is

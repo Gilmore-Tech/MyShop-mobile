@@ -251,7 +251,7 @@ void main() {
     expect(find.byType(LocationSearchCard), findsOneWidget);
   });
 
-  testWidgets('hides service entry points outside an operational boundary',
+  testWidgets('keeps services visible but blocks bookings outside operations',
       (tester) async {
     await pumpHome(
       tester,
@@ -263,10 +263,23 @@ void main() {
       outsideOperationalArea: true,
     );
 
-    expect(find.text('MyShop is not available here yet'), findsOneWidget);
-    expect(find.text('Book Akwaaba Ride'), findsNothing);
-    expect(find.text('MyShop Artisan'), findsNothing);
-    expect(find.byType(LocationSearchCard), findsNothing);
+    expect(
+      find.text('MyShop is not available in your region yet'),
+      findsOneWidget,
+    );
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+    expect(find.text('MyShop Artisan'), findsOneWidget);
+    expect(find.byType(LocationSearchCard), findsOneWidget);
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('MyShop is not available in your region yet'),
+      findsNWidgets(2),
+    );
+    expect(find.text('Okay'), findsOneWidget);
+    expect(find.text('Ride estimate'), findsNothing);
   });
 
   testWidgets(
