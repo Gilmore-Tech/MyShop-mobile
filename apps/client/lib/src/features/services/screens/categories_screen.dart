@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
+import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
+import '../../../core/widgets/operational_area_notice.dart';
 import '../providers/services_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -12,12 +15,19 @@ import '../providers/services_provider.dart';
 // PRD 4.5 — Services Tab: full-screen category grid.
 // Tapping a category → job form (job_form_screen.dart).
 
-class CategoriesScreen extends StatelessWidget {
+class CategoriesScreen extends ConsumerWidget {
   const CategoriesScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final h = MediaQuery.sizeOf(context).height;
+    final position = ref.watch(currentDevicePositionProvider);
+    final operationalRegion = ref.watch(currentOperationalRegionProvider);
+    final outsideOperationalArea = position != null &&
+        operationalRegion.hasValue &&
+        operationalRegion.value == null;
+    final bookingUnavailable = position != null &&
+        (outsideOperationalArea || operationalRegion.hasError);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -32,8 +42,17 @@ class CategoriesScreen extends StatelessWidget {
                   children: [
                     SizedBox(height: h * 0.019),
                     const _HeroSection(),
+                    if (outsideOperationalArea) ...[
+                      SizedBox(height: h * 0.019),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: OperationalAreaNotice(),
+                      ),
+                    ],
                     SizedBox(height: h * 0.024),
-                    const _CategoriesSection(),
+                    _CategoriesSection(
+                      bookingUnavailable: bookingUnavailable,
+                    ),
                     SizedBox(height: h * 0.028),
                   ],
                 ),
@@ -149,7 +168,9 @@ class _HeroSection extends StatelessWidget {
 // ── Categories Section ─────────────────────────────────────────────────────────
 
 class _CategoriesSection extends ConsumerWidget {
-  const _CategoriesSection();
+  const _CategoriesSection({required this.bookingUnavailable});
+
+  final bool bookingUnavailable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -169,7 +190,10 @@ class _CategoriesSection extends ConsumerWidget {
         categoriesAsync.when(
           loading: () => const _CategoriesSkeletonGrid(),
           error: (_, __) => const SizedBox.shrink(),
-          data: (categories) => _CategoryGrid(categories: categories),
+          data: (categories) => _CategoryGrid(
+            categories: categories,
+            bookingUnavailable: bookingUnavailable,
+          ),
         ),
       ],
     );
@@ -178,7 +202,12 @@ class _CategoriesSection extends ConsumerWidget {
 
 class _CategoryGrid extends StatelessWidget {
   final List<ServiceCategory> categories;
-  const _CategoryGrid({required this.categories});
+  final bool bookingUnavailable;
+
+  const _CategoryGrid({
+    required this.categories,
+    required this.bookingUnavailable,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +237,10 @@ class _CategoryGrid extends StatelessWidget {
   }
 
   void _onCategoryTap(BuildContext context, ServiceCategory category) {
+    if (bookingUnavailable) {
+      showOperationalAreaUnavailableDialog(context);
+      return;
+    }
     if (category.hasChildren) {
       _showSubcategorySheet(context, category);
       return;

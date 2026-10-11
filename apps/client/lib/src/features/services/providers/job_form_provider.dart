@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
 
 // ── Job Form State ─────────────────────────────────────────────────────────────
 // PRD 4.5 — Client fills out service request: category, title, description,
@@ -202,6 +203,24 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
     if (!state.canSubmit) return null;
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
+      final position = _ref.read(currentDevicePositionProvider);
+      if (position == null) {
+        state = state.copyWith(
+          isSubmitting: false,
+          errorMessage:
+              'Enable location so we can confirm service availability.',
+        );
+        return null;
+      }
+      final region = await _ref.read(currentOperationalRegionProvider.future);
+      if (region == null || !region.jobsEnabled) {
+        state = state.copyWith(
+          isSubmitting: false,
+          errorMessage: operationalAreaUnavailableTitle,
+        );
+        return null;
+      }
+
       // Upload photos first (if any)
       List<String>? photoUrls;
       if (state.photoPaths.isNotEmpty) {

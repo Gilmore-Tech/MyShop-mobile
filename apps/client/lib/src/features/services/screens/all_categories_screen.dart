@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/current_operational_region_provider.dart';
+import '../../../core/widgets/operational_area_notice.dart';
 import '../providers/services_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -34,6 +37,13 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(serviceCategoriesProvider);
+    final position = ref.watch(currentDevicePositionProvider);
+    final operationalRegion = ref.watch(currentOperationalRegionProvider);
+    final outsideOperationalArea = position != null &&
+        operationalRegion.hasValue &&
+        operationalRegion.value == null;
+    final bookingUnavailable = position != null &&
+        (outsideOperationalArea || operationalRegion.hasError);
     final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
@@ -59,9 +69,19 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SizedBox(height: h * 0.019),
+                        if (outsideOperationalArea) ...[
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: OperationalAreaNotice(),
+                          ),
+                          SizedBox(height: h * 0.019),
+                        ],
                         _ResultCount(count: _countLeaves(filtered)),
                         SizedBox(height: h * 0.014),
-                        _CategoryGrid(categories: filtered),
+                        _CategoryGrid(
+                          categories: filtered,
+                          bookingUnavailable: bookingUnavailable,
+                        ),
                         SizedBox(height: h * 0.028),
                       ],
                     ),
@@ -255,7 +275,12 @@ class _ResultCount extends StatelessWidget {
 
 class _CategoryGrid extends StatelessWidget {
   final List<ServiceCategory> categories;
-  const _CategoryGrid({required this.categories});
+  final bool bookingUnavailable;
+
+  const _CategoryGrid({
+    required this.categories,
+    required this.bookingUnavailable,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +310,10 @@ class _CategoryGrid extends StatelessWidget {
   }
 
   void _onCategoryTap(BuildContext context, ServiceCategory category) {
+    if (bookingUnavailable) {
+      showOperationalAreaUnavailableDialog(context);
+      return;
+    }
     if (category.hasChildren) {
       _showSubcategorySheet(context, category);
       return;
