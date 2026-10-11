@@ -222,12 +222,15 @@ final serviceCategoriesProvider =
 class _CategoriesNotifier extends AsyncNotifier<List<ServiceCategory>> {
   @override
   Future<List<ServiceCategory>> build() async {
-    final region = await ref.watch(currentOperationalRegionProvider.future);
-    if (region == null || !region.jobsEnabled) return const [];
     try {
+      final region = await ref.watch(currentOperationalRegionProvider.future);
+      // A null region means the client is outside an operational boundary.
+      // Keep the catalogue browsable there, while the screens block creating
+      // a booking. A resolved ride-only region must still hide artisan work.
+      if (region != null && !region.jobsEnabled) return const [];
       final categoryService = ref.watch(categoryServiceProvider);
       final apiCategories =
-          await categoryService.getCategories(regionId: region.id);
+          await categoryService.getCategories(regionId: region?.id);
 
       return apiCategories.map((cat) {
         return ServiceCategory(
