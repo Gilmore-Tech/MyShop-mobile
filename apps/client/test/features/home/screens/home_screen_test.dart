@@ -227,7 +227,7 @@ void main() {
     expect(find.text('PROMOS'), findsNothing);
   });
 
-  testWidgets('shows rides but hides artisan services in ride-only Sunyani',
+  testWidgets('keeps both booking flows visible in ride-only Sunyani',
       (tester) async {
     await pumpHome(
       tester,
@@ -247,24 +247,38 @@ void main() {
     );
 
     expect(find.text('Book Akwaaba Ride'), findsOneWidget);
-    expect(find.text('MyShop Artisan'), findsNothing);
+    expect(find.text('MyShop Artisan'), findsOneWidget);
     expect(find.byType(LocationSearchCard), findsOneWidget);
   });
 
-  testWidgets('keeps services visible but blocks bookings outside operations',
+  testWidgets('keeps booking flows usable outside the device service area',
       (tester) async {
+    final location = _MockCurrentLocationService();
+    final places = _MockGooglePlacesService();
+    final outsidePosition = _position(
+      latitude: 5.6037,
+      longitude: -0.1870,
+      timestamp: DateTime.now(),
+    );
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => outsidePosition);
+    when(() => places.reverseGeocodePlace(5.6037, -0.1870)).thenAnswer(
+      (_) async => const ReverseGeocodePlace(
+        name: 'Accra pickup',
+        address: 'Accra, Ghana',
+      ),
+    );
+
     await pumpHome(
       tester,
-      currentPosition: _position(
-        latitude: 5.6037,
-        longitude: -0.1870,
-        timestamp: DateTime.now(),
-      ),
+      currentPosition: outsidePosition,
+      locationService: location,
+      placesService: places,
       outsideOperationalArea: true,
     );
 
     expect(
-      find.text('MyShop is not available in your region yet'),
+      find.text('Your current location is outside our service area'),
       findsOneWidget,
     );
     expect(find.text('Book Akwaaba Ride'), findsOneWidget);
@@ -274,12 +288,7 @@ void main() {
     await tester.tap(find.text('Book Akwaaba Ride'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('MyShop is not available in your region yet'),
-      findsNWidgets(2),
-    );
-    expect(find.text('Okay'), findsOneWidget);
-    expect(find.text('Ride estimate'), findsNothing);
+    expect(find.text('Ride estimate'), findsOneWidget);
   });
 
   testWidgets(

@@ -2,8 +2,6 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
-import '../../../core/providers/current_location_provider.dart';
-import '../../../core/providers/current_operational_region_provider.dart';
 
 // ── Job Form State ─────────────────────────────────────────────────────────────
 // PRD 4.5 — Client fills out service request: category, title, description,
@@ -17,6 +15,25 @@ const int kMaxJobPhotos = 4;
 /// Approved emergency-release containment. The backend independently enforces
 /// the same default-off boundary for old or modified clients.
 const bool kScheduledJobCreationEnabled = false;
+
+const outsideJobServiceAreaMessage =
+    'Artisan services are not available at this job location yet. '
+    'Choose a job location inside an active MyShop service area.';
+
+String jobCreationErrorMessage(ApiException error) {
+  return switch (error.errorCode?.trim().toUpperCase()) {
+    'OUTSIDE_SERVICE_AREA' => outsideJobServiceAreaMessage,
+    'INVALID_CATEGORY' =>
+      'This artisan service is not available at the selected job location. '
+          'Choose another service or job location.',
+    _ => userSafeApiErrorMessage(
+        error,
+        fallback: 'Failed to submit the request. Please try again.',
+        validationMessage:
+            'Check the job details and location, then try again.',
+      ),
+  };
+}
 
 class JobFormState {
   /// ID of the selected ServiceCategory (null = nothing chosen yet).
@@ -128,10 +145,9 @@ class JobFormState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class JobFormNotifier extends StateNotifier<JobFormState> {
-  JobFormNotifier(this._ref, this._jobService, this._mediaService)
+  JobFormNotifier(this._jobService, this._mediaService)
       : super(const JobFormState());
 
-  final Ref _ref;
   final JobService _jobService;
   final MediaService _mediaService;
 
@@ -203,24 +219,6 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
     if (!state.canSubmit) return null;
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final position = _ref.read(currentDevicePositionProvider);
-      if (position == null) {
-        state = state.copyWith(
-          isSubmitting: false,
-          errorMessage:
-              'Enable location so we can confirm service availability.',
-        );
-        return null;
-      }
-      final region = await _ref.read(currentOperationalRegionProvider.future);
-      if (region == null || !region.jobsEnabled) {
-        state = state.copyWith(
-          isSubmitting: false,
-          errorMessage: operationalAreaUnavailableTitle,
-        );
-        return null;
-      }
-
       // Upload photos first (if any)
       List<String>? photoUrls;
       if (state.photoPaths.isNotEmpty) {
@@ -229,25 +227,14 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
         );
       }
 
-      // A booking must never be silently placed at a hard-coded city when
-      // the chosen place or device fix is missing. That loses real requests
-      // by matching artisans around an invented location.
-      final cached = _ref.read(currentDevicePositionProvider);
-      final latitude = state.latitude ?? cached?.latitude;
-      final longitude = state.longitude ?? cached?.longitude;
-      if (latitude == null || longitude == null) {
-        state = state.copyWith(
-          isSubmitting: false,
-          errorMessage:
-              'Choose the job location or enable GPS, then try again.',
-        );
-        return null;
-      }
+      // Use only the location explicitly selected in this form. The client's
+      // device may be outside the service area while they book for somebody
+      // elsewhere, so the phone's current fix must not replace this address.
       final result = await _jobService.createJob(
         categoryId: state.selectedCategoryId!,
         description: '${state.title}\n\n${state.description}',
-        latitude: latitude,
-        longitude: longitude,
+        latitude: state.latitude!,
+        longitude: state.longitude!,
         addressText: state.destinationAddress,
         scheduledFor: kScheduledJobCreationEnabled && !state.isImmediate
             ? state.scheduledFor?.toIso8601String()
@@ -259,12 +246,7 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
     } on ApiException catch (e) {
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: userSafeApiErrorMessage(
-          e,
-          fallback: 'Failed to submit the request. Please try again.',
-          validationMessage:
-              'Check the job details and location, then try again.',
-        ),
+        errorMessage: jobCreationErrorMessage(e),
       );
       return null;
     } catch (_) {
@@ -285,7 +267,6 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
 final jobFormProvider =
     StateNotifierProvider.autoDispose<JobFormNotifier, JobFormState>(
   (ref) => JobFormNotifier(
-    ref,
     ref.watch(jobServiceProvider),
     ref.watch(mediaServiceProvider),
   ),

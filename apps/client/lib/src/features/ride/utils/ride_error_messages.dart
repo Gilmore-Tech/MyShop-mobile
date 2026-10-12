@@ -1,7 +1,5 @@
 import 'package:api_client/api_client.dart';
 
-import '../../../core/utils/ride_service_area.dart';
-
 class RideEstimateErrorCopy {
   const RideEstimateErrorCopy({
     required this.title,
@@ -112,8 +110,8 @@ RideEstimateErrorCopy rideEstimateErrorCopy(Object error) {
   if (isOutsideRideServiceAreaError(error)) {
     return const RideEstimateErrorCopy(
       title: 'Outside service area',
-      message: 'Ride booking currently operates in $rideServiceAreaName. '
-          'Choose a pickup and destination inside the service area to see fares.',
+      message: 'Choose a pickup and destination inside an active MyShop ride '
+          'service area to see fares and continue.',
       showRetry: false,
     );
   }

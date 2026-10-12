@@ -14,7 +14,7 @@ void main() {
     final copy = rideEstimateErrorCopy(error);
 
     expect(copy.title, 'Outside service area');
-    expect(copy.message, contains('Kumasi/Ashanti'));
+    expect(copy.message, contains('active MyShop ride service area'));
     expect(copy.showRetry, isFalse);
   });
 
