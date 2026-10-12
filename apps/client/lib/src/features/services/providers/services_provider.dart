@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
-import '../../../core/providers/current_operational_region_provider.dart';
 
 // ── Service Category (UI model) ─────────────────────────────────────────────
 // PRD 4.5: 10 categories seeded in DB. min_bid_pesewas configurable by admin.
@@ -223,14 +222,12 @@ class _CategoriesNotifier extends AsyncNotifier<List<ServiceCategory>> {
   @override
   Future<List<ServiceCategory>> build() async {
     try {
-      final region = await ref.watch(currentOperationalRegionProvider.future);
-      // A null region means the client is outside an operational boundary.
-      // Keep the catalogue browsable there, while the screens block creating
-      // a booking. A resolved ride-only region must still hide artisan work.
-      if (region != null && !region.jobsEnabled) return const [];
       final categoryService = ref.watch(categoryServiceProvider);
-      final apiCategories =
-          await categoryService.getCategories(regionId: region?.id);
+      // Catalogue browsing is deliberately independent of the phone's current
+      // region. A client may be posting a job for somebody at a different
+      // address. POST /jobs validates the selected job coordinates and the
+      // category's availability in that region at final confirmation.
+      final apiCategories = await categoryService.getCategories();
 
       return apiCategories.map((cat) {
         return ServiceCategory(

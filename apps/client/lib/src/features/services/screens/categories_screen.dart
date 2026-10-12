@@ -26,9 +26,6 @@ class CategoriesScreen extends ConsumerWidget {
     final outsideOperationalArea = position != null &&
         operationalRegion.hasValue &&
         operationalRegion.value == null;
-    final bookingUnavailable = position != null &&
-        (outsideOperationalArea || operationalRegion.hasError);
-
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
@@ -50,9 +47,7 @@ class CategoriesScreen extends ConsumerWidget {
                       ),
                     ],
                     SizedBox(height: h * 0.024),
-                    _CategoriesSection(
-                      bookingUnavailable: bookingUnavailable,
-                    ),
+                    const _CategoriesSection(),
                     SizedBox(height: h * 0.028),
                   ],
                 ),
@@ -168,9 +163,7 @@ class _HeroSection extends StatelessWidget {
 // ── Categories Section ─────────────────────────────────────────────────────────
 
 class _CategoriesSection extends ConsumerWidget {
-  const _CategoriesSection({required this.bookingUnavailable});
-
-  final bool bookingUnavailable;
+  const _CategoriesSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -192,7 +185,6 @@ class _CategoriesSection extends ConsumerWidget {
           error: (_, __) => const SizedBox.shrink(),
           data: (categories) => _CategoryGrid(
             categories: categories,
-            bookingUnavailable: bookingUnavailable,
           ),
         ),
       ],
@@ -202,11 +194,9 @@ class _CategoriesSection extends ConsumerWidget {
 
 class _CategoryGrid extends StatelessWidget {
   final List<ServiceCategory> categories;
-  final bool bookingUnavailable;
 
   const _CategoryGrid({
     required this.categories,
-    required this.bookingUnavailable,
   });
 
   @override
@@ -237,10 +227,6 @@ class _CategoryGrid extends StatelessWidget {
   }
 
   void _onCategoryTap(BuildContext context, ServiceCategory category) {
-    if (bookingUnavailable) {
-      showOperationalAreaUnavailableDialog(context);
-      return;
-    }
     if (category.hasChildren) {
       _showSubcategorySheet(context, category);
       return;

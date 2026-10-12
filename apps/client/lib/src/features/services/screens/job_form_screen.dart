@@ -145,7 +145,15 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                     onPressed: () async {
                       final jobId =
                           await ref.read(jobFormProvider.notifier).submit();
-                      if (jobId == null || !context.mounted) return;
+                      if (jobId == null) {
+                        if (!context.mounted) return;
+                        final message = ref.read(jobFormProvider).errorMessage;
+                        if (message != null) {
+                          await _showJobSubmitError(context, message);
+                        }
+                        return;
+                      }
+                      if (!context.mounted) return;
 
                       // Drop any stale activity list + job-detail cache so
                       // the next watch re-fetches from the backend. Without
@@ -180,6 +188,29 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
 }
 
 // ── App Bar ────────────────────────────────────────────────────────────────────
+
+Future<void> _showJobSubmitError(
+  BuildContext context,
+  String message,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      icon: const Icon(
+        Icons.info_outline_rounded,
+        color: MyShopColors.warning,
+      ),
+      title: const Text('Could not post this job'),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Okay'),
+        ),
+      ],
+    ),
+  );
+}
 
 class _AppBar extends StatelessWidget {
   final double w;
