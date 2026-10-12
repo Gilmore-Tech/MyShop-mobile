@@ -42,8 +42,6 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
     final outsideOperationalArea = position != null &&
         operationalRegion.hasValue &&
         operationalRegion.value == null;
-    final bookingUnavailable = position != null &&
-        (outsideOperationalArea || operationalRegion.hasError);
     final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
@@ -80,7 +78,6 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
                         SizedBox(height: h * 0.014),
                         _CategoryGrid(
                           categories: filtered,
-                          bookingUnavailable: bookingUnavailable,
                         ),
                         SizedBox(height: h * 0.028),
                       ],
@@ -275,11 +272,9 @@ class _ResultCount extends StatelessWidget {
 
 class _CategoryGrid extends StatelessWidget {
   final List<ServiceCategory> categories;
-  final bool bookingUnavailable;
 
   const _CategoryGrid({
     required this.categories,
-    required this.bookingUnavailable,
   });
 
   @override
@@ -310,10 +305,6 @@ class _CategoryGrid extends StatelessWidget {
   }
 
   void _onCategoryTap(BuildContext context, ServiceCategory category) {
-    if (bookingUnavailable) {
-      showOperationalAreaUnavailableDialog(context);
-      return;
-    }
     if (category.hasChildren) {
       _showSubcategorySheet(context, category);
       return;

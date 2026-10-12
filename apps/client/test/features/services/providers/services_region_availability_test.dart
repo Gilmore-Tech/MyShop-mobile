@@ -35,9 +35,18 @@ void main() {
     verify(() => categoryService.getCategories()).called(1);
   });
 
-  test('keeps artisan categories hidden in a resolved ride-only region',
+  test('keeps the global artisan catalogue browsable in a ride-only region',
       () async {
     final categoryService = _MockCategoryService();
+    when(() => categoryService.getCategories()).thenAnswer(
+      (_) async => const [
+        api.ServiceCategory(
+          id: 'plumbing',
+          name: 'Plumbing',
+          slug: 'plumbing',
+        ),
+      ],
+    );
     final container = ProviderContainer(
       overrides: [
         currentOperationalRegionProvider.overrideWith(
@@ -57,7 +66,8 @@ void main() {
 
     final categories = await container.read(serviceCategoriesProvider.future);
 
-    expect(categories, isEmpty);
-    verifyNever(() => categoryService.getCategories());
+    expect(categories, hasLength(1));
+    expect(categories.single.name, 'Plumbing');
+    verify(() => categoryService.getCategories()).called(1);
   });
 }

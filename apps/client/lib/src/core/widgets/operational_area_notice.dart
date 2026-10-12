@@ -57,25 +57,3 @@ class OperationalAreaNotice extends StatelessWidget {
     );
   }
 }
-
-Future<void> showOperationalAreaUnavailableDialog(
-  BuildContext context,
-) async {
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      icon: const Icon(
-        Icons.location_off_outlined,
-        color: MyShopColors.warning,
-      ),
-      title: const Text(operationalAreaUnavailableTitle),
-      content: const Text(operationalAreaUnavailableMessage),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Okay'),
-        ),
-      ],
-    ),
-  );
-}

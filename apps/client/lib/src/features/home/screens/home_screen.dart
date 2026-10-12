@@ -41,26 +41,8 @@ class HomeScreen extends ConsumerWidget {
         search.pickup?.name ?? currentLabel ?? 'Current location';
     final hasLocation = currentPosition != null;
     final region = operationalRegion.value;
-    final regionResolved = !hasLocation || operationalRegion.hasValue;
     final outsideOperationalArea =
         hasLocation && operationalRegion.hasValue && region == null;
-    final regionCheckFailed = hasLocation && operationalRegion.hasError;
-    final previewUnavailableServices =
-        outsideOperationalArea || regionCheckFailed;
-    final onUnavailable = outsideOperationalArea
-        ? () => showOperationalAreaUnavailableDialog(context)
-        : regionCheckFailed
-            ? () {
-                ref.invalidate(currentOperationalRegionProvider);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Checking service availability again. Please wait.',
-                    ),
-                  ),
-                );
-              }
-            : null;
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -93,31 +75,22 @@ class HomeScreen extends ConsumerWidget {
                       SizedBox(height: h * 0.02),
                     ] else
                       SizedBox(height: h * 0.02),
-                    if (previewUnavailableServices ||
-                        !hasLocation ||
-                        region?.ridesEnabled == true)
-                      LocationSearchCard(
-                        pickupLabel: pickupName,
-                        onPickupTap: onUnavailable ??
-                            () => context
-                                .push(AppRoutes.rideSearchPath('pickup')),
-                        onPickupPinTap: onUnavailable ??
-                            () => context
-                                .push(AppRoutes.ridePinPickerPath('pickup')),
-                      ),
+                    LocationSearchCard(
+                      pickupLabel: pickupName,
+                      onPickupTap: () =>
+                          context.push(AppRoutes.rideSearchPath('pickup')),
+                      onPickupPinTap: () =>
+                          context.push(AppRoutes.ridePinPickerPath('pickup')),
+                    ),
                     SizedBox(height: h * 0.05),
-                    if (!regionResolved && hasLocation)
-                      const _ServiceAvailabilityLoading()
-                    else
-                      _ServiceCardsRow(
-                        ridesEnabled: previewUnavailableServices ||
-                            !hasLocation ||
-                            region?.ridesEnabled == true,
-                        jobsEnabled: previewUnavailableServices ||
-                            !hasLocation ||
-                            region?.jobsEnabled == true,
-                        onUnavailable: onUnavailable,
-                      ),
+                    // Current device location is advisory. The client may be
+                    // booking for somebody elsewhere, so browsing and place
+                    // selection stay available. The selected pickup/job
+                    // coordinates are validated at the final booking step.
+                    const _ServiceCardsRow(
+                      ridesEnabled: true,
+                      jobsEnabled: true,
+                    ),
                     SizedBox(height: h * 0.028),
                     // Promos live right under the booking cards, above recent
                     // activity. The whole section (header included) renders
@@ -279,12 +252,10 @@ class _ServiceCardsRow extends ConsumerStatefulWidget {
   const _ServiceCardsRow({
     required this.ridesEnabled,
     required this.jobsEnabled,
-    this.onUnavailable,
   });
 
   final bool ridesEnabled;
   final bool jobsEnabled;
-  final VoidCallback? onUnavailable;
 
   @override
   ConsumerState<_ServiceCardsRow> createState() => _ServiceCardsRowState();
@@ -307,7 +278,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
             Expanded(
               child: ServiceCard(
                 type: ServiceCardType.ride,
-                onTap: widget.onUnavailable ?? _openRide,
+                onTap: _openRide,
               ),
             ),
           if (widget.ridesEnabled && widget.jobsEnabled)
@@ -316,8 +287,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
             Expanded(
               child: ServiceCard(
                 type: ServiceCardType.artisan,
-                onTap: widget.onUnavailable ??
-                    () => context.go(AppRoutes.services),
+                onTap: () => context.go(AppRoutes.services),
               ),
             ),
         ],
@@ -465,28 +435,6 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
         position.accuracy <= _maximumAutomaticPickupAccuracyMetres &&
         !age.isNegative &&
         age <= _maximumAutomaticPickupAge;
-  }
-}
-
-class _ServiceAvailabilityLoading extends StatelessWidget {
-  const _ServiceAvailabilityLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: width * 0.041),
-      child: Container(
-        key: const Key('service-availability-loading'),
-        height: 180,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(width * 0.031),
-        ),
-        alignment: Alignment.center,
-        child: const CircularProgressIndicator(),
-      ),
-    );
   }
 }
 
