@@ -111,6 +111,41 @@ void main() {
     expect(autocompleteBody, isNot(contains('key')));
   });
 
+  test(
+      'destination autocomplete can search Ghana without a current-region bias',
+      () async {
+    service = GooglePlacesService(
+      dio: dio,
+      biasLatitude: 7.3349,
+      biasLongitude: -2.3123,
+    );
+
+    await service.autocomplete(
+      'Kumasi City Mall',
+      biasToCurrentLocation: false,
+    );
+
+    final body = requests.single.data as Map<String, dynamic>;
+    expect(body['input'], 'Kumasi City Mall');
+    expect(body, isNot(contains('latitude')));
+    expect(body, isNot(contains('longitude')));
+    expect(body['sessionToken'], isA<String>());
+  });
+
+  test('pickup autocomplete remains biased to the current location', () async {
+    service = GooglePlacesService(
+      dio: dio,
+      biasLatitude: 6.6885,
+      biasLongitude: -1.6244,
+    );
+
+    await service.autocomplete('Adum');
+
+    final body = requests.single.data as Map<String, dynamic>;
+    expect(body['latitude'], 6.6885);
+    expect(body['longitude'], -1.6244);
+  });
+
   test('broad areas are marked as requiring an exact map pin', () async {
     final detail = await service.getPlaceDetail('area-123');
 

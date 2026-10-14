@@ -257,7 +257,7 @@ void main() {
             StackTrace.empty,
           ),
         ).action,
-        FareEstimateAction.changeLocations,
+        FareEstimateAction.changePickup,
       );
       final serverFailure = resolve(
         estimate: const AsyncError(
@@ -401,7 +401,7 @@ void main() {
       ),
       const _FareWidgetCase(
         name: 'outside service area',
-        primaryLabel: 'Change Locations',
+        primaryLabel: 'Change Pickup',
         error: ApiException(
           message: 'Outside internal polygon',
           statusCode: 400,
@@ -546,73 +546,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      'outside-area chooser routes pickup and destination independently',
-      (tester) async {
-    for (final field in RideSearchField.values) {
-      final router = GoRouter(
-        initialLocation: '/fare',
-        routes: [
-          GoRoute(
-            path: '/fare',
-            builder: (_, __) => const FareEstimateScreen(),
+  testWidgets('outside-area action changes only the pickup', (tester) async {
+    final router = GoRouter(
+      initialLocation: '/fare',
+      routes: [
+        GoRoute(
+          path: '/fare',
+          builder: (_, __) => const FareEstimateScreen(),
+        ),
+        GoRoute(
+          path: '/ride/search/:field',
+          builder: (_, state) => Scaffold(
+            body: Text('search:${state.pathParameters['field']}'),
           ),
-          GoRoute(
-            path: '/ride/search/:field',
-            builder: (_, state) => Scaffold(
-              body: Text('search:${state.pathParameters['field']}'),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          rideSearchProvider.overrideWith(
+            (_) => _searchNotifier(
+              const RideSearchState(
+                pickup: _pickup,
+                destination: _destination,
+              ),
+            ),
+          ),
+          pretripMultistopEnabledProvider.overrideWith((_) async => false),
+          fareEstimateProvider.overrideWith(
+            (_) => Future<List<VehicleOption>>.error(
+              const ApiException(
+                message: 'Pickup outside internal polygon',
+                statusCode: 400,
+                errorCode: 'OUTSIDE_SERVICE_AREA',
+              ),
+              StackTrace.empty,
             ),
           ),
         ],
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            rideSearchProvider.overrideWith(
-              (_) => _searchNotifier(
-                const RideSearchState(
-                  pickup: _pickup,
-                  destination: _destination,
-                ),
-              ),
-            ),
-            pretripMultistopEnabledProvider.overrideWith((_) async => false),
-            fareEstimateProvider.overrideWith(
-              (_) => Future<List<VehicleOption>>.error(
-                const ApiException(
-                  message: 'Outside internal polygon',
-                  statusCode: 400,
-                  errorCode: 'OUTSIDE_PILOT_REGION',
-                ),
-                StackTrace.empty,
-              ),
-            ),
-          ],
-          child: MaterialApp.router(routerConfig: router),
-        ),
-      );
-      await tester.pumpAndSettle();
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('fare-estimate-primary-action')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('change-pickup-location')), findsOneWidget);
-      expect(
-        find.byKey(const Key('change-destination-location')),
-        findsOneWidget,
-      );
+    expect(find.text('Change Pickup'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('fare-estimate-primary-action')),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(Key('change-${field.name}-location')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('search:${field.name}'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      router.dispose();
-    }
+    expect(find.text('search:pickup'), findsOneWidget);
+    expect(find.text('search:destination'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    router.dispose();
   });
 
   testWidgets('exact-point actions open the matching production pin route',
