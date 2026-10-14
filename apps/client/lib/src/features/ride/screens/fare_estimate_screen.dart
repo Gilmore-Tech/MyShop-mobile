@@ -218,8 +218,8 @@ class FareEstimateScreen extends ConsumerWidget {
       case FareEstimateAction.serviceUnavailable:
       case FareEstimateAction.noDrivers:
         return () => ref.invalidate(fareEstimateProvider);
-      case FareEstimateAction.changeLocations:
-        return () => _showLocationChangeOptions(context);
+      case FareEstimateAction.changePickup:
+        return () => context.push(AppRoutes.rideSearchPath('pickup'));
       case FareEstimateAction.confirm:
         return () {
           final option = state.option;
@@ -240,47 +240,6 @@ class FareEstimateScreen extends ConsumerWidget {
       case FareEstimateAction.calculating:
         return null;
     }
-  }
-
-  Future<void> _showLocationChangeOptions(BuildContext context) async {
-    final field = await showModalBottomSheet<RideSearchField>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Text(
-              'Which location would you like to change?',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ),
-          ListTile(
-            key: const Key('change-pickup-location'),
-            leading: const Icon(Icons.my_location_rounded),
-            title: const Text('Change pickup'),
-            onTap: () => Navigator.of(sheetContext).pop(RideSearchField.pickup),
-          ),
-          ListTile(
-            key: const Key('change-destination-location'),
-            leading: const Icon(Icons.location_on_outlined),
-            title: const Text('Change destination'),
-            onTap: () =>
-                Navigator.of(sheetContext).pop(RideSearchField.destination),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-    if (field == null || !context.mounted) return;
-    await context.push(AppRoutes.rideSearchPath(field.name));
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, WidgetRef ref) {

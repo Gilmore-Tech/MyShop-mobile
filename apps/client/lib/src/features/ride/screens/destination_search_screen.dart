@@ -84,7 +84,13 @@ class _DestinationSearchScreenState
     setState(() => _isLoading = true);
     _debounce = Timer(const Duration(milliseconds: 600), () async {
       final places = ref.read(googlePlacesServiceProvider);
-      final results = await places.autocomplete(normalized);
+      final results = await places.autocomplete(
+        normalized,
+        // Pickup suggestions benefit from proximity. A destination must stay
+        // searchable nationwide; tying it to the current region made Ashanti
+        // destinations disappear while a rider was in Bono (and vice versa).
+        biasToCurrentLocation: _isPickup,
+      );
       if (!mounted || generation != _searchGeneration) return;
       setState(() {
         _suggestions = results;

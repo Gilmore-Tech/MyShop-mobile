@@ -109,9 +109,9 @@ String rideRequestErrorMessage(ApiException error) {
 RideEstimateErrorCopy rideEstimateErrorCopy(Object error) {
   if (isOutsideRideServiceAreaError(error)) {
     return const RideEstimateErrorCopy(
-      title: 'Outside service area',
-      message: 'Choose a pickup and destination inside an active MyShop ride '
-          'service area to see fares and continue.',
+      title: 'Pickup outside service area',
+      message: 'Choose a pickup inside an active MyShop ride service area. '
+          'Your destination does not need to be inside the service area.',
       showRetry: false,
     );
   }
@@ -145,5 +145,8 @@ RideEstimateErrorCopy rideEstimateErrorCopy(Object error) {
 
 bool isOutsideRideServiceAreaError(Object error) {
   if (error is! ApiException) return false;
-  return error.errorCode?.toUpperCase() == 'OUTSIDE_PILOT_REGION';
+  return const {
+    'OUTSIDE_PILOT_REGION',
+    'OUTSIDE_SERVICE_AREA',
+  }.contains(error.errorCode?.toUpperCase());
 }

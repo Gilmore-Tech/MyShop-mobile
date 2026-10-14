@@ -92,7 +92,15 @@ class GooglePlacesService {
   }
 
   /// Fetch autocomplete suggestions for [query].
-  Future<List<PlaceSuggestion>> autocomplete(String query) async {
+  ///
+  /// Pickup and nearby-place searches should normally keep
+  /// [biasToCurrentLocation] enabled. Ride destinations deliberately disable
+  /// it: a destination can be anywhere in Ghana and must not be crowded out by
+  /// results near the rider's current (for example Bono) location.
+  Future<List<PlaceSuggestion>> autocomplete(
+    String query, {
+    bool biasToCurrentLocation = true,
+  }) async {
     if (query.trim().isEmpty) {
       _sessionToken = null;
       return const [];
@@ -103,8 +111,8 @@ class GooglePlacesService {
         '/location/places/autocomplete',
         data: {
           'input': query,
-          'latitude': _biasLat,
-          'longitude': _biasLng,
+          if (biasToCurrentLocation) 'latitude': _biasLat,
+          if (biasToCurrentLocation) 'longitude': _biasLng,
           'sessionToken': _ensureSessionToken(),
         },
       );
