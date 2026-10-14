@@ -14,7 +14,7 @@ enum FareEstimateAction {
   chooseExactDestination,
   calculating,
   retryFare,
-  changeLocations,
+  changePickup,
   serviceUnavailable,
   noDrivers,
   confirm,
@@ -102,10 +102,10 @@ FareEstimateActionState resolveFareEstimateAction({
     final copy = rideEstimateErrorCopy(error);
     if (isOutsideRideServiceAreaError(error)) {
       return FareEstimateActionState(
-        action: FareEstimateAction.changeLocations,
+        action: FareEstimateAction.changePickup,
         title: copy.title,
         message: copy.message,
-        primaryLabel: 'Change Locations',
+        primaryLabel: 'Change Pickup',
       );
     }
     if (error is NetworkException) {

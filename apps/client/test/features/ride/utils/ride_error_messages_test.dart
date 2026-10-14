@@ -13,8 +13,22 @@ void main() {
 
     final copy = rideEstimateErrorCopy(error);
 
-    expect(copy.title, 'Outside service area');
-    expect(copy.message, contains('active MyShop ride service area'));
+    expect(copy.title, 'Pickup outside service area');
+    expect(copy.message, contains('destination does not need to be inside'));
+    expect(copy.showRetry, isFalse);
+  });
+
+  test('maps the multi-region pickup boundary error to pickup-only copy', () {
+    const error = ApiException(
+      message: 'The pickup point must be within an active service area.',
+      statusCode: 400,
+      errorCode: 'OUTSIDE_SERVICE_AREA',
+    );
+
+    final copy = rideEstimateErrorCopy(error);
+
+    expect(copy.title, 'Pickup outside service area');
+    expect(copy.message, isNot(contains('pickup and destination')));
     expect(copy.showRetry, isFalse);
   });
 
