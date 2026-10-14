@@ -20,8 +20,8 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
 case "$APP" in
   client)
-    APPROVED_MARKETING_VERSION=1.4.13
-    LOCAL_BUILD_NUMBER_FLOOR=45
+    APPROVED_MARKETING_VERSION=1.4.14
+    LOCAL_BUILD_NUMBER_FLOOR=46
     ;;
   provider)
     APPROVED_MARKETING_VERSION=1.4.13
