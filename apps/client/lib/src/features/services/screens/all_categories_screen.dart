@@ -37,11 +37,12 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(serviceCategoriesProvider);
-    final position = ref.watch(currentDevicePositionProvider);
+    final position = ref.watch(freshCurrentDevicePositionProvider);
     final operationalRegion = ref.watch(currentOperationalRegionProvider);
-    final outsideOperationalArea = position != null &&
-        operationalRegion.hasValue &&
-        operationalRegion.value == null;
+    final outsideOperationalArea =
+        isPositionReliableForOperationalRegion(position) &&
+            operationalRegion.hasValue &&
+            operationalRegion.value == null;
     final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(

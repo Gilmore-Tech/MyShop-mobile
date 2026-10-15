@@ -61,12 +61,13 @@ Position _position({
   required double latitude,
   required double longitude,
   required DateTime timestamp,
+  double accuracy = 8,
 }) {
   return Position(
     latitude: latitude,
     longitude: longitude,
     timestamp: timestamp,
-    accuracy: 8,
+    accuracy: accuracy,
     altitude: 0,
     altitudeAccuracy: 0,
     heading: 0,
@@ -97,6 +98,7 @@ void main() {
     int unreadNotificationCount = 0,
     Region? operationalRegion = _ashantiRegion,
     bool outsideOperationalArea = false,
+    bool currentPositionIsFresh = true,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -143,6 +145,10 @@ void main() {
           ),
           if (currentPosition != null)
             currentDevicePositionProvider.overrideWith(
+              (_) => currentPosition,
+            ),
+          if (currentPosition != null && currentPositionIsFresh)
+            freshCurrentDevicePositionProvider.overrideWith(
               (_) => currentPosition,
             ),
           if (locationService != null)
@@ -291,6 +297,28 @@ void main() {
     expect(find.text('Ride estimate'), findsOneWidget);
   });
 
+  testWidgets('does not classify an OS-cached location as current',
+      (tester) async {
+    final cachedOutsidePosition = _position(
+      latitude: 5.6037,
+      longitude: -0.1870,
+      timestamp: DateTime.now().subtract(const Duration(minutes: 1)),
+    );
+
+    await pumpHome(
+      tester,
+      currentPosition: cachedOutsidePosition,
+      currentPositionIsFresh: false,
+      outsideOperationalArea: true,
+    );
+
+    expect(
+      find.text('Your current location is outside our service area'),
+      findsNothing,
+    );
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+  });
+
   testWidgets(
       'shows the Promos header between the booking cards and recent activity',
       (tester) async {
@@ -394,6 +422,41 @@ void main() {
       () => location.ensure(forceRefresh: true, retryOnFailure: false),
     ).called(1);
     verifyNever(() => places.reverseGeocodePlace(6.6900, -1.6200));
+  });
+
+  testWidgets('recent indoor fallback still seeds the automatic pickup',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    final places = _MockGooglePlacesService();
+    final recentIndoorFix = _position(
+      latitude: 6.7011,
+      longitude: -1.6292,
+      timestamp: DateTime.now().subtract(const Duration(minutes: 2)),
+      accuracy: 180,
+    );
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => recentIndoorFix);
+    when(() => places.reverseGeocodePlace(6.7011, -1.6292)).thenAnswer(
+      (_) async => const ReverseGeocodePlace(
+        name: 'Adum pickup',
+        address: 'Adum, Kumasi',
+      ),
+    );
+
+    final container = await pumpHome(
+      tester,
+      currentPosition: recentIndoorFix,
+      locationService: location,
+      placesService: places,
+    );
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+
+    final pickup = container.read(rideSearchProvider).pickup;
+    expect(pickup?.name, 'Adum pickup');
+    expect(pickup?.lat, 6.7011);
+    expect(pickup?.lng, -1.6292);
   });
 
   testWidgets('unavailable refresh does not reuse a recent process cache',

@@ -84,6 +84,7 @@ void main() {
 
     expect(await forced, fresh);
     expect(container.read(currentDevicePositionProvider), fresh);
+    expect(container.read(freshCurrentDevicePositionProvider), fresh);
     expect(emissions, [fresh]);
     expect(currentPositionCalls, 1);
     container.dispose();
@@ -272,6 +273,7 @@ void main() {
     final initial = await service.ensure();
     expect(initial, lastKnown);
     expect(container.read(currentDevicePositionProvider), lastKnown);
+    expect(container.read(freshCurrentDevicePositionProvider), isNull);
     expect(currentPositionCalls, 1);
 
     final forced = service.ensure(forceRefresh: true);
@@ -287,6 +289,7 @@ void main() {
 
     expect(await forced, expected);
     expect(container.read(currentDevicePositionProvider), expected);
+    expect(container.read(freshCurrentDevicePositionProvider), expected);
     expect(currentPositionCalls, 1);
     container.dispose();
   });
@@ -326,6 +329,7 @@ void main() {
 
     expect(result, lastKnown);
     expect(container.read(currentDevicePositionProvider), isNull);
+    expect(container.read(freshCurrentDevicePositionProvider), isNull);
     expect(emissions, isEmpty);
     expect(currentPositionCalls, 1);
     container.dispose();
