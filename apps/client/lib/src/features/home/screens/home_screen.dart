@@ -35,14 +35,15 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
-    final currentPosition = ref.watch(currentDevicePositionProvider);
+    final freshCurrentPosition = ref.watch(freshCurrentDevicePositionProvider);
     final operationalRegion = ref.watch(currentOperationalRegionProvider);
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Current location';
-    final hasLocation = currentPosition != null;
+    final hasReliableLocation =
+        isPositionReliableForOperationalRegion(freshCurrentPosition);
     final region = operationalRegion.value;
     final outsideOperationalArea =
-        hasLocation && operationalRegion.hasValue && region == null;
+        hasReliableLocation && operationalRegion.hasValue && region == null;
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -63,7 +64,8 @@ class HomeScreen extends ConsumerWidget {
                         child: OperationalAreaNotice(),
                       ),
                       SizedBox(height: h * 0.02),
-                    ] else if (operationalRegion.hasError && hasLocation) ...[
+                    ] else if (operationalRegion.hasError &&
+                        hasReliableLocation) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _RegionCheckFailedBanner(
@@ -262,8 +264,12 @@ class _ServiceCardsRow extends ConsumerStatefulWidget {
 }
 
 class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
-  static const _maximumAutomaticPickupAge = Duration(seconds: 30);
-  static const _maximumAutomaticPickupAccuracyMetres = 100.0;
+  // A live GPS request is still attempted for every new ride. If the sensor
+  // cannot settle indoors, a recent OS fix remains substantially safer and
+  // more useful than forcing the rider to type an address. Broader/older fixes
+  // are still rejected so matching is not seeded from an unreliable point.
+  static const _maximumAutomaticPickupAge = Duration(minutes: 5);
+  static const _maximumAutomaticPickupAccuracyMetres = 250.0;
 
   bool _openingRide = false;
 
@@ -423,18 +429,12 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
   }
 
   bool _isSafeAutomaticPickupPosition(Position position, DateTime now) {
-    final age = now.difference(position.timestamp);
-    return position.latitude.isFinite &&
-        position.latitude >= -90 &&
-        position.latitude <= 90 &&
-        position.longitude.isFinite &&
-        position.longitude >= -180 &&
-        position.longitude <= 180 &&
-        position.accuracy.isFinite &&
-        position.accuracy >= 0 &&
-        position.accuracy <= _maximumAutomaticPickupAccuracyMetres &&
-        !age.isNegative &&
-        age <= _maximumAutomaticPickupAge;
+    return isUsableDevicePosition(
+      position,
+      maximumAge: _maximumAutomaticPickupAge,
+      maximumAccuracyMetres: _maximumAutomaticPickupAccuracyMetres,
+      now: now,
+    );
   }
 }
 

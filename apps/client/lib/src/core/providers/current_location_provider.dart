@@ -10,6 +10,37 @@ import 'package:geolocator/geolocator.dart';
 /// (typically to the pilot-city centre).
 final currentDevicePositionProvider = StateProvider<Position?>((_) => null);
 
+/// The latest position returned by a live native GPS request during this app
+/// session. Unlike [currentDevicePositionProvider], this is never populated
+/// from the operating system's last-known cache. Region availability must use
+/// this fix so a rider who has moved since the app was last open is not
+/// incorrectly told that their current location is outside the service area.
+final freshCurrentDevicePositionProvider =
+    StateProvider<Position?>((_) => null);
+
+/// Whether [position] is recent and accurate enough for a decision that must
+/// not be made from an old or very broad operating-system location estimate.
+bool isUsableDevicePosition(
+  Position? position, {
+  required Duration maximumAge,
+  required double maximumAccuracyMetres,
+  DateTime? now,
+}) {
+  if (position == null) return false;
+  final age = (now ?? DateTime.now()).difference(position.timestamp);
+  return position.latitude.isFinite &&
+      position.latitude >= -90 &&
+      position.latitude <= 90 &&
+      position.longitude.isFinite &&
+      position.longitude >= -180 &&
+      position.longitude <= 180 &&
+      position.accuracy.isFinite &&
+      position.accuracy >= 0 &&
+      position.accuracy <= maximumAccuracyMetres &&
+      !age.isNegative &&
+      age <= maximumAge;
+}
+
 /// Delay between the small number of cold-start GPS recovery attempts.
 /// Kept injectable so the retry lifecycle can be tested without real waits.
 final currentLocationRetryDelayProvider = Provider<Duration>(
@@ -178,7 +209,7 @@ class CurrentLocationService {
         return bestSoFar;
       }
 
-      return _refreshCurrentPosition(
+      return await _refreshCurrentPosition(
         bestSoFar,
         retryOnFailure: _inFlightRetryOnFailure,
       );
@@ -230,6 +261,7 @@ class CurrentLocationService {
       );
       if (!_disposed) {
         _ref.read(currentDevicePositionProvider.notifier).state = position;
+        _ref.read(freshCurrentDevicePositionProvider.notifier).state = position;
       }
       _coldStartRetryTimer?.cancel();
       _coldStartRetryTimer = null;

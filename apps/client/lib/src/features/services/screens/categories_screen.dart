@@ -21,11 +21,12 @@ class CategoriesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final h = MediaQuery.sizeOf(context).height;
-    final position = ref.watch(currentDevicePositionProvider);
+    final position = ref.watch(freshCurrentDevicePositionProvider);
     final operationalRegion = ref.watch(currentOperationalRegionProvider);
-    final outsideOperationalArea = position != null &&
-        operationalRegion.hasValue &&
-        operationalRegion.value == null;
+    final outsideOperationalArea =
+        isPositionReliableForOperationalRegion(position) &&
+            operationalRegion.hasValue &&
+            operationalRegion.value == null;
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
