@@ -99,6 +99,7 @@ void main() {
     Region? operationalRegion = _ashantiRegion,
     bool outsideOperationalArea = false,
     bool currentPositionIsFresh = true,
+    FutureOr<Region?> Function(Ref ref)? operationalRegionResolver,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -137,9 +138,12 @@ void main() {
             ),
           specialOffersProvider.overrideWith(_EmptyOffersNotifier.new),
           activePromoCampaignsProvider.overrideWith((_) async => campaigns),
-          currentOperationalRegionProvider.overrideWith(
-            (_) async => outsideOperationalArea ? null : operationalRegion,
-          ),
+          currentOperationalRegionProvider.overrideWith((ref) async {
+            if (operationalRegionResolver != null) {
+              return operationalRegionResolver(ref);
+            }
+            return outsideOperationalArea ? null : operationalRegion;
+          }),
           homeRecentActivityProvider.overrideWith(
             () => _RecentActivityNotifier(activity),
           ),
@@ -457,6 +461,105 @@ void main() {
     expect(pickup?.name, 'Adum pickup');
     expect(pickup?.lat, 6.7011);
     expect(pickup?.lng, -1.6292);
+  });
+
+  testWidgets(
+      'trusted automatic pickup replaces an older outside-region banner fix',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    final places = _MockGooglePlacesService();
+    final outsidePosition = _position(
+      latitude: 5.6037,
+      longitude: -0.1870,
+      timestamp: DateTime.now().subtract(const Duration(seconds: 30)),
+    );
+    final recentIndoorFix = _position(
+      latitude: 6.7011,
+      longitude: -1.6292,
+      timestamp: DateTime.now().subtract(const Duration(seconds: 5)),
+      accuracy: 180,
+    );
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => recentIndoorFix);
+    when(() => places.reverseGeocodePlace(6.7011, -1.6292)).thenAnswer(
+      (_) async => const ReverseGeocodePlace(
+        name: 'Adum pickup',
+        address: 'Adum, Kumasi',
+      ),
+    );
+
+    final container = await pumpHome(
+      tester,
+      currentPosition: outsidePosition,
+      locationService: location,
+      placesService: places,
+      operationalRegionResolver: (ref) {
+        final current = ref.watch(freshCurrentDevicePositionProvider);
+        return current?.latitude == recentIndoorFix.latitude &&
+                current?.longitude == recentIndoorFix.longitude
+            ? _ashantiRegion
+            : null;
+      },
+    );
+
+    expect(
+      find.text('Your current location is outside our service area'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+
+    final trustedPosition = container.read(freshCurrentDevicePositionProvider);
+    expect(trustedPosition?.latitude, recentIndoorFix.latitude);
+    expect(trustedPosition?.longitude, recentIndoorFix.longitude);
+    expect(
+      await container.read(currentOperationalRegionProvider.future),
+      _ashantiRegion,
+    );
+    expect(container.read(rideSearchProvider).pickup?.name, 'Adum pickup');
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(
+      find.text('Your current location is outside our service area'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('manual pickup does not replace the physical region position',
+      (tester) async {
+    final outsidePosition = _position(
+      latitude: 5.6037,
+      longitude: -0.1870,
+      timestamp: DateTime.now(),
+    );
+    final container = await pumpHome(
+      tester,
+      currentPosition: outsidePosition,
+      outsideOperationalArea: true,
+    );
+
+    container.read(rideSearchProvider.notifier).setLocation(
+          RideSearchField.pickup,
+          const RideLocation(
+            name: 'Chosen pickup',
+            address: 'Adum, Kumasi',
+            lat: 6.7011,
+            lng: -1.6292,
+          ),
+        );
+    await tester.pump();
+
+    final physicalPosition = container.read(freshCurrentDevicePositionProvider);
+    expect(physicalPosition?.latitude, outsidePosition.latitude);
+    expect(physicalPosition?.longitude, outsidePosition.longitude);
+    expect(
+      find.text('Your current location is outside our service area'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('unavailable refresh does not reuse a recent process cache',
