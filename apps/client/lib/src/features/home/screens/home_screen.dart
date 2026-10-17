@@ -347,6 +347,20 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       return;
     }
 
+    // A forced lookup can legitimately fall back to the operating system's
+    // recent, accurate last-known position when an indoor live GPS request
+    // times out. That position is safe enough to seed the automatic pickup,
+    // but CurrentLocationService intentionally does not publish fallbacks to
+    // freshCurrentDevicePositionProvider. Without synchronising the narrowly
+    // trusted fallback here, Home can keep rendering an older outside-region
+    // result even though the automatic pickup and fare/provider search are
+    // already using the newer in-region coordinate.
+    //
+    // Keep this restricted to automatic GPS pickup. A manually selected
+    // pickup may belong to somebody else and must never change the banner that
+    // describes the device's physical operational region.
+    _synchroniseOperationalRegionPosition(position);
+
     // Reverse-geocode the chosen fix directly. Reading the FutureProvider's
     // retained value here could pair an old address with the fresh coordinates.
     final placeLookup = _reverseGeocodePosition(position);
@@ -435,6 +449,23 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       maximumAccuracyMetres: _maximumAutomaticPickupAccuracyMetres,
       now: now,
     );
+  }
+
+  void _synchroniseOperationalRegionPosition(Position position) {
+    if (!isPositionReliableForOperationalRegion(position)) return;
+
+    final current = ref.read(freshCurrentDevicePositionProvider);
+    if (_samePosition(current, position)) return;
+
+    ref.read(freshCurrentDevicePositionProvider.notifier).state = position;
+  }
+
+  bool _samePosition(Position? first, Position second) {
+    return first != null &&
+        first.latitude == second.latitude &&
+        first.longitude == second.longitude &&
+        first.timestamp == second.timestamp &&
+        first.accuracy == second.accuracy;
   }
 }
 
