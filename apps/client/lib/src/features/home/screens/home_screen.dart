@@ -34,14 +34,20 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
-    final currentLabel = ref.watch(currentLocationLabelProvider).value;
+    // A first-install cold start can briefly fail location/region resolution
+    // while permissions, authentication and connectivity are settling.
+    // AsyncValue.value rethrows that provider error during build, which makes
+    // Flutter replace the entire Home branch with its blank release-mode error
+    // surface. Home is intentionally usable without either advisory value, so
+    // render the safe fallback and let the existing retry notice recover.
+    final currentLabel = ref.watch(currentLocationLabelProvider).valueOrNull;
     final freshCurrentPosition = ref.watch(freshCurrentDevicePositionProvider);
     final operationalRegion = ref.watch(currentOperationalRegionProvider);
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Current location';
     final hasReliableLocation =
         isPositionReliableForOperationalRegion(freshCurrentPosition);
-    final region = operationalRegion.value;
+    final region = operationalRegion.valueOrNull;
     final outsideOperationalArea =
         hasReliableLocation && operationalRegion.hasValue && region == null;
 
