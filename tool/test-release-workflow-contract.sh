@@ -179,7 +179,7 @@ env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 48 both "$REPO" >/dev/null
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 49 both "$REPO" >/dev/null
 
 expect_failure "non-dispatch event" env \
   GITHUB_EVENT_NAME=push \
@@ -210,7 +210,7 @@ expect_failure "occupied build number" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 47 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 48 both "$REPO"
 expect_failure "overflow build number" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
