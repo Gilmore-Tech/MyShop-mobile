@@ -690,6 +690,77 @@ void main() {
     verify(() => places.reverseGeocodePlace(6.7042, -1.6349)).called(1);
   });
 
+  testWidgets('opens ride estimate without waiting for a slow GPS refresh',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    final places = _MockGooglePlacesService();
+    final refresh = Completer<Position?>();
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) => refresh.future);
+
+    await pumpHome(
+      tester,
+      locationService: location,
+      placesService: places,
+    );
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+
+    expect(find.text('Ride estimate'), findsOneWidget);
+    verify(
+      () => location.ensure(forceRefresh: true, retryOnFailure: false),
+    ).called(1);
+
+    refresh.complete(null);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('manual pickup wins while background geocoding is pending',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    final places = _MockGooglePlacesService();
+    final place = Completer<ReverseGeocodePlace?>();
+    final freshMall = _position(
+      latitude: 6.7042,
+      longitude: -1.6349,
+      timestamp: DateTime.now().subtract(const Duration(seconds: 5)),
+    );
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => freshMall);
+    when(() => places.reverseGeocodePlace(6.7042, -1.6349))
+        .thenAnswer((_) => place.future);
+    final container = await pumpHome(
+      tester,
+      locationService: location,
+      placesService: places,
+    );
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    expect(find.text('Ride estimate'), findsOneWidget);
+
+    container.read(rideSearchProvider.notifier).setLocation(
+          RideSearchField.pickup,
+          const RideLocation(
+            name: 'Chosen pickup',
+            address: 'Chosen pickup address',
+            lat: 6.7000,
+            lng: -1.6200,
+          ),
+        );
+    place.complete(
+      const ReverseGeocodePlace(
+        name: 'Kumasi City Mall',
+        address: 'Kumasi City Mall, Asokwa, Kumasi',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(container.read(rideSearchProvider).pickup?.name, 'Chosen pickup');
+    verify(() => places.reverseGeocodePlace(6.7042, -1.6349)).called(1);
+  });
+
   testWidgets('double tap starts one GPS and reverse-geocode request',
       (tester) async {
     final location = _MockCurrentLocationService();
