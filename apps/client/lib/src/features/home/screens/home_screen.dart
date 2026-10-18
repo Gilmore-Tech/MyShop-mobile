@@ -311,8 +311,12 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
     if (_openingRide) return;
     _openingRide = true;
     try {
-      await _seedPickupFromCurrentLocation();
-      if (!mounted) return;
+      // Opening the ride flow must never wait on GPS or reverse geocoding.
+      // Those best-effort lookups can take up to 12 seconds indoors or on a
+      // weak connection. The estimate screen is usable while pickup recovery
+      // continues, and the guards below ensure an explicit user selection
+      // always wins.
+      unawaited(_seedPickupFromCurrentLocation());
       await context.push<void>(AppRoutes.rideEstimate);
     } finally {
       _openingRide = false;
@@ -344,7 +348,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       position = null;
     }
 
-    if (!mounted) return;
+    if (!mounted || !_openingRide) return;
     // The rider may have selected a pickup while the platform location request
     // was in flight. That explicit choice always wins over automatic GPS.
     if (ref.read(rideSearchProvider).pickup != null) return;
@@ -380,7 +384,11 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       place = null;
     }
 
-    if (!mounted) return;
+    if (!mounted || !_openingRide) return;
+    // Navigation is already open, so the rider may have selected a pickup
+    // while reverse geocoding was in flight. Never overwrite that explicit
+    // choice with a delayed automatic result.
+    if (ref.read(rideSearchProvider).pickup != null) return;
     final seededPickup = _writePickup(position, place);
 
     if (_isGenericCurrentPlace(place)) {
@@ -411,7 +419,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       debugPrint('[LOC] delayed ride pickup reverse-geocode failed: $error');
       return;
     }
-    if (!mounted) return;
+    if (!mounted || !_openingRide) return;
     if (_isGenericCurrentPlace(place)) return;
     final current = ref.read(rideSearchProvider);
     if (current.wasSubmitted || !identical(current.pickup, seededPickup)) {
