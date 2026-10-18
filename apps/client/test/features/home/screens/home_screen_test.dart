@@ -100,6 +100,7 @@ void main() {
     bool outsideOperationalArea = false,
     bool currentPositionIsFresh = true,
     FutureOr<Region?> Function(Ref ref)? operationalRegionResolver,
+    FutureOr<String> Function(Ref ref)? currentLocationLabelResolver,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -134,7 +135,9 @@ void main() {
           ),
           if (!useRealCurrentLocationLabel)
             currentLocationLabelProvider.overrideWith(
-              (_) async => 'Prempeh II Street, Adum, Kumasi, Ghana',
+              (ref) async =>
+                  currentLocationLabelResolver?.call(ref) ??
+                  'Prempeh II Street, Adum, Kumasi, Ghana',
             ),
           specialOffersProvider.overrideWith(_EmptyOffersNotifier.new),
           activePromoCampaignsProvider.overrideWith((_) async => campaigns),
@@ -180,6 +183,49 @@ void main() {
     expect(find.text('SPECIAL OFFERS'), findsNothing);
     expect(find.text('RECENT ACTIVITY'), findsOneWidget);
     expect(find.text('Your activity will appear here'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'keeps Home usable when first-launch operational-region lookup fails',
+      (tester) async {
+    final currentPosition = _position(
+      latitude: 6.6885,
+      longitude: -1.6244,
+      timestamp: DateTime.now(),
+    );
+
+    await pumpHome(
+      tester,
+      currentPosition: currentPosition,
+      operationalRegionResolver: (_) =>
+          Future<Region?>.error(StateError('cold-start region failure')),
+    );
+
+    expect(
+      find.text(
+        'We could not confirm the services available at your current '
+        'location. Check your connection and try again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+    expect(find.text('MyShop Artisan'), findsOneWidget);
+    expect(find.byType(LocationSearchCard), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps Home usable when first-launch location label fails',
+      (tester) async {
+    await pumpHome(
+      tester,
+      currentLocationLabelResolver: (_) =>
+          Future<String>.error(StateError('cold-start geocode failure')),
+    );
+
+    expect(find.text('Current: Current location'), findsOneWidget);
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+    expect(find.text('MyShop Artisan'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
