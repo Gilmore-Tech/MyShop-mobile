@@ -4,9 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-import '../../../core/providers/current_location_provider.dart';
-import '../../../core/providers/current_operational_region_provider.dart';
-import '../../../core/widgets/operational_area_notice.dart';
 import '../providers/services_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -37,12 +34,6 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(serviceCategoriesProvider);
-    final position = ref.watch(freshCurrentDevicePositionProvider);
-    final operationalRegion = ref.watch(currentOperationalRegionProvider);
-    final outsideOperationalArea =
-        isPositionReliableForOperationalRegion(position) &&
-            operationalRegion.hasValue &&
-            operationalRegion.value == null;
     final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
@@ -68,13 +59,6 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SizedBox(height: h * 0.019),
-                        if (outsideOperationalArea) ...[
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: OperationalAreaNotice(),
-                          ),
-                          SizedBox(height: h * 0.019),
-                        ],
                         _ResultCount(count: _countLeaves(filtered)),
                         SizedBox(height: h * 0.014),
                         _CategoryGrid(

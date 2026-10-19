@@ -186,8 +186,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      'keeps Home usable when first-launch operational-region lookup fails',
+  testWidgets('keeps Home usable when first-launch region lookup fails',
       (tester) async {
     final currentPosition = _position(
       latitude: 6.6885,
@@ -202,13 +201,7 @@ void main() {
           Future<Region?>.error(StateError('cold-start region failure')),
     );
 
-    expect(
-      find.text(
-        'We could not confirm the services available at your current '
-        'location. Check your connection and try again.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.textContaining('outside our service area'), findsNothing);
     expect(find.text('Book Akwaaba Ride'), findsOneWidget);
     expect(find.text('MyShop Artisan'), findsOneWidget);
     expect(find.byType(LocationSearchCard), findsOneWidget);
@@ -335,7 +328,7 @@ void main() {
 
     expect(
       find.text('Your current location is outside our service area'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Book Akwaaba Ride'), findsOneWidget);
     expect(find.text('MyShop Artisan'), findsOneWidget);
@@ -550,7 +543,7 @@ void main() {
 
     expect(
       find.text('Your current location is outside our service area'),
-      findsOneWidget,
+      findsNothing,
     );
 
     await tester.tap(find.text('Book Akwaaba Ride'));
@@ -604,7 +597,7 @@ void main() {
     expect(physicalPosition?.longitude, outsidePosition.longitude);
     expect(
       find.text('Your current location is outside our service area'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
