@@ -12,7 +12,6 @@ import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/current_operational_region_provider.dart';
-import '../../../core/widgets/operational_area_notice.dart';
 import '../../../core/services/google_places_service.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../notifications/widgets/client_notification_bell.dart';
@@ -41,15 +40,8 @@ class HomeScreen extends ConsumerWidget {
     // surface. Home is intentionally usable without either advisory value, so
     // render the safe fallback and let the existing retry notice recover.
     final currentLabel = ref.watch(currentLocationLabelProvider).valueOrNull;
-    final freshCurrentPosition = ref.watch(freshCurrentDevicePositionProvider);
-    final operationalRegion = ref.watch(currentOperationalRegionProvider);
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Current location';
-    final hasReliableLocation =
-        isPositionReliableForOperationalRegion(freshCurrentPosition);
-    final region = operationalRegion.valueOrNull;
-    final outsideOperationalArea =
-        hasReliableLocation && operationalRegion.hasValue && region == null;
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -64,25 +56,7 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(height: h * 0.03),
-                    if (outsideOperationalArea) ...[
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: OperationalAreaNotice(),
-                      ),
-                      SizedBox(height: h * 0.02),
-                    ] else if (operationalRegion.hasError &&
-                        hasReliableLocation) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _RegionCheckFailedBanner(
-                          onRetry: () => ref.invalidate(
-                            currentOperationalRegionProvider,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: h * 0.02),
-                    ] else
-                      SizedBox(height: h * 0.02),
+                    SizedBox(height: h * 0.02),
                     LocationSearchCard(
                       pickupLabel: pickupName,
                       onPickupTap: () =>
@@ -116,41 +90,6 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _RegionCheckFailedBanner extends StatelessWidget {
-  const _RegionCheckFailedBanner({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: MyShopColors.warningLight,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: MyShopColors.warning.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'We could not confirm the services available at your current '
-              'location. Check your connection and try again.',
-              style: TextStyle(
-                color: MyShopColors.textPrimary,
-                fontSize: 12,
-                height: 1.35,
-              ),
-            ),
-          ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
       ),
     );
   }

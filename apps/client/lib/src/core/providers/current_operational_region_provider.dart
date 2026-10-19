@@ -5,13 +5,6 @@ import 'package:geolocator/geolocator.dart';
 import '../di/providers.dart';
 import 'current_location_provider.dart';
 
-const operationalAreaUnavailableTitle =
-    'Your current location is outside our service area';
-const operationalAreaUnavailableMessage =
-    'You can still explore MyShop and choose a different pickup or job '
-    'location. We will confirm availability for the selected location before '
-    'you book.';
-
 /// A service-area warning is authoritative only when it is based on a live,
 /// reasonably precise fix from this app session. A last-known position remains
 /// useful for quickly centring maps, but must not classify the rider's current

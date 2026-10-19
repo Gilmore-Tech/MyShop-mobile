@@ -5,9 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
-import '../../../core/providers/current_location_provider.dart';
-import '../../../core/providers/current_operational_region_provider.dart';
-import '../../../core/widgets/operational_area_notice.dart';
 import '../providers/services_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -21,12 +18,6 @@ class CategoriesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final h = MediaQuery.sizeOf(context).height;
-    final position = ref.watch(freshCurrentDevicePositionProvider);
-    final operationalRegion = ref.watch(currentOperationalRegionProvider);
-    final outsideOperationalArea =
-        isPositionReliableForOperationalRegion(position) &&
-            operationalRegion.hasValue &&
-            operationalRegion.value == null;
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
@@ -40,13 +31,6 @@ class CategoriesScreen extends ConsumerWidget {
                   children: [
                     SizedBox(height: h * 0.019),
                     const _HeroSection(),
-                    if (outsideOperationalArea) ...[
-                      SizedBox(height: h * 0.019),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: OperationalAreaNotice(),
-                      ),
-                    ],
                     SizedBox(height: h * 0.024),
                     const _CategoriesSection(),
                     SizedBox(height: h * 0.028),
@@ -101,7 +85,7 @@ class _AppBar extends ConsumerWidget {
               SizedBox(width: w * 0.010),
               Expanded(
                 child: Text(
-                  ref.watch(currentLocationLabelProvider).value ??
+                  ref.watch(currentLocationLabelProvider).valueOrNull ??
                       'Current location',
                   style: TextStyle(
                     fontSize: w * 0.031,
