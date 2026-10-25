@@ -378,6 +378,11 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             'review or already assigned).';
       case 'BID_WINDOW_EXPIRED':
         return 'The bidding window for this job has closed.';
+      case 'DIRECTED_QUOTE_ACCEPT_WINDOW_EXPIRED':
+        return 'This assigned quote is no longer awaiting the client. '
+            'Refresh to see the latest status.';
+      case 'JOB_NOT_IN_BIDDING_PHASE':
+        return 'This job has moved past bidding, so the quote can no longer be edited.';
       case 'MAX_BIDS_REACHED':
         return "You've already placed the maximum number of bids (3) on "
             'this job.';

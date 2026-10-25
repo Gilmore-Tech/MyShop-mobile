@@ -11,13 +11,15 @@ import 'package:shared_models/shared_models.dart';
 
 Ride _pendingRide({
   String id = 'ride-cancelled-by-rider',
+  String pickupAddress = 'Pickup',
+  String dropoffAddress = 'Destination',
 }) =>
     Ride(
       id: id,
       clientId: 'client-1',
       status: RideStatus.requested,
-      pickupAddress: 'Pickup',
-      dropoffAddress: 'Destination',
+      pickupAddress: pickupAddress,
+      dropoffAddress: dropoffAddress,
       pickupLat: 6.6885,
       pickupLng: -1.6244,
       dropoffLat: 6.7094,
@@ -135,6 +137,29 @@ void main() {
     expect(find.text('GHS 0.00'), findsOneWidget);
     expect(find.text('ESTIMATED EARNINGS'), findsNothing);
     expect(find.text('GHS 11.44'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 11));
+  });
+
+  testWidgets('request card hides Plus Codes but preserves named roads',
+      (tester) async {
+    final ride = _pendingRide(
+      id: 'ride-with-plus-code',
+      pickupAddress: 'Maxima, Kumasi, Ghana',
+      dropoffAddress: 'MCFG+RPC, Queens Rd, Kumasi, Ghana',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: RideRequestScreen(ride: ride)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Maxima, Kumasi, Ghana'), findsOneWidget);
+    expect(find.text('Queens Rd, Kumasi, Ghana'), findsOneWidget);
+    expect(find.textContaining('MCFG+RPC'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 11));

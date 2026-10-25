@@ -561,6 +561,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                                 context,
                                 jobId: effectiveJob.id,
                                 bidId: liveEntry!.bidId!,
+                                directedAssignment:
+                                    effectiveJob.isAdminAssigned,
                               )
                           : null,
                     ),
@@ -758,6 +760,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     BuildContext context, {
     required String jobId,
     required String bidId,
+    required bool directedAssignment,
   }) async {
     // Capture context-bound objects up-front so we don't reach into the
     // BuildContext after async gaps once the screen could be unmounted.
@@ -768,9 +771,10 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Withdraw bid?'),
-        content: const Text(
-          "Your bid will be removed and the client won't see it anymore. "
-          "You can place a new bid later if the job is still open.",
+        content: Text(
+          directedAssignment
+              ? "Your quote will be removed and this job will return to support for reassignment. You can't undo this action."
+              : "Your bid will be removed and the client won't see it anymore. You can place a new bid later if the job is still open.",
         ),
         actions: [
           TextButton(
@@ -814,7 +818,13 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     } catch (_) {}
     if (!mounted) return;
     messenger.showSnackBar(
-      const SnackBar(content: Text('Bid withdrawn.')),
+      SnackBar(
+        content: Text(
+          directedAssignment
+              ? 'Quote withdrawn. The job has returned to support.'
+              : 'Bid withdrawn.',
+        ),
+      ),
     );
     if (router.canPop()) {
       router.pop();
@@ -832,6 +842,9 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         return "This bid isn't pending anymore.";
       case 'JOB_NOT_IN_BIDDING_PHASE':
         return "The job has moved past bidding — withdraw isn't available.";
+      case 'DIRECTED_QUOTE_ACCEPT_WINDOW_EXPIRED':
+        return 'This assigned quote is no longer awaiting the client. '
+            'Refresh to see the latest status.';
       case 'NOT_BID_OWNER':
         return 'Only the bid owner can withdraw it.';
       default:

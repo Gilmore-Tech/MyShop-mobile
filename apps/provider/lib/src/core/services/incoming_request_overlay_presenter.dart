@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../utils/incoming_ride_fare_copy.dart';
 import 'local_notification_service.dart';
@@ -237,9 +238,12 @@ class IncomingRequestOverlayPresenter {
         duration: durationMins == null
             ? null
             : '${durationMins.round().clamp(1, 999)} min',
-        pickup: _string(details['pickupAddress'] ?? data['pickupAddress']),
-        destination:
-            _string(details['dropoffAddress'] ?? data['dropoffAddress']),
+        pickup: _locationLabel(
+          details['pickupAddress'] ?? data['pickupAddress'],
+        ),
+        destination: _locationLabel(
+          details['dropoffAddress'] ?? data['dropoffAddress'],
+        ),
         mapPreviewUrl: safeIncomingRequestPreviewUrl(
           details['mapPreviewUrl'] ?? data['mapPreviewUrl'],
         ),
@@ -359,6 +363,11 @@ class IncomingRequestOverlayPresenter {
   }
 
   String? _nonEmpty(String? value) => _string(value);
+
+  String? _locationLabel(Object? value) {
+    final raw = _string(value);
+    return raw == null ? null : humanReadableLocationLabel(raw);
+  }
 
   num? _number(Object? value) => switch (value) {
         final num value => value,

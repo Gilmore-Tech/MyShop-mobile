@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import 'package:go_router/go_router.dart';
 
@@ -199,7 +200,9 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     await externalNavService.openDrivingNav(
       lat: isPostStart ? ride.dropoffLat : ride.pickupLat,
       lng: isPostStart ? ride.dropoffLng : ride.pickupLng,
-      label: isPostStart ? ride.dropoffAddress : ride.pickupAddress,
+      label: humanReadableLocationLabel(
+        isPostStart ? ride.dropoffAddress : ride.pickupAddress,
+      ),
     );
   }
 
@@ -543,8 +546,8 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
   String _targetAddress(Ride ride) {
     return switch (ride.status) {
-      RideStatus.inProgress => ride.dropoffAddress,
-      _ => ride.pickupAddress,
+      RideStatus.inProgress => humanReadableLocationLabel(ride.dropoffAddress),
+      _ => humanReadableLocationLabel(ride.pickupAddress),
     };
   }
 
@@ -1331,7 +1334,7 @@ class _DestinationChangedBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  destination.address,
+                  humanReadableLocationLabel(destination.address),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1604,7 +1607,7 @@ class _PassengerPanel extends ConsumerWidget {
                   _RoutePoint(
                     colorRing: MyShopColors.darkSlate,
                     label: 'PICKUP POINT',
-                    address: ride.pickupAddress,
+                    address: humanReadableLocationLabel(ride.pickupAddress),
                   ),
                   // Intermediate stops the rider added (mid-trip or
                   // at booking). The driver sees them in route order
@@ -1622,7 +1625,7 @@ class _PassengerPanel extends ConsumerWidget {
                     _RoutePoint(
                       colorRing: MyShopColors.warning,
                       label: 'STOP',
-                      address: stop.address,
+                      address: humanReadableLocationLabel(stop.address),
                     ),
                   ],
                   Container(
@@ -1634,7 +1637,7 @@ class _PassengerPanel extends ConsumerWidget {
                   _RoutePoint(
                     colorRing: MyShopColors.primaryGold,
                     label: 'DESTINATION',
-                    address: ride.dropoffAddress,
+                    address: humanReadableLocationLabel(ride.dropoffAddress),
                   ),
                   const SizedBox(height: 12),
                   const Divider(

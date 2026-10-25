@@ -795,6 +795,15 @@ class _PickupInfo extends ConsumerWidget {
       );
       minutesAway = estimatedEtaMinutes(metersAway);
     }
+    final pickupLabel = humanReadableLocationLabel(
+      ride.pickupAddress,
+      fallback: 'Pickup point',
+    );
+    final hasDestination = ride.dropoffAddress.trim().isNotEmpty;
+    final destinationLabel = humanReadableLocationLabel(
+      ride.dropoffAddress,
+      fallback: 'Destination not provided',
+    );
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // ── Pickup row ────────────────────────────────────────────────────
@@ -815,7 +824,7 @@ class _PickupInfo extends ConsumerWidget {
               style: MyShopTypography.overline
                   .copyWith(fontSize: 11, letterSpacing: 0.5)),
           const SizedBox(height: 4),
-          Text(ride.pickupAddress,
+          Text(pickupLabel,
               style: const TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 16,
@@ -904,7 +913,7 @@ class _PickupInfo extends ConsumerWidget {
                     style: MyShopTypography.overline
                         .copyWith(fontSize: 11, letterSpacing: 0.5)),
                 const SizedBox(height: 4),
-                Text(stop.address,
+                Text(humanReadableLocationLabel(stop.address),
                     style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 16,
@@ -947,15 +956,12 @@ class _PickupInfo extends ConsumerWidget {
               style: MyShopTypography.overline
                   .copyWith(fontSize: 11, letterSpacing: 0.5)),
           const SizedBox(height: 4),
-          Text(
-              ride.dropoffAddress.isEmpty
-                  ? 'Destination not provided'
-                  : ride.dropoffAddress,
+          Text(destinationLabel,
               style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: ride.dropoffAddress.isEmpty
+                  color: !hasDestination
                       ? MyShopColors.textSecondary
                       : MyShopColors.textPrimary)),
         ])),
