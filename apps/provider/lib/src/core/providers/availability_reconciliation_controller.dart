@@ -206,8 +206,7 @@ class AvailabilityReconciliationController {
       );
     }
 
-    if (snapshot.effectiveSessionStatus ==
-        ProviderAvailabilityStatus.offline) {
+    if (snapshot.effectiveSessionStatus == ProviderAvailabilityStatus.offline) {
       unawaited(
         NativeBackgroundLocationService.stop(
           expectedOnlineSessionId: previousNativeSessionId,
