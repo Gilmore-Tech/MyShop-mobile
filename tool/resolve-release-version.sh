@@ -24,8 +24,8 @@ case "$APP" in
     LOCAL_BUILD_NUMBER_FLOOR=48
     ;;
   provider)
-    APPROVED_MARKETING_VERSION=1.4.13
-    LOCAL_BUILD_NUMBER_FLOOR=45
+    APPROVED_MARKETING_VERSION=1.4.14
+    LOCAL_BUILD_NUMBER_FLOOR=46
     ;;
 esac
 # Builds through each app's floor are occupied by retained release artifacts,

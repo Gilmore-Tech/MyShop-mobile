@@ -24,6 +24,23 @@ void main() {
     expect(controller.nextSequence(), 11);
   });
 
+  test('an older response may renew the native credential without rewinding',
+      () {
+    final controller = ProviderLocationSessionController()
+      ..install(epoch, 10, backgroundLocationCredential: 'old-token');
+
+    controller.install(
+      epoch,
+      4,
+      supportsSilentRecovery: true,
+      backgroundLocationCredential: 'new-token',
+    );
+
+    expect(controller.state?.lastSequence, 10);
+    expect(controller.state?.backgroundLocationCredential, 'new-token');
+    expect(controller.state?.supportsSilentRecovery, isTrue);
+  });
+
   test('a new server epoch replaces the previous sequence authority', () {
     final controller = ProviderLocationSessionController()..install(epoch, 10);
 

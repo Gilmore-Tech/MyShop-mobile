@@ -12,6 +12,7 @@ import '../di/providers.dart';
 import '../services/fcm_service.dart';
 import '../services/provider_request_policy.dart';
 import '../services/provider_online_recovery.dart';
+import '../services/native_background_location_service.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
 import 'location_degradation_provider.dart';
@@ -182,15 +183,45 @@ class AvailabilityReconciliationController {
       return;
     }
 
+    final previousNativeSessionId =
+        _ref.read(providerLocationSessionProvider)?.onlineSessionId;
     _ref
         .read(providerLocationSessionProvider.notifier)
         .installSnapshot(snapshot);
+    final installedSession = _ref.read(providerLocationSessionProvider);
+    final nativeCredential = installedSession?.backgroundLocationCredential;
+    void startNativeLocationIfAuthorized() {
+      if (snapshot.effectiveSessionStatus !=
+              ProviderAvailabilityStatus.online ||
+          installedSession == null ||
+          nativeCredential == null) {
+        return;
+      }
+      unawaited(
+        NativeBackgroundLocationService.start(
+          baseUrl: _ref.read(apiConfigProvider).baseUrl,
+          credential: nativeCredential,
+          onlineSessionId: installedSession.onlineSessionId,
+        ),
+      );
+    }
+
+    if (snapshot.effectiveSessionStatus == ProviderAvailabilityStatus.offline) {
+      unawaited(
+        NativeBackgroundLocationService.stop(
+          expectedOnlineSessionId: previousNativeSessionId,
+        ),
+      );
+    }
 
     _ref.read(providerLocationDegradationProvider.notifier).state =
         ProviderLocationDegradationState.fromSnapshot(snapshot);
 
     final localStatus = _ref.read(providerStatusProvider);
     if (snapshot.hasActiveWork || localStatus == DriverStatus.busy) {
+      // Active work must retain tracking even if durable intent storage is
+      // temporarily unreadable; Offline remains blocked until work settles.
+      startNativeLocationIfAuthorized();
       debugPrint(
         '[AvailabilityReconcile] $trigger deferred to active-work recovery '
         '(serverActive=${snapshot.hasActiveWork}, local=$localStatus)',
@@ -220,6 +251,7 @@ class AvailabilityReconciliationController {
       );
       return;
     }
+    if (hasOnlineIntent) startNativeLocationIfAuthorized();
 
     // Enforcement and other server fences can close an idle Online epoch while
     // this device still has a durable Online preference. The server snapshot is
