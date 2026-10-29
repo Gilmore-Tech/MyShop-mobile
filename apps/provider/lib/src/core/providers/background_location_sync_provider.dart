@@ -12,6 +12,7 @@ import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
 import '../services/fcm_service.dart';
+import 'app_lifecycle_provider.dart';
 import 'availability_controller.dart';
 import 'availability_reconciliation_controller.dart';
 import 'provider_status_provider.dart';
@@ -75,6 +76,18 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
   final status = ref.watch(providerStatusProvider);
   if (status.isOffline) {
     debugPrint('[LOC] background sync: offline — idle');
+    return;
+  }
+
+  final nativeWorkerActive = ref.watch(
+    providerLocationSessionProvider.select(
+      (session) =>
+          session?.backgroundLocationCredential?.trim().isNotEmpty ?? false,
+    ),
+  );
+  final appForegrounded = ref.watch(appForegroundedProvider);
+  if (nativeWorkerActive && !appForegrounded) {
+    debugPrint('[LOC] background sync: native background worker owns location');
     return;
   }
 

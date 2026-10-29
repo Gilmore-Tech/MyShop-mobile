@@ -27,6 +27,7 @@ class ProviderAvailabilitySnapshot {
     this.onlineSessionId,
     this.lastLocationSequence,
     this.sessionStatus,
+    this.backgroundLocationCredential,
   });
 
   factory ProviderAvailabilitySnapshot.fromJson(Map<String, dynamic> json) {
@@ -141,6 +142,7 @@ class ProviderAvailabilitySnapshot {
       onlineSessionId: onlineSessionId,
       lastLocationSequence: lastLocationSequence,
       sessionStatus: sessionStatus,
+      backgroundLocationCredential: optionalId('backgroundLocationCredential'),
     );
   }
 
@@ -165,6 +167,7 @@ class ProviderAvailabilitySnapshot {
   final DateTime? locationDegradedEscalatedAt;
   final String? onlineSessionId;
   final int? lastLocationSequence;
+  final String? backgroundLocationCredential;
 
   bool get hasActiveWork => activeRideId != null || activeJobId != null;
 }

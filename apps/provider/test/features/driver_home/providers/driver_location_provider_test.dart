@@ -40,6 +40,26 @@ void main() {
     expect(apple.allowBackgroundLocationUpdates, isTrue);
   });
 
+  test('native Android worker disables the duplicate Flutter service', () {
+    final settings = onlineStreamLocationSettings(
+      TargetPlatform.android,
+      nativeWorkerActive: true,
+    ) as AndroidSettings;
+
+    expect(settings.foregroundNotificationConfig, isNull);
+  });
+
+  test('native Apple worker disables the duplicate Flutter background mode',
+      () {
+    final settings = onlineStreamLocationSettings(
+      TargetPlatform.iOS,
+      nativeWorkerActive: true,
+    ) as AppleSettings;
+
+    expect(settings.allowBackgroundLocationUpdates, isFalse);
+    expect(settings.showBackgroundLocationIndicator, isFalse);
+  });
+
   test('Android Online acquisition uses a persistent fused foreground stream',
       () {
     final settings = onlineEntryLocationSettings(TargetPlatform.android);

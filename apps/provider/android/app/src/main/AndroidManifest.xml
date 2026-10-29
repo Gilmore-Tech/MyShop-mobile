@@ -50,6 +50,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".ProviderLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
         <!-- Google Maps Android API key.
              TODO: replace placeholder with a real key (read from local.properties
              via Gradle manifestPlaceholders) before shipping. The placeholder

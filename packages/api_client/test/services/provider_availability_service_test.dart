@@ -65,10 +65,12 @@ void main() {
       'lastSeenAt': '2026-07-18T12:30:00.000Z',
       'onlineSessionId': '60000000-0000-4000-8000-000000000006',
       'lastLocationSequence': 42,
+      'backgroundLocationCredential': 'location-only-token',
     });
 
     expect(snapshot.onlineSessionId, '60000000-0000-4000-8000-000000000006');
     expect(snapshot.lastLocationSequence, 42);
+    expect(snapshot.backgroundLocationCredential, 'location-only-token');
   });
 
   test('separates session intent from dispatch readiness with legacy fallback',
