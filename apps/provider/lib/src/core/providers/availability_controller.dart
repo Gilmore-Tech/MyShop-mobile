@@ -15,6 +15,7 @@ import '../services/ios_always_location_permission_bridge.dart';
 import '../services/fcm_service.dart';
 import '../services/provider_request_policy.dart';
 import '../services/provider_online_recovery.dart';
+import '../services/native_background_location_service.dart';
 import 'provider_status_provider.dart';
 import 'availability_reconciliation_controller.dart';
 import 'location_degradation_provider.dart';
@@ -554,6 +555,17 @@ class AvailabilityController {
       _ref
           .read(providerLocationSessionProvider.notifier)
           .installResponse(response);
+      final installedSession = _ref.read(providerLocationSessionProvider);
+      final nativeCredential = installedSession?.backgroundLocationCredential;
+      if (installedSession != null && nativeCredential != null) {
+        unawaited(
+          NativeBackgroundLocationService.start(
+            baseUrl: _ref.read(apiConfigProvider).baseUrl,
+            credential: nativeCredential,
+            onlineSessionId: installedSession.onlineSessionId,
+          ),
+        );
+      }
       // Seed the dedup so the bridge's kick-once POST (which fires the
       // moment we flip providerStatusProvider below) is suppressed.
       markOnlineLocationPosted();
@@ -639,7 +651,7 @@ class AvailabilityController {
           allowPermissionPrompts: allowPermissionPrompts,
         );
         if (iosGate != null) return iosGate;
-        return _checkPreciseLocationReady();
+        return await _checkPreciseLocationReady();
       }
 
       var permission = await Geolocator.checkPermission();
@@ -665,7 +677,7 @@ class AvailabilityController {
       if (!serviceEnabled) {
         return 'Turn on Location Services to go online.';
       }
-      return _checkPreciseLocationReady();
+      return await _checkPreciseLocationReady();
     } catch (error) {
       debugPrint('[Availability] location readiness check failed: $error');
       return "Couldn't check location access. Restart the app and try again.";
@@ -950,6 +962,11 @@ class AvailabilityController {
     // Demote synchronously before the persistence await so a later epoch B can
     // never be cleared by A's delayed continuation.
     _ref.read(providerStatusProvider.notifier).goOffline();
+    unawaited(
+      NativeBackgroundLocationService.stop(
+        expectedOnlineSessionId: authority.onlineSessionId,
+      ),
+    );
     _ref.read(providerLocationSessionProvider.notifier).clear();
     clearOnlineLocationPostAt();
     try {
@@ -1059,12 +1076,19 @@ class AvailabilityController {
   }
 
   Future<String?> _goOffline() async {
+    final closingSessionId =
+        _ref.read(providerLocationSessionProvider)?.onlineSessionId;
     try {
       await _ref.read(providerAvailabilityServiceProvider).setMyAvailability(
             status: ProviderAvailabilityStatus.offline,
           );
       await _writeOnlineIntent(shouldBeOnline: false);
       _ref.read(providerStatusProvider.notifier).goOffline();
+      unawaited(
+        NativeBackgroundLocationService.stop(
+          expectedOnlineSessionId: closingSessionId,
+        ),
+      );
       _ref.read(providerLocationSessionProvider.notifier).clear();
       _ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
       clearOnlineLocationPostAt();

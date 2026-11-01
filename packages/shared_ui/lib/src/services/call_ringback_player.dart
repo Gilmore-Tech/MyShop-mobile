@@ -10,8 +10,13 @@ import 'package:flutter/foundation.dart';
 /// stopped before WebRTC starts, so it cannot retain audio focus once the call
 /// is connected.
 class CallRingbackPlayer {
+  CallRingbackPlayer({AudioPlayer Function()? createPlayer})
+      : _createPlayer = createPlayer ?? AudioPlayer.new;
+
+  final AudioPlayer Function() _createPlayer;
   AudioPlayer? _player;
   Future<void>? _starting;
+  Future<void>? _stopping;
 
   bool get isPlaying => _player != null;
 
@@ -22,7 +27,7 @@ class CallRingbackPlayer {
 
   Future<void> _start() async {
     if (_player != null) return;
-    final player = AudioPlayer();
+    final player = _createPlayer();
     _player = player;
     try {
       await player.setAudioContext(
@@ -42,20 +47,29 @@ class CallRingbackPlayer {
           ),
         ),
       );
+      if (!identical(_player, player)) return;
       await player.setReleaseMode(ReleaseMode.loop);
+      if (!identical(_player, player)) return;
       await player.play(
         BytesSource(_ringbackWav, mimeType: 'audio/wav'),
         volume: 0.42,
       );
     } catch (error) {
       debugPrint('[CALL-AUDIO] ringback start failed: $error');
-      if (identical(_player, player)) _player = null;
-      await player.dispose();
+      if (identical(_player, player)) {
+        _player = null;
+        await player.dispose();
+      }
     }
   }
 
-  Future<void> stop() async {
-    await _starting;
+  Future<void> stop() {
+    return _stopping ??= _stop().whenComplete(() => _stopping = null);
+  }
+
+  Future<void> _stop() async {
+    // Invalidate startup immediately. Waiting on play() first can strand the
+    // call behind an unfinished native player operation.
     final player = _player;
     _player = null;
     if (player == null) return;

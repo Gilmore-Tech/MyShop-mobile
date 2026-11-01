@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/providers/provider_location_session_provider.dart';
 import '../../../core/services/recovering_location_stream.dart';
 
 typedef OnlinePositionLoader = Future<Position> Function();
@@ -63,7 +65,8 @@ Future<Position> resolvePeriodicOnlinePosition(
   return loader();
 }
 
-LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
+LocationSettings onlineStreamLocationSettings(TargetPlatform platform,
+    {bool nativeWorkerActive = false}) {
   if (platform == TargetPlatform.android) {
     return AndroidSettings(
       accuracy: LocationAccuracy.high,
@@ -74,18 +77,19 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
       // at zero movement and let the REST writer retain its 15-second cadence.
       distanceFilter: 0,
       intervalDuration: const Duration(seconds: 4),
-      foregroundNotificationConfig: const ForegroundNotificationConfig(
-        notificationTitle: 'MyShop Provider is online',
-        notificationText: 'Keeping your location active for jobs and trips.',
-        notificationChannelName: 'Provider location',
-        // A number of Android devices put Wi-Fi to sleep shortly after the
-        // screen turns off even though the CPU wake lock remains held. Keep
-        // the network radio available while the provider is explicitly Online
-        // so fresh fixes can still reach the matcher in the background.
-        enableWifiLock: true,
-        enableWakeLock: true,
-        setOngoing: true,
-      ),
+      // Keep the proven Flutter foreground service as a deployment-order
+      // fallback for an older backend that cannot issue a native credential.
+      foregroundNotificationConfig: nativeWorkerActive
+          ? null
+          : const ForegroundNotificationConfig(
+              notificationTitle: 'MyShop Provider is online',
+              notificationText:
+                  'Keeping your location active for jobs and trips.',
+              notificationChannelName: 'Provider location',
+              enableWifiLock: true,
+              enableWakeLock: true,
+              setOngoing: true,
+            ),
     );
   }
 
@@ -95,8 +99,9 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
       activityType: ActivityType.automotiveNavigation,
       distanceFilter: 0,
       pauseLocationUpdatesAutomatically: false,
-      showBackgroundLocationIndicator: true,
-      allowBackgroundLocationUpdates: true,
+      // Preserve the old path until the server authorizes the native worker.
+      showBackgroundLocationIndicator: !nativeWorkerActive,
+      allowBackgroundLocationUpdates: !nativeWorkerActive,
     );
   }
 
@@ -155,10 +160,26 @@ final driverLocationStreamProvider =
     debugPrint('[LOC] stream provider: offline — not subscribing');
     return const Stream<Position>.empty();
   }
-  return recoveringLocationStream(_openOnlinePositionStream);
+  final nativeWorkerActive = ref.watch(
+    providerLocationSessionProvider.select(
+      (session) =>
+          session?.backgroundLocationCredential?.trim().isNotEmpty ?? false,
+    ),
+  );
+  final appForegrounded = ref.watch(appForegroundedProvider);
+  if (nativeWorkerActive && !appForegrounded) {
+    debugPrint(
+      '[LOC] stream provider: native background worker owns location',
+    );
+    return const Stream<Position>.empty();
+  }
+  return recoveringLocationStream(
+    () => _openOnlinePositionStream(nativeWorkerActive: nativeWorkerActive),
+  );
 });
 
-Stream<Position> _openOnlinePositionStream() async* {
+Stream<Position> _openOnlinePositionStream(
+    {required bool nativeWorkerActive}) async* {
   debugPrint('[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
@@ -211,6 +232,7 @@ Stream<Position> _openOnlinePositionStream() async* {
   // Android the foreground notification keeps the stream prioritized while
   // backgrounded; on iOS Background Modes + Always permission cover lock.
   yield* Geolocator.getPositionStream(
-    locationSettings: onlineStreamLocationSettings(defaultTargetPlatform),
+    locationSettings: onlineStreamLocationSettings(defaultTargetPlatform,
+        nativeWorkerActive: nativeWorkerActive),
   );
 }
