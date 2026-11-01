@@ -184,13 +184,12 @@ class _ProviderInAppCallScreenState
       session?.status == 'ringing' && session?.callerRole != 'client';
 
   void _beginAcceptedSession(AppCallSession session) {
-    _acceptedTransition ??= _stopRingbackThenStartRtc(session).whenComplete(() {
+    _acceptedTransition ??= _startAcceptedRtc(session).whenComplete(() {
       _acceptedTransition = null;
     });
   }
 
-  Future<void> _stopRingbackThenStartRtc(AppCallSession session) async {
-    await _ringback.stop();
+  Future<void> _startAcceptedRtc(AppCallSession session) async {
     if (!mounted || _session?.status != 'accepted') return;
     await _ensureRtc(session);
   }
@@ -201,6 +200,7 @@ class _ProviderInAppCallScreenState
     _rtcStarting = true;
     final rtc = AppCallRtcService(
       socket: ref.read(appCallSocketServiceProvider),
+      refreshSession: ref.read(appCallServiceProvider).joinCall,
     );
     _rtc = rtc;
     _rtcStateSub = rtc.connectionStateStream.listen((state) {
@@ -222,9 +222,10 @@ class _ProviderInAppCallScreenState
     try {
       await rtc.start(
         session: session,
+        prepareAudio: _ringback.stop,
         isCaller: session.callerRole != 'client',
       );
-      if (!mounted) {
+      if (!mounted || attempt != _rtcAttempt || !identical(_rtc, rtc)) {
         await rtc.dispose();
         return;
       }
@@ -232,7 +233,8 @@ class _ProviderInAppCallScreenState
       if (attempt == _rtcAttempt) {
         await _rtcStateSub?.cancel();
         _rtcStateSub = null;
-        _rtc = null;
+        // Retain this failed attempt until explicit retry. Polling must not
+        // silently start another 30-second connection window.
       }
       await rtc.dispose();
       if (mounted && attempt == _rtcAttempt) {
