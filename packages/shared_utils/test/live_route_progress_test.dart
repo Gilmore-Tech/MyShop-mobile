@@ -35,10 +35,15 @@ void main() {
   });
   test('traffic refresh changes ETA without requiring movement', () {
     final slower = LiveRoute(
-        points: route.points, distanceMeters: 3300, durationSeconds: 1800);
+      points: route.points,
+      distanceMeters: 3300,
+      durationSeconds: 1800,
+    );
     const position = (latitude: 0.0, longitude: 0.005);
-    expect(slower.progressAt(position)!.remainingSeconds,
-        closeTo(route.progressAt(position)!.remainingSeconds * 2, 0.01));
+    expect(
+      slower.progressAt(position)!.remainingSeconds,
+      closeTo(route.progressAt(position)!.remainingSeconds * 2, 0.01),
+    );
   });
   test('reports deviations so apps reroute instead of claiming early arrival',
       () {
@@ -52,7 +57,10 @@ void main() {
   });
   test('unusable road routes cannot produce a plausible ETA', () {
     final invalid = LiveRoute(
-        points: route.points, distanceMeters: 3300, durationSeconds: 0);
+      points: route.points,
+      distanceMeters: 3300,
+      durationSeconds: 0,
+    );
     expect(invalid.progressAt((latitude: 0, longitude: 0)), isNull);
     final empty = LiveRoute(points: [], distanceMeters: 0, durationSeconds: 0);
     expect(empty.progressAt((latitude: 0, longitude: 0)), isNull);
