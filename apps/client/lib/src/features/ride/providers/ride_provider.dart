@@ -56,8 +56,7 @@ class VehicleOption {
   final bool surgeActive;
 
   /// Raw multiplier from the backend. 1.0 = baseline, 1.5 = 50% surge.
-  /// Surfaced so the surge banner can render the actual rate ("Surge 1.3×")
-  /// instead of an ambient warning the user can't size up.
+  /// Disclosed through the compact arrow beside the inclusive price.
   final double surgeMultiplier;
 
   /// `false` when the backend found no eligible driver for this ride category

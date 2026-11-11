@@ -15,7 +15,6 @@ import '../widgets/payment_method_row.dart';
 import '../widgets/pickup_destination_fields.dart';
 import '../widgets/fare_estimate_action_bar.dart';
 import '../widgets/route_stop_list.dart';
-import '../widgets/surge_pricing_banner.dart';
 import '../widgets/vehicle_option_card.dart';
 
 /// PRD 4.3 — Plan Your Trip
@@ -145,20 +144,6 @@ class FareEstimateScreen extends ConsumerWidget {
                     ],
                     const SizedBox(height: 20),
                     if (hasCoords) ...[
-                      if (estimate.valueOrNull?.any((v) => v.surgeActive) ==
-                          true) ...[
-                        const SizedBox(height: 16),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          // Every estimate carries the same multiplier, so
-                          // reading the first surging option is enough.
-                          child: SurgePricingBanner(
-                            multiplier: estimate.valueOrNull!
-                                .firstWhere((v) => v.surgeActive)
-                                .surgeMultiplier,
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 20),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
