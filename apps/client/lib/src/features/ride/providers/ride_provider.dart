@@ -1208,7 +1208,7 @@ class CountdownNotifier extends StateNotifier<int> {
   void reset() => state = kRideMatchingSearchCeilingSeconds;
 }
 
-/// ETA countdown (minutes) during an active ride
+/// Live pickup road ETA (minutes), updated from GPS progress.
 final rideEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(4));
 
@@ -1235,16 +1235,47 @@ class LiveDriverPosition {
     required this.longitude,
     this.heading,
     this.updatedAt,
+    this.isLiveFix = false,
   });
 
   final double latitude;
   final double longitude;
   final double? heading;
   final DateTime? updatedAt;
+  final bool isLiveFix;
 }
 
 final liveDriverPositionProvider =
     StateProvider<LiveDriverPosition?>((_) => null);
+
+/// Per-fix events are fresher than persisted snapshot coordinates. Keep them
+/// authoritative while flowing; snapshots still seed/recover a missing stream.
+void applyLiveDriverPosition(
+  RideStateReader read,
+  LiveDriverPosition position, {
+  DateTime? now,
+}) {
+  if (!position.latitude.isFinite ||
+      !position.longitude.isFinite ||
+      position.latitude.abs() > 90 ||
+      position.longitude.abs() > 180) {
+    return;
+  }
+  final current = read(liveDriverPositionProvider);
+  if (current != null && current.isLiveFix && current.updatedAt != null) {
+    if (!position.isLiveFix &&
+        (now ?? DateTime.now()).difference(current.updatedAt!) <
+            const Duration(seconds: 15)) {
+      return;
+    }
+    if (position.isLiveFix &&
+        position.updatedAt != null &&
+        !position.updatedAt!.isAfter(current.updatedAt!)) {
+      return;
+    }
+  }
+  read(liveDriverPositionProvider.notifier).state = position;
+}
 
 /// Tracking-screen maintenance loop. Runs while the rider is on an
 /// active ride; auto-disposes when they leave. Two safety belts:
@@ -1269,6 +1300,14 @@ final activeRideTrackingMaintainerProvider =
   if (rideId == null || rideId.isEmpty) return;
   final rideService = ref.read(rideServiceProvider);
   final socket = ref.read(socketServiceProvider);
+  var disposed = false;
+  Timer? delayTimer;
+  Completer<void>? delay;
+  ref.onDispose(() {
+    disposed = true;
+    delayTimer?.cancel();
+    if (delay?.isCompleted == false) delay!.complete();
+  });
 
   Future<void> rejoinRoom() async {
     try {
@@ -1292,7 +1331,7 @@ final activeRideTrackingMaintainerProvider =
   // socket do its job for the first interval.
   await rejoinRoom();
 
-  while (true) {
+  while (!disposed) {
     // Tighten the cadence once the trip is in_progress: the rider is
     // staring at the screen waiting for the "End Trip" → /ride-complete
     // transition, and a missed `ride:state` broadcast there is the most
@@ -1303,9 +1342,14 @@ final activeRideTrackingMaintainerProvider =
     final interval = phase == RideTrackingPhase.inProgress
         ? const Duration(seconds: 5)
         : const Duration(seconds: 12);
-    await Future<void>.delayed(interval);
+    delay = Completer<void>();
+    delayTimer = Timer(interval, delay.complete);
+    await delay.future;
+    if (disposed) return;
     await rejoinRoom();
+    if (disposed) return;
     await hydrateIfStale();
+    if (disposed) return;
     yield null;
   }
 });
@@ -1331,7 +1375,7 @@ final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
 /// socket delivery doesn't make the client and driver countdowns drift apart.
 final rideArrivalAnchorProvider = StateProvider<DateTime?>((_) => null);
 
-/// ETA countdown (minutes) while the trip is in progress.
+/// Live destination road ETA (minutes), updated from GPS progress.
 final tripEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
 
@@ -1396,6 +1440,9 @@ Future<void> requestRideAndMatchDriver(
   final bookingCoordinator = ref.read(rideBookingCoordinatorProvider);
   final search = ref.read(rideSearchProvider);
 
+  // Reset for a new booking here; opening tracking must preserve recovery.
+  ref.read(rideTrackingPhaseProvider.notifier).state =
+      RideTrackingPhase.enRoute;
   ref.read(bookingPhaseProvider.notifier).startSearch();
   ref.read(searchCountdownProvider.notifier).reset();
   ref.read(rideMatchedViaSocketProvider.notifier).state = false;
@@ -1988,10 +2035,14 @@ Future<void> _hydrateFromRest(
     final dLng =
         (driver['currentLng'] ?? driver['longitude'] ?? driver['lng']) as num?;
     if (dLat != null && dLng != null) {
-      read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
-        latitude: dLat.toDouble(),
-        longitude: dLng.toDouble(),
-        updatedAt: DateTime.now(),
+      applyLiveDriverPosition(
+        read,
+        LiveDriverPosition(
+          latitude: dLat.toDouble(),
+          longitude: dLng.toDouble(),
+          heading: read(liveDriverPositionProvider)?.heading,
+          updatedAt: DateTime.now(),
+        ),
       );
     }
   } on ApiException catch (e) {

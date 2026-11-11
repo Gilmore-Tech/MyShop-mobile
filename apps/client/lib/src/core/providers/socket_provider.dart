@@ -431,12 +431,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
         debugPrint(
           '[LIVE-TRACK] ride:state seeded driver position ($dLat, $dLng)',
         );
-        ref.container.read(liveDriverPositionProvider.notifier).state =
-            LiveDriverPosition(
-          latitude: dLat.toDouble(),
-          longitude: dLng.toDouble(),
-          heading: heading?.toDouble(),
-          updatedAt: DateTime.now(),
+        applyLiveDriverPosition(
+          ref.container.read,
+          LiveDriverPosition(
+            latitude: dLat.toDouble(),
+            longitude: dLng.toDouble(),
+            heading: heading?.toDouble() ??
+                ref.container.read(liveDriverPositionProvider)?.heading,
+            updatedAt: DateTime.now(),
+          ),
         );
       } else {
         debugPrint(
@@ -980,12 +983,19 @@ void _connectAndListen(Ref ref, SocketService socket) {
       debugPrint(
         '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading',
       );
-      ref.container.read(liveDriverPositionProvider.notifier).state =
-          LiveDriverPosition(
-        latitude: lat.toDouble(),
-        longitude: lng.toDouble(),
-        heading: heading?.toDouble(),
-        updatedAt: DateTime.now(),
+      final timestamp = payload['timestamp'];
+      final updatedAt = timestamp is num && timestamp.isFinite
+          ? DateTime.fromMillisecondsSinceEpoch(timestamp.toInt())
+          : parseSocketDate(timestamp) ?? DateTime.now();
+      applyLiveDriverPosition(
+        ref.container.read,
+        LiveDriverPosition(
+          latitude: lat.toDouble(),
+          longitude: lng.toDouble(),
+          heading: heading?.toDouble(),
+          updatedAt: updatedAt,
+          isLiveFix: true,
+        ),
       );
     }
 

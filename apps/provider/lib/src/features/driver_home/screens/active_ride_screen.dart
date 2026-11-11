@@ -754,12 +754,10 @@ class _LiveMetrics {
     this.routeWarning,
   });
 
-  /// Straight-line distance from current GPS to the routing target, in
-  /// meters. Null until we get the first fix.
+  /// Road distance remaining, or direct distance until a route is available.
   final double? distanceMeters;
 
-  /// Estimated minutes remaining, derived from the Directions route's
-  /// average road speed applied to [distanceMeters].
+  /// Traffic-aware road ETA updated on GPS fixes. Null during recovery.
   final int? etaMinutes;
 
   /// Live navigation progress — current step, distance to the next
@@ -811,14 +809,16 @@ class _NavigationMap extends ConsumerStatefulWidget {
 class _NavigationMapState extends ConsumerState<_NavigationMap> {
   GoogleMapController? _mapController;
   DirectionsRoute? _route;
+  LiveRoute? _liveRoute;
+  DateTime? _lastFixAt;
+  DateTime? _roadRouteUpdatedAt;
+  Timer? _etaFreshnessTimer;
   int _routeGeneration = 0;
   int? _routeFetchGeneration;
 
   bool get _routeLoading => _routeFetchGeneration == _routeGeneration;
 
-  /// Origin (driver GPS) used when the last route was fetched — lets us skip
-  /// a refetch if the GPS fix has barely moved.
-  LatLng? _lastRouteOrigin;
+  /// Last traffic-aware route request. Stationary drivers refresh too.
   DateTime? _lastRouteFetchAt;
 
   /// Most recent GPS fix. Stored in a field rather than via ref.watch so the
@@ -850,10 +850,9 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   Set<Polyline> _polylines = const <Polyline>{};
 
   // A route lookup is billable. Keep the current road route while the driver
-  // marker moves along it, then use a conservative safety refresh. Target
-  // changes and genuine off-route movement still refresh immediately.
-  static const _routeRefreshMeters = 500.0;
-  static const _routeRefreshThrottle = Duration(minutes: 5);
+  // marker moves along it; refresh traffic each minute even when stationary.
+  // Target changes invalidate immediately; deviations use a 30-second cooldown.
+  static const _routeRefreshThrottle = Duration(seconds: 60);
   static const _forcedRouteRefreshCooldown = Duration(seconds: 30);
   static const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
@@ -890,7 +889,17 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     widget.handle.recenter = _handleRecenter;
     widget.handle.voiceMuted.addListener(_onVoiceMuteChanged);
     _voice.muted = widget.handle.voiceMuted.value;
+    _etaFreshnessTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _lastFixAt != null && !_hasFreshEtaSource) {
+        _publishMetrics();
+      }
+    });
     _markers = _buildMarkers();
+    // A shared GPS stream may already have a fix before this map subscribes.
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.read(driverLocationStreamProvider).whenData(_onPositionFix);
+    });
     // Render the navigation chevron in the background. The first map
     // frame uses the default azure pin; the moment the bitmap lands we
     // rebuild markers with the rotating chevron. Cached across screens
@@ -917,7 +926,8 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         oldWidget.target.longitude != widget.target.longitude) {
       _routeGeneration += 1;
       _route = null;
-      _lastRouteOrigin = null;
+      _liveRoute = null;
+      _roadRouteUpdatedAt = null;
       _lastRouteFetchAt = null;
       _markers = _buildMarkers();
       _polylines = const <Polyline>{};
@@ -950,6 +960,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       widget.handle.recenter = null;
     }
     widget.handle.voiceMuted.removeListener(_onVoiceMuteChanged);
+    _etaFreshnessTimer?.cancel();
     _voice.dispose();
     _programmaticCameraMoveTimer?.cancel();
     _mapController?.dispose();
@@ -1008,16 +1019,6 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         return;
       }
     } else {
-      final last = _lastRouteOrigin;
-      if (last != null && _route != null && !_route!.isFallback) {
-        final drift = Geolocator.distanceBetween(
-          last.latitude,
-          last.longitude,
-          origin.latitude,
-          origin.longitude,
-        );
-        if (drift < _routeRefreshMeters) return;
-      }
       final refreshThrottle = _route?.isFallback == true
           ? _fallbackRouteRetryInterval
           : _routeRefreshThrottle;
@@ -1047,9 +1048,16 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       }
       setState(() {
         _route = route;
-        if (!route.isFallback) {
-          _lastRouteOrigin = origin;
-        }
+        _roadRouteUpdatedAt = route.isFallback ? null : DateTime.now();
+        _liveRoute = route.isFallback
+            ? null
+            : LiveRoute(
+                points: route.polyline
+                    .map((p) => (latitude: p.latitude, longitude: p.longitude))
+                    .toList(),
+                distanceMeters: route.distanceMeters.toDouble(),
+                durationSeconds: route.durationSeconds.toDouble(),
+              );
         _polylines = _buildPolylines();
       });
       // Deliberately NO `_fitCamera` here. The polyline draws itself on
@@ -1067,14 +1075,12 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
 
   void _onPositionFix(Position pos) {
     if (!mounted) return;
-    final next = LatLng(pos.latitude, pos.longitude);
-    final prev = _driver;
-
-    if (prev != null &&
-        prev.latitude == next.latitude &&
-        prev.longitude == next.longitude) {
+    if (DateTime.now().difference(pos.timestamp) >
+        const Duration(seconds: 20)) {
       return;
     }
+    _lastFixAt = pos.timestamp;
+    final next = LatLng(pos.latitude, pos.longitude);
 
     // Heading is NaN when the GPS doesn't have a directional fix (e.g.
     // stationary) and noisy below ~1 m/s. Keep the previous bearing in
@@ -1103,20 +1109,34 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     _refreshRouteIfNeeded(next);
   }
 
+  bool get _hasFreshEtaSource {
+    if (_lastFixAt == null || _roadRouteUpdatedAt == null) return false;
+    final now = DateTime.now();
+    return now.difference(_lastFixAt!) <= const Duration(seconds: 20) &&
+        now.difference(_roadRouteUpdatedAt!) <= const Duration(minutes: 2);
+  }
+
   void _publishMetrics() {
     final driver = _driver;
     if (driver == null) {
       widget.metrics.value = const _LiveMetrics();
       return;
     }
-    final distance = _haversineMeters(driver, widget.target);
+    final roadProgress = _liveRoute
+        ?.progressAt((latitude: driver.latitude, longitude: driver.longitude));
+    final distance = roadProgress?.remainingMeters ??
+        _haversineMeters(driver, widget.target);
     final route = _route;
     final progress = route != null
         ? NavGuidance.progressFor(driver: driver, route: route)
         : null;
     widget.metrics.value = _LiveMetrics(
       distanceMeters: distance,
-      etaMinutes: _liveEtaMinutes(distance, route),
+      etaMinutes: _hasFreshEtaSource &&
+              roadProgress != null &&
+              roadProgress.offRouteMeters <= _offRouteThresholdMeters
+          ? roadProgress.etaMinutes
+          : null,
       progress: progress,
       routeWarning: route?.warningMessage,
     );
@@ -1130,7 +1150,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     // route polyline that we should recompute from their current GPS.
     // Uses the short forced-refresh cooldown so noisy GPS cannot repeatedly
     // spend route lookups while still correcting a genuine deviation quickly.
-    final offBy = progress?.offRouteMeters;
+    final offBy = roadProgress?.offRouteMeters ?? progress?.offRouteMeters;
     if (offBy != null && offBy > _offRouteThresholdMeters && !_routeLoading) {
       _voice.reset();
       _refreshRouteIfNeeded(driver, force: true);
@@ -1258,24 +1278,6 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     final s2 = math.sin(dLng / 2);
     final h = s1 * s1 + s2 * s2 * math.cos(lat1) * math.cos(lat2);
     return 2 * earthRadius * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
-  }
-
-  /// Estimated minutes derived from the Directions response's average road
-  /// speed. Falls back to ~30 km/h until we have a real route.
-  static int? _liveEtaMinutes(
-    double? meters,
-    DirectionsRoute? route,
-  ) {
-    if (meters == null) return null;
-    double? mps;
-    if (route != null &&
-        !route.isFallback &&
-        route.durationSeconds > 0 &&
-        route.distanceMeters > 0) {
-      mps = route.distanceMeters / route.durationSeconds;
-    }
-    mps ??= 8.333;
-    return (meters / mps / 60).round();
   }
 }
 

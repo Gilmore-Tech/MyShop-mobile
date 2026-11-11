@@ -51,11 +51,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
   @override
   void initState() {
     super.initState();
-    // Seed the ETA values from whatever the backend gave us via the matched
-    // driver payload. These don't tick down on the client any more —
-    // `ride:state` snapshots from the driver advance the phase; if the
-    // backend pushes refreshed ETAs in the future, drop them straight into
-    // these providers from socket_provider.dart.
+    // Keep the initial pickup estimate for compatibility. RideRouteMap
+    // replaces it with traffic-aware road progress on GPS fixes and shows
+    // an updating state until its first road route arrives.
     //
     // Deferred to a microtask: when this screen is pushed via `context.go`
     // from a post-frame callback (e.g. the matching screen's already-
@@ -65,10 +63,11 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     Future.microtask(() {
       if (!mounted) return;
       ref.read(rideEtaProvider.notifier).setEta(widget.driver.minutesAway);
-      ref.read(tripEtaProvider.notifier).setEta(widget.driver.minutesAway);
       ref.read(waitingCountdownProvider.notifier).reset();
-      ref.read(rideTrackingPhaseProvider.notifier).state =
-          RideTrackingPhase.enRoute;
+      // Recovery/socket state may already be arrived or in progress.
+      if (ref.read(rideTrackingPhaseProvider) == RideTrackingPhase.arrived) {
+        _onArrived();
+      }
     });
 
     _sheetController.addListener(_handleSheetChange);
@@ -358,6 +357,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
               destination: destinationLabel,
               etaMinutes: mapEta,
               phase: phase,
+              bottomInset: screenHeight * _sheetSize,
               onChangeDropoff: phase == RideTrackingPhase.inProgress
                   ? _openDestinationEditor
                   : null,
