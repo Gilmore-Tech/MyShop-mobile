@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
+import 'surge_price_indicator.dart';
 import '../utils/ride_category_icon.dart';
 
 class VehicleOptionCard extends StatelessWidget {
@@ -237,25 +238,29 @@ class _FareInfo extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 5),
-              Text(
-                option.fareDisplay,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: MyShopColors.textPrimary,
-                ),
-              ),
+              _PriceWithSurge(
+                  option: option,
+                  child: Text(
+                    option.fareDisplay,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: MyShopColors.textPrimary,
+                    ),
+                  )),
             ],
           )
         else
-          Text(
-            option.fareDisplay,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: MyShopColors.textPrimary,
-            ),
-          ),
+          _PriceWithSurge(
+              option: option,
+              child: Text(
+                option.fareDisplay,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textPrimary,
+                ),
+              )),
         if (option.hasPromo &&
             (option.promoName?.trim().isNotEmpty ?? false)) ...[
           const SizedBox(height: 3),
@@ -329,4 +334,22 @@ class _FareInfo extends StatelessWidget {
       ],
     );
   }
+}
+
+class _PriceWithSurge extends StatelessWidget {
+  const _PriceWithSurge({required this.option, required this.child});
+  final VehicleOption option;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          child,
+          if (option.surgeActive) ...[
+            const SizedBox(width: 3),
+            SurgePriceIndicator(multiplier: option.surgeMultiplier),
+          ]
+        ],
+      );
 }

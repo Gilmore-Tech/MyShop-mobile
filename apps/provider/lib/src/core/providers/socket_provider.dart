@@ -18,6 +18,7 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
+import '../../features/driver_home/providers/surge_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../../features/trips/providers/driver_trips_provider.dart';
 import 'availability_controller.dart';
@@ -405,6 +406,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // Mirror connection state for the UI.
   final sub = socket.connectionStream.listen((connected) {
     ref.container.read(socketConnectedProvider.notifier).state = connected;
+    if (connected) {
+      ref.container.read(surgeAreasRevisionProvider.notifier).state++;
+    }
   });
   ref.onDispose(sub.cancel);
 
@@ -417,6 +421,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // socket; the `off+on` pattern below keeps it idempotent if it ever
   // runs twice against the same socket.
   void attachHandlers() {
+    socket
+      ..off('surge:areas_changed')
+      ..on('surge:areas_changed', (_) {
+        ref.container.read(surgeAreasRevisionProvider.notifier).state++;
+      });
     debugPrint('[WS] (re-)attaching domain event handlers');
 
     // Mirror every incoming event into a state provider for visual debugging.

@@ -133,10 +133,9 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
       isMotorcycle: slug.contains('moto'),
       distanceKm: distanceKm,
       durationMins: durationMins,
-      // 1.05× threshold — backend's baseline can drift to 1.0001 due to
-      // float rounding inside the surge engine, which used to flicker
-      // the "Surge Pricing Active" banner during off-peak hours.
-      surgeActive: surgeMultiplier > 1.05,
+      // Use pricing's two-decimal precision: show real 1.01× surge while
+      // ignoring baseline floating-point drift such as 1.0001.
+      surgeActive: (surgeMultiplier * 100).round() > 100,
       surgeMultiplier: surgeMultiplier,
       // Per-category availability — a Comfort card greys out when only Regular
       // drivers are online.

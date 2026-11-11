@@ -1,3 +1,4 @@
+import 'surge_price_indicator.dart';
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -215,17 +216,26 @@ class FareEstimateActionBar extends StatelessWidget {
                   const SizedBox(width: 12),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text(
-                      fare,
-                      textAlign: TextAlign.end,
-                      maxLines: textScaler.scale(16) > 28 ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.darkSlate,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(
+                        child: Text(
+                          fare,
+                          textAlign: TextAlign.end,
+                          maxLines: textScaler.scale(16) > 28 ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: MyShopColors.darkSlate,
+                          ),
+                        ),
                       ),
-                    ),
+                      if (state.option?.surgeActive == true) ...[
+                        const SizedBox(width: 3),
+                        SurgePriceIndicator(
+                            multiplier: state.option!.surgeMultiplier),
+                      ],
+                    ]),
                   ),
                 ],
               ],
