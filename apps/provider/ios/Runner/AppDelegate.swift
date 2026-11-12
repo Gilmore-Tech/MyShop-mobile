@@ -15,6 +15,7 @@ import CoreLocation
   private var rootLiveActivityBridgeRegistered = false
   private var rootDisplayChannelRegistered = false
   private var rootLocationAuthorizationBridgeRegistered = false
+  private var rootBackgroundLocationBridgeRegistered = false
 
   override func application(
     _ application: UIApplication,
@@ -37,12 +38,23 @@ import CoreLocation
     VoipCallBridge.shared.start()
     IncomingRequestActionBridge.shared.start()
     RequestLiveActivityBridge.shared.start()
+    ProviderBackgroundLocationBridge.shared.restoreIfConfigured()
     registerRootFlutterChannels()
     DispatchQueue.main.async { [weak self] in
       self?.registerRootFlutterChannels()
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    ProviderBackgroundLocationBridge.shared.pauseForForeground()
+  }
+
+  override func applicationDidEnterBackground(_ application: UIApplication) {
+    super.applicationDidEnterBackground(application)
+    ProviderBackgroundLocationBridge.shared.resumeForBackground()
   }
 
   override func application(
@@ -71,6 +83,9 @@ import CoreLocation
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     AlwaysLocationAuthorizationBridge.shared.register(
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    ProviderBackgroundLocationBridge.shared.register(
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     registerDisplayWakeLockChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
@@ -140,6 +155,11 @@ import CoreLocation
       AlwaysLocationAuthorizationBridge.shared.register(binaryMessenger: messenger)
       rootLocationAuthorizationBridgeRegistered = true
     }
+
+    if !rootBackgroundLocationBridgeRegistered {
+      ProviderBackgroundLocationBridge.shared.register(binaryMessenger: messenger)
+      rootBackgroundLocationBridgeRegistered = true
+    }
   }
 
   private func registerDisplayWakeLockChannel(binaryMessenger: FlutterBinaryMessenger) {
@@ -167,6 +187,191 @@ import CoreLocation
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+}
+
+/// Core Location owner that remains active when iOS suspends Flutter after the
+/// screen locks. Its credential can update only one exact existing Online
+/// epoch; it is not a general API login token.
+final class ProviderBackgroundLocationBridge: NSObject, CLLocationManagerDelegate {
+  static let shared = ProviderBackgroundLocationBridge()
+
+  private let channelName = "com.gilmoretech.myshopprovider/background_location"
+  private let endpointKey = "providerBackgroundLocation.endpoint"
+  private let credentialKey = "providerBackgroundLocation.credential"
+  private let sessionKey = "providerBackgroundLocation.sessionId"
+  private let minimumUploadInterval: TimeInterval = 12
+  private let maximumAccuracy: CLLocationAccuracy = 100
+
+  private var channel: FlutterMethodChannel?
+  private var manager: CLLocationManager?
+  private var endpoint: String?
+  private var credential: String?
+  private var sessionId: String?
+  private var lastUploadAt: Date?
+  private var uploadInFlight = false
+
+  func register(binaryMessenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: channelName, binaryMessenger: binaryMessenger)
+    channel?.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(FlutterError(code: "BRIDGE_UNAVAILABLE", message: nil, details: nil))
+        return
+      }
+      switch call.method {
+      case "start":
+        guard
+          let args = call.arguments as? [String: Any],
+          let endpoint = args["endpoint"] as? String,
+          let credential = args["credential"] as? String,
+          let sessionId = args["onlineSessionId"] as? String,
+          !endpoint.isEmpty,
+          !credential.isEmpty,
+          !sessionId.isEmpty
+        else {
+          result(FlutterError(
+            code: "INVALID_ARGUMENT",
+            message: "Missing background location authority",
+            details: nil
+          ))
+          return
+        }
+        DispatchQueue.main.async {
+          self.start(endpoint: endpoint, credential: credential, sessionId: sessionId)
+          result(nil)
+        }
+      case "stop":
+        let args = call.arguments as? [String: Any]
+        let expected = args?["expectedOnlineSessionId"] as? String
+        DispatchQueue.main.async {
+          if expected == nil || expected == self.sessionId || expected == self.persistedSessionId() {
+            self.stop()
+          }
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  func restoreIfConfigured() {
+    let defaults = UserDefaults.standard
+    guard
+      let endpoint = defaults.string(forKey: endpointKey),
+      let credential = defaults.string(forKey: credentialKey),
+      let sessionId = defaults.string(forKey: sessionKey)
+    else { return }
+    DispatchQueue.main.async {
+      self.start(endpoint: endpoint, credential: credential, sessionId: sessionId)
+    }
+  }
+
+  private func start(endpoint: String, credential: String, sessionId: String) {
+    self.endpoint = endpoint
+    self.credential = credential
+    self.sessionId = sessionId
+    let defaults = UserDefaults.standard
+    defaults.set(endpoint, forKey: endpointKey)
+    defaults.set(credential, forKey: credentialKey)
+    defaults.set(sessionId, forKey: sessionKey)
+
+    if UIApplication.shared.applicationState == .background {
+      resumeForBackground()
+    } else {
+      pauseForForeground()
+    }
+  }
+
+  func resumeForBackground() {
+    guard endpoint != nil, credential != nil, sessionId != nil else { return }
+    let manager = self.manager ?? CLLocationManager()
+    self.manager = manager
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyBest
+    manager.distanceFilter = 5
+    manager.activityType = .automotiveNavigation
+    manager.pausesLocationUpdatesAutomatically = false
+    manager.allowsBackgroundLocationUpdates = true
+    manager.showsBackgroundLocationIndicator = true
+    manager.startUpdatingLocation()
+  }
+
+  func pauseForForeground() {
+    manager?.stopUpdatingLocation()
+  }
+
+  private func stop() {
+    manager?.stopUpdatingLocation()
+    manager?.delegate = nil
+    manager = nil
+    endpoint = nil
+    credential = nil
+    sessionId = nil
+    let defaults = UserDefaults.standard
+    defaults.removeObject(forKey: endpointKey)
+    defaults.removeObject(forKey: credentialKey)
+    defaults.removeObject(forKey: sessionKey)
+  }
+
+  private func persistedSessionId() -> String? {
+    UserDefaults.standard.string(forKey: sessionKey)
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    guard let location = locations.last else { return }
+    let now = Date()
+    guard location.horizontalAccuracy >= 0,
+          location.horizontalAccuracy <= maximumAccuracy,
+          now.timeIntervalSince(location.timestamp) <= 30,
+          location.timestamp.timeIntervalSince(now) <= 1,
+          lastUploadAt.map({ now.timeIntervalSince($0) >= minimumUploadInterval }) ?? true,
+          !uploadInFlight,
+          let endpoint,
+          let credential,
+          let url = URL(string: endpoint)
+    else { return }
+
+    uploadInFlight = true
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 10
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("provider", forHTTPHeaderField: "X-MyShop-App")
+    request.setValue("ios", forHTTPHeaderField: "X-MyShop-Platform")
+    if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+      request.setValue(version, forHTTPHeaderField: "X-MyShop-Version")
+    }
+    if let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+      request.setValue(build, forHTTPHeaderField: "X-MyShop-Build")
+    }
+    var body: [String: Any] = [
+      "credential": credential,
+      "latitude": location.coordinate.latitude,
+      "longitude": location.coordinate.longitude,
+      "accuracyMeters": location.horizontalAccuracy,
+      "recordedAt": ISO8601DateFormatter().string(from: location.timestamp),
+    ]
+    if location.course >= 0 { body["heading"] = location.course }
+    if location.speed >= 0 { body["speedKmh"] = location.speed * 3.6 }
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+    URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+      guard let self else { return }
+      let status = (response as? HTTPURLResponse)?.statusCode
+      DispatchQueue.main.async {
+        self.uploadInFlight = false
+        if let status, (200...299).contains(status) {
+          self.lastUploadAt = Date()
+        } else if status == 401 || status == 403 || status == 409 {
+          self.stop()
+        }
+      }
+    }.resume()
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    NSLog("[NativeLocation] Core Location error: \(error.localizedDescription)")
   }
 }
 

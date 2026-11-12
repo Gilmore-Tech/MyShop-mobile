@@ -27,12 +27,10 @@ class ManeuverBanner extends StatelessWidget {
   /// (distance + ETA) until this arrives.
   final NavProgress? progress;
 
-  /// Straight-line distance from the driver to the leg's destination,
-  /// in meters. Used when [progress] has no current step.
+  /// Remaining road distance, or direct distance before a route is available.
   final double? fallbackDistanceMeters;
 
-  /// ETA in minutes, derived from the route's average speed by the
-  /// caller. Used in the right-hand column when there's no maneuver.
+  /// Live road ETA in minutes, shown alongside maneuvers and in fallback mode.
   final int? fallbackEtaMinutes;
 
   /// Pickup / drop-off address the driver is heading to.
@@ -63,7 +61,11 @@ class ManeuverBanner extends StatelessWidget {
             vertical: 14,
           ),
           child: step != null
-              ? _ManeuverContent(progress: progress!)
+              ? _ManeuverContent(
+                  progress: progress!,
+                  etaMinutes: fallbackEtaMinutes,
+                  phaseLabel: phaseLabel,
+                )
               : _FallbackContent(
                   distanceMeters: fallbackDistanceMeters,
                   etaMinutes: fallbackEtaMinutes,
@@ -77,9 +79,14 @@ class ManeuverBanner extends StatelessWidget {
 }
 
 class _ManeuverContent extends StatelessWidget {
-  const _ManeuverContent({required this.progress});
+  const _ManeuverContent(
+      {required this.progress,
+      required this.etaMinutes,
+      required this.phaseLabel});
 
   final NavProgress progress;
+  final int? etaMinutes;
+  final String phaseLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +147,14 @@ class _ManeuverContent extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          etaMinutes == null
+              ? '$phaseLabel · Updating ETA…'
+              : '$phaseLabel · $etaMinutes min',
+          key: const Key('navigation-trip-eta'),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         // "Then turn right" preview — only when the upcoming step is
         // within ~300m of the current maneuver, mirroring Google Maps'

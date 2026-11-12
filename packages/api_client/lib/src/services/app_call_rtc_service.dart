@@ -112,13 +112,30 @@ final class AppCallSignalSerialQueue {
 class AppCallRtcService {
   AppCallRtcService({
     required AppCallSocketService socket,
+    Future<AppCallSession> Function(String callId)? refreshSession,
+    Future<MediaStream> Function()? acquireMicrophone,
+    Future<RTCPeerConnection> Function(Map<String, dynamic>)? createPeer,
     Duration automaticRetryAfter = const Duration(seconds: 12),
     Duration connectionTimeout = const Duration(seconds: 30),
   })  : _socket = socket,
+        _refreshSession = refreshSession,
+        _acquireMicrophone = acquireMicrophone,
+        _createPeer = createPeer,
         _automaticRetryAfter = automaticRetryAfter,
         _connectionTimeout = connectionTimeout;
 
   final AppCallSocketService _socket;
+  final Future<AppCallSession> Function(String callId)? _refreshSession;
+  final Future<MediaStream> Function()? _acquireMicrophone;
+  final Future<RTCPeerConnection> Function(Map<String, dynamic>)? _createPeer;
+  final Completer<void> _startupStopped = Completer<void>();
+  bool _recoveryPending = false;
+  bool _recovering = false;
+  Future<void>? _mediaCleanup;
+  String _phase = 'idle';
+
+  bool get _inactive =>
+      _disposed || _connectionState == AppCallRtcConnectionState.failed;
   final Duration _automaticRetryAfter;
   final Duration _connectionTimeout;
   final StreamController<AppCallRtcConnectionState> _connectionController =
@@ -168,6 +185,7 @@ class AppCallRtcService {
   Future<void> start({
     required AppCallSession session,
     required bool isCaller,
+    Future<void> Function()? prepareAudio,
   }) async {
     if (_started || _disposed) return;
     _started = true;
@@ -190,56 +208,99 @@ class AppCallRtcService {
       'turn=${iceConfig.turnUrls}',
     );
 
-    _signalSub = _socket.signalStream.listen((signal) {
-      if (signal.callId != _callId || _disposed) return;
-      _log('signal rx type=${signal.type}');
-      _signalQueue.add(signal, _handleSignal);
-    });
-    _participantSub = _socket.participantJoinedStream.listen((callId) {
-      if (callId != _callId || _disposed) return;
-      unawaited(_replayNegotiation('participant joined'));
-    });
-    _socketConnectionSub = _socket.connectionStream.listen((connected) {
-      if (!connected || _disposed) return;
-      unawaited(_replayNegotiation('socket connected'));
-    });
-
-    _localStream = await navigator.mediaDevices.getUserMedia({
-      'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true,
-      },
-      'video': false,
-    });
-    _log('microphone ready elapsedMs=${_startupClock.elapsedMilliseconds}');
-
-    final iceServers = session.iceServers;
-    final peer = await createPeerConnection({
-      'iceServers': iceServers.isNotEmpty
-          ? iceServers
-          : const [
-              {
-                'urls': ['stun:stun.l.google.com:19302'],
-              },
-            ],
-      'sdpSemantics': 'unified-plan',
-    });
-    _bindPeerCallbacks(peer);
-    for (final track in _localStream!.getAudioTracks()) {
-      await peer.addTrack(track, _localStream!);
-    }
-    _peer = peer;
-    _log('peer ready elapsedMs=${_startupClock.elapsedMilliseconds}');
+    // The deadline includes ringback cleanup, permission prompts and native
+    // initialization, not just ICE negotiation.
     _startConnectionWatchdog();
+    final startup = _startMedia(session, prepareAudio);
+    await Future.any<void>([startup, _startupStopped.future]);
+  }
 
-    // Any offer/answer/ICE received while microphone permission or native peer
-    // setup was in progress is now applied in arrival order.
-    await _signalQueue.markReady(_handleSignal);
-    if (_disposed) return;
+  Future<void> _startMedia(
+    AppCallSession session,
+    Future<void> Function()? prepareAudio,
+  ) async {
+    try {
+      _signalSub = _socket.signalStream.listen((signal) {
+        if (signal.callId != _callId || _inactive) return;
+        _log('signal rx type=${signal.type}');
+        _signalQueue.add(signal, _handleSignal);
+      });
+      _participantSub = _socket.participantJoinedStream.listen((callId) {
+        if (callId != _callId || _inactive) return;
+        unawaited(_replayNegotiation('participant joined'));
+      });
+      _socketConnectionSub = _socket.connectionStream.listen((connected) {
+        if (!connected || _inactive) return;
+        unawaited(_replayNegotiation('socket connected'));
+      });
 
-    await _socket.joinCall(session.callId);
-    if (_isCaller) await _queueOfferSend();
+      _phase = 'audio cleanup';
+      if (prepareAudio != null) {
+        await prepareAudio().timeout(const Duration(seconds: 3));
+        if (_inactive) return;
+      }
+      _log('audio cleanup ready');
+      _phase = 'microphone';
+      final stream = await (_acquireMicrophone?.call() ??
+          navigator.mediaDevices.getUserMedia({
+            'audio': {
+              'echoCancellation': true,
+              'noiseSuppression': true,
+              'autoGainControl': true,
+            },
+            'video': false,
+          }));
+      if (_inactive) {
+        await _releaseStream(stream);
+        return;
+      }
+      _localStream = stream;
+      _log('microphone ready elapsedMs=${_startupClock.elapsedMilliseconds}');
+
+      final iceServers = session.iceServers;
+      _phase = 'peer creation';
+      final peer = await (_createPeer ?? createPeerConnection)({
+        'iceServers': iceServers.isNotEmpty
+            ? iceServers
+            : const [
+                {
+                  'urls': ['stun:stun.l.google.com:19302'],
+                },
+              ],
+        'sdpSemantics': 'unified-plan',
+      });
+      if (_inactive) {
+        await _cleanupNativeResource(peer.close);
+        return;
+      }
+      _peer = peer;
+      _bindPeerCallbacks(peer);
+      for (final track in _localStream!.getAudioTracks()) {
+        await peer.addTrack(track, stream);
+        if (_inactive) return;
+      }
+      _log('peer ready elapsedMs=${_startupClock.elapsedMilliseconds}');
+      _phase = 'signaling';
+
+      // Any offer/answer/ICE received while microphone permission or native peer
+      // setup was in progress is now applied in arrival order.
+      await _signalQueue.markReady(_handleSignal);
+      if (_inactive) return;
+
+      await _socket.joinCall(session.callId);
+      if (_inactive) return;
+      if (_isCaller) await _queueOfferSend();
+      if (_inactive) return;
+      _phase = 'ICE negotiation';
+      if (_recoveryPending) {
+        _recoveryPending = false;
+        unawaited(_attemptConnectionRecovery('deferred startup recovery'));
+      }
+    } catch (error, stackTrace) {
+      if (_inactive) return;
+      _handleSignalError(error, stackTrace);
+      rethrow;
+    }
   }
 
   void _startConnectionWatchdog() {
@@ -248,17 +309,22 @@ class AppCallRtcService {
       retryAfter: _automaticRetryAfter,
       failAfter: _connectionTimeout,
       onRetry: () {
-        if (_disposed ||
+        if (_inactive ||
             _connectionState == AppCallRtcConnectionState.connected) {
+          return;
+        }
+        if (_peer == null || _phase != 'ICE negotiation') {
+          _recoveryPending = true;
           return;
         }
         unawaited(_attemptConnectionRecovery('connection watchdog'));
       },
       onFailure: () {
-        if (_disposed ||
+        if (_inactive ||
             _connectionState == AppCallRtcConnectionState.connected) {
           return;
         }
+        _log('connection timeout phase=$_phase');
         _logIceSummary('connection timeout');
         _publishConnectionState(AppCallRtcConnectionState.failed);
       },
@@ -267,7 +333,7 @@ class AppCallRtcService {
 
   void _bindPeerCallbacks(RTCPeerConnection peer) {
     peer.onIceCandidate = (candidate) {
-      if (_disposed || candidate.candidate?.isEmpty != false) return;
+      if (_inactive || candidate.candidate?.isEmpty != false) return;
       final data = <String, dynamic>{
         'candidate': candidate.candidate,
         'sdpMid': candidate.sdpMid,
@@ -326,7 +392,7 @@ class AppCallRtcService {
         }
         _sendSignal(type: 'answer', data: answer);
       }
-      if (_disposed) return;
+      if (_inactive) return;
       final candidates = List<Map<String, dynamic>>.of(_localIceCandidates);
       for (final candidate in candidates) {
         _sendSignal(type: 'ice', data: candidate);
@@ -338,14 +404,43 @@ class AppCallRtcService {
   }
 
   Future<void> _attemptConnectionRecovery(String reason) async {
+    if (_recovering ||
+        _inactive ||
+        _connectionState == AppCallRtcConnectionState.connected) return;
+    _recovering = true;
     try {
       final callId = _callId;
       final peer = _peer;
-      if (_disposed || callId == null || peer == null) return;
+      if (_inactive || callId == null || peer == null) return;
       _log('$reason; attempting one ICE recovery');
+      final refresh = _refreshSession;
+      if (refresh != null) {
+        try {
+          final session =
+              await refresh(callId).timeout(const Duration(seconds: 6));
+          if (_inactive ||
+              _connectionState == AppCallRtcConnectionState.connected) return;
+          if (session.callId != callId || !session.isAccepted) return;
+          final servers = session.iceServers;
+          // Never downgrade working relay configuration to STUN-only fallback.
+          if (appCallIceServerSummary(servers).turnUrls > 0) {
+            await peer.setConfiguration({'iceServers': servers});
+            if (_inactive) return;
+            _rtcProvider = session.rtcProvider;
+            _log('recovery TURN configuration applied');
+          } else {
+            _log('recovery refresh has no TURN servers');
+          }
+        } catch (_) {
+          _log('recovery refresh unavailable; retaining ICE configuration');
+        }
+      }
+      if (_inactive || _connectionState == AppCallRtcConnectionState.connected)
+        return;
       _logIceSummary('before recovery');
       await _socket.joinCall(callId);
-      if (_disposed) return;
+      if (_inactive || _connectionState == AppCallRtcConnectionState.connected)
+        return;
       if (_isCaller) {
         _lastOffer = null;
         _localDescriptionSignaled = false;
@@ -353,7 +448,7 @@ class AppCallRtcService {
         _localIceTypeCounts.clear();
         _sentLocalCandidateCount = 0;
         await peer.restartIce();
-        if (_disposed) return;
+        if (_inactive) return;
         await _queueOfferSend(iceRestart: true);
         return;
       }
@@ -367,6 +462,8 @@ class AppCallRtcService {
       }
     } catch (error, stackTrace) {
       _handleSignalError(error, stackTrace);
+    } finally {
+      _recovering = false;
     }
   }
 
@@ -385,7 +482,7 @@ class AppCallRtcService {
   Future<void> _sendOrCreateOffer({bool iceRestart = false}) async {
     final callId = _callId;
     final peer = _peer;
-    if (_disposed || callId == null || peer == null) return;
+    if (_inactive || callId == null || peer == null) return;
     final cached = iceRestart ? null : _lastOffer;
     if (cached != null) {
       _sendSignal(type: 'offer', data: cached);
@@ -395,9 +492,9 @@ class AppCallRtcService {
       'offerToReceiveAudio': true,
       if (iceRestart) 'iceRestart': true,
     });
-    if (_disposed) return;
+    if (_inactive) return;
     await peer.setLocalDescription(offer);
-    if (_disposed) return;
+    if (_inactive) return;
     final data = <String, dynamic>{'sdp': offer.sdp, 'sdpType': offer.type};
     _lastOffer = data;
     _sendSignal(type: 'offer', data: data);
@@ -407,7 +504,7 @@ class AppCallRtcService {
 
   Future<void> _handleSignal(AppCallSignal signal) async {
     final peer = _peer;
-    if (_disposed || peer == null) return;
+    if (_inactive || peer == null) return;
     if (!_firstRemoteSignalLogged) {
       _firstRemoteSignalLogged = true;
       _log(
@@ -431,14 +528,14 @@ class AppCallRtcService {
             signal.data['sdpType'] as String? ?? 'offer',
           ),
         );
-        if (_disposed) return;
+        if (_inactive) return;
         _lastRemoteOfferSdp = sdp;
         _hasRemoteDescription = true;
         await _flushPendingRemoteIceCandidates();
         final answer = await peer.createAnswer({'offerToReceiveAudio': true});
-        if (_disposed) return;
+        if (_inactive) return;
         await peer.setLocalDescription(answer);
-        if (_disposed) return;
+        if (_inactive) return;
         final data = <String, dynamic>{
           'sdp': answer.sdp,
           'sdpType': answer.type,
@@ -456,7 +553,7 @@ class AppCallRtcService {
             signal.data['sdpType'] as String? ?? 'answer',
           ),
         );
-        if (_disposed) return;
+        if (_inactive) return;
         _lastRemoteAnswerSdp = sdp;
         _hasRemoteDescription = true;
         await _flushPendingRemoteIceCandidates();
@@ -502,7 +599,7 @@ class AppCallRtcService {
 
   Future<void> _addRemoteIceCandidate(_PendingIceCandidate pending) async {
     final peer = _peer;
-    if (_disposed || peer == null) return;
+    if (_inactive || peer == null) return;
     try {
       await peer.addCandidate(pending.candidate);
       _log(
@@ -518,7 +615,7 @@ class AppCallRtcService {
   }
 
   void _sendUnsentLocalCandidates() {
-    if (!_localDescriptionSignaled || _disposed) return;
+    if (!_localDescriptionSignaled || _inactive) return;
     while (_sentLocalCandidateCount < _localIceCandidates.length) {
       final candidate = _localIceCandidates[_sentLocalCandidateCount];
       _sentLocalCandidateCount += 1;
@@ -528,7 +625,7 @@ class AppCallRtcService {
 
   void _sendSignal({required String type, required Map<String, dynamic> data}) {
     final callId = _callId;
-    if (_disposed || callId == null) return;
+    if (_inactive || callId == null) return;
     _log('signal tx type=$type');
     _socket.sendSignal(callId: callId, type: type, data: data);
   }
@@ -545,20 +642,15 @@ class AppCallRtcService {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    if (!_startupStopped.isCompleted) _startupStopped.complete();
+    _connectionWatchdog?.dispose();
+    _signalQueue.dispose();
     _started = false;
+    await _releaseMedia();
     await _signalSub?.cancel();
     await _participantSub?.cancel();
     await _socketConnectionSub?.cancel();
-    _connectionWatchdog?.dispose();
     _connectionWatchdog = null;
-    _signalQueue.dispose();
-    for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
-      await track.stop();
-    }
-    await _localStream?.dispose();
-    await _peer?.close();
-    _peer = null;
-    _localStream = null;
     _signalSub = null;
     _participantSub = null;
     _socketConnectionSub = null;
@@ -583,6 +675,35 @@ class AppCallRtcService {
     await _connectionController.close();
   }
 
+  Future<void> _releaseStream(MediaStream stream) async {
+    for (final track in stream.getTracks()) {
+      await _cleanupNativeResource(track.stop);
+    }
+    await _cleanupNativeResource(stream.dispose);
+  }
+
+  Future<void> _cleanupNativeResource(Future<void> Function() release) async {
+    try {
+      await release().timeout(const Duration(seconds: 2));
+    } catch (_) {
+      _log('native media cleanup failed or timed out');
+    }
+  }
+
+  Future<void> _releaseMedia() => _mediaCleanup ??= _releaseCurrentMedia();
+
+  Future<void> _releaseCurrentMedia() async {
+    final peer = _peer;
+    final stream = _localStream;
+    _peer = null;
+    _localStream = null;
+    try {
+      if (peer != null) await _cleanupNativeResource(peer.close);
+    } finally {
+      if (stream != null) await _releaseStream(stream);
+    }
+  }
+
   void _publishConnectionState(AppCallRtcConnectionState state) {
     if (_disposed) return;
     final resolved = mergeAppCallRtcConnectionState(_connectionState, state);
@@ -594,6 +715,15 @@ class AppCallRtcService {
         _everConnected = true;
       }
       _connectionWatchdog?.cancel();
+      if (resolved == AppCallRtcConnectionState.failed) {
+        if (!_startupStopped.isCompleted) _startupStopped.complete();
+        _signalQueue.dispose();
+        unawaited(
+          _releaseMedia().catchError((Object _) {
+            _log('media cleanup failed');
+          }),
+        );
+      }
       _logIceSummary('connection ${resolved.name}');
       _log(
         'terminal connection state=${resolved.name} '
@@ -616,7 +746,7 @@ class AppCallRtcService {
   }
 
   void _handleSignalError(Object error, StackTrace stackTrace) {
-    _log('signal handling failed: $error');
+    _log('setup failed phase=$_phase errorType=${error.runtimeType}');
     _publishConnectionState(AppCallRtcConnectionState.failed);
   }
 
@@ -629,7 +759,8 @@ class AppCallRtcService {
   }
 
   void _log(String message) {
-    debugPrint('[CALL-RTC][${_callId ?? 'unassigned'}] $message');
+    debugPrint('[CALL-RTC][${_callId ?? 'unassigned'}] '
+        'elapsedMs=${_startupClock.elapsedMilliseconds} $message');
   }
 }
 

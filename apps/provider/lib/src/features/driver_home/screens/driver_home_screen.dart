@@ -13,6 +13,8 @@ import '../../profile/providers/verification_provider.dart';
 import '../../promos/widgets/promos_section.dart';
 import '../data/gps_position_smoother.dart';
 import '../providers/driver_location_provider.dart';
+import '../providers/surge_provider.dart';
+import '../widgets/surge_heatmap.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../screens/ride_request_screen.dart';
 import '../widgets/driver_car_marker.dart';
@@ -369,6 +371,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       await _animateCameraTo(LatLng(next.latitude, next.longitude), zoom: 15);
     });
 
+    final surgeAreas = ref.watch(surgeAreasProvider);
     final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
 
@@ -414,8 +417,16 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
               mapToolbarEnabled: false,
               compassEnabled: false,
               markers: {if (isOnline && _driverMarker != null) _driverMarker!},
+              polygons: surgeHeatmapPolygons(surgeAreas, onTap: (area) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        '${area.name} · ${area.multiplier.toStringAsFixed(2)}× fares')));
+              }),
             ),
           ),
+
+          if (surgeAreas.isNotEmpty)
+            const Positioned(top: 151, left: 16, child: SurgeHeatmapLegend()),
 
           // ── 2. Frosted-glass header ──
           const Positioned(

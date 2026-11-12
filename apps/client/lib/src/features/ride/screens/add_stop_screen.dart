@@ -395,13 +395,6 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
                           destinationChanged: destinationChanged,
                         ),
                 ),
-                if (fare?.surgeActive == true) ...[
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SurgePricingActiveBanner(fare: fare!),
-                  ),
-                ],
                 const SizedBox(height: 20),
                 // ── FARE SUMMARY (original + difference) ─────────────────
                 if (fare != null) _FareSummaryRow(fare: fare),

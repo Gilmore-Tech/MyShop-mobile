@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'surge_price_indicator.dart';
 import 'package:shared_ui/shared_ui.dart';
 import '../providers/edit_trip_provider.dart';
 
 /// Two-section card:
-///   Top — gold "PRICE UPDATE" header with a surge badge on the right.
+///   Top — gold "PRICE UPDATE" header.
 ///   Bottom — white body with original estimate vs new fare + trip deltas.
 class FareRecalculationCard extends StatelessWidget {
   final FareRecalculation fare;
@@ -23,7 +24,7 @@ class FareRecalculationCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _PriceUpdateHeader(fare: fare),
+          const _PriceUpdateHeader(),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             child: Column(
@@ -68,8 +69,7 @@ class FareRecalculationCard extends StatelessWidget {
 // ── Top header band — PRICE UPDATE | surge ──────────────────────────────────
 
 class _PriceUpdateHeader extends StatelessWidget {
-  final FareRecalculation fare;
-  const _PriceUpdateHeader({required this.fare});
+  const _PriceUpdateHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -88,22 +88,6 @@ class _PriceUpdateHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          if (fare.surgeActive)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                fare.surgeLabel,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.primaryGold,
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -160,15 +144,21 @@ class _FareComparison extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              fare.newFareDisplay,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: MyShopColors.textPrimary,
-                height: 1.1,
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(
+                fare.newFareDisplay,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: MyShopColors.textPrimary,
+                  height: 1.1,
+                ),
               ),
-            ),
+              if (fare.surgeActive) ...[
+                const SizedBox(width: 4),
+                SurgePriceIndicator(multiplier: fare.surgeMultiplier),
+              ],
+            ]),
           ],
         ),
       ],
@@ -260,91 +250,6 @@ class _DeltaChip extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Surge pricing banner (below the card) ────────────────────────────────────
-
-class SurgePricingActiveBanner extends StatelessWidget {
-  final FareRecalculation fare;
-
-  const SurgePricingActiveBanner({super.key, required this.fare});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: MyShopColors.primaryGoldLight,
-        borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.bolt_rounded,
-              color: MyShopColors.primaryGold, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      'Surge Pricing Active',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _SurgeMultiplierBadge(multiplier: fare.surgeMultiplier),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                const Text(
-                  'High demand in Kumasi. Fares are slightly higher to attract more drivers.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w400,
-                    color: MyShopColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SurgeMultiplierBadge extends StatelessWidget {
-  final double multiplier;
-  const _SurgeMultiplierBadge({required this.multiplier});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: MyShopColors.primaryGold,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '${multiplier.toStringAsFixed(1)}x',
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: Colors.white,
-          letterSpacing: 0.3,
-        ),
       ),
     );
   }

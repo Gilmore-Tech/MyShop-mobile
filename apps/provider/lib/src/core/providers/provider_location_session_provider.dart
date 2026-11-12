@@ -8,17 +8,20 @@ class ProviderLocationSessionState {
     required this.onlineSessionId,
     required this.lastSequence,
     this.supportsSilentRecovery = false,
+    this.backgroundLocationCredential,
   });
 
   final String onlineSessionId;
   final int lastSequence;
   final bool supportsSilentRecovery;
+  final String? backgroundLocationCredential;
 
   ProviderLocationSessionState copyWith({required int lastSequence}) =>
       ProviderLocationSessionState(
         onlineSessionId: onlineSessionId,
         lastSequence: lastSequence,
         supportsSilentRecovery: supportsSilentRecovery,
+        backgroundLocationCredential: backgroundLocationCredential,
       );
 }
 
@@ -27,7 +30,7 @@ class ProviderLocationSessionController
   ProviderLocationSessionController() : super(null);
 
   void install(String onlineSessionId, int lastSequence,
-      {bool? supportsSilentRecovery}) {
+      {bool? supportsSilentRecovery, String? backgroundLocationCredential}) {
     final normalizedId = onlineSessionId.trim();
     if (normalizedId.isEmpty ||
         lastSequence < 0 ||
@@ -39,7 +42,20 @@ class ProviderLocationSessionController
     if (current?.onlineSessionId == normalizedId &&
         current!.lastSequence > lastSequence) {
       // An older reconciliation response must not rewind a sequence already
-      // reserved by live socket/REST producers in this process.
+      // reserved by live socket/REST producers in this process. It may still
+      // carry a renewed native credential, which must not be discarded.
+      final renewedCredential = backgroundLocationCredential?.trim();
+      if (renewedCredential != null &&
+          renewedCredential.isNotEmpty &&
+          renewedCredential != current.backgroundLocationCredential) {
+        state = ProviderLocationSessionState(
+          onlineSessionId: current.onlineSessionId,
+          lastSequence: current.lastSequence,
+          supportsSilentRecovery:
+              supportsSilentRecovery ?? current.supportsSilentRecovery,
+          backgroundLocationCredential: renewedCredential,
+        );
+      }
       return;
     }
     state = ProviderLocationSessionState(
@@ -48,6 +64,10 @@ class ProviderLocationSessionController
       supportsSilentRecovery: supportsSilentRecovery ??
           (current?.onlineSessionId == normalizedId &&
               current!.supportsSilentRecovery),
+      backgroundLocationCredential: backgroundLocationCredential ??
+          (current?.onlineSessionId == normalizedId
+              ? current!.backgroundLocationCredential
+              : null),
     );
   }
 
@@ -59,7 +79,8 @@ class ProviderLocationSessionController
       return;
     }
     install(onlineSessionId, lastSequence,
-        supportsSilentRecovery: snapshot.sessionStatus != null);
+        supportsSilentRecovery: snapshot.sessionStatus != null,
+        backgroundLocationCredential: snapshot.backgroundLocationCredential);
   }
 
   void installResponse(Map<String, dynamic> response) {
@@ -78,7 +99,11 @@ class ProviderLocationSessionController
       clear();
       throw const FormatException('Missing provider location session');
     }
-    install(onlineSessionId, lastSequence);
+    final credential =
+        response['backgroundLocationCredential']?.toString().trim();
+    install(onlineSessionId, lastSequence,
+        backgroundLocationCredential:
+            credential == null || credential.isEmpty ? null : credential);
   }
 
   int nextSequence() {

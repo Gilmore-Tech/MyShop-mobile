@@ -6,10 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/services/directions_service.dart';
 import '../providers/ride_provider.dart'
-    show LiveDriverPosition, RideTrackingPhase, liveDriverPositionProvider;
+    show
+        LiveDriverPosition,
+        RideTrackingPhase,
+        liveDriverPositionProvider,
+        rideEtaProvider,
+        tripEtaProvider;
 import '../providers/ride_search_provider.dart';
 import 'driver_car_marker.dart';
 
@@ -28,11 +34,15 @@ class RideRouteMap extends ConsumerStatefulWidget {
   final RideTrackingPhase phase;
   final VoidCallback? onChangeDropoff;
 
+  /// Height covered by the draggable trip sheet.
+  final double bottomInset;
+
   const RideRouteMap({
     super.key,
     required this.destination,
     required this.etaMinutes,
     this.phase = RideTrackingPhase.enRoute,
+    this.bottomInset = 0,
     this.onChangeDropoff,
   });
 
@@ -85,17 +95,20 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// (en-route ↔ in-progress, which changes the target). Cleared while
   /// the fetch is in flight so we never render two routes at once.
   List<LatLng> _routePolyline = const [];
-  LatLng? _lastRoutedFrom;
+  LiveRoute? _liveRoute;
+  int? _remainingEtaMinutes;
+  Timer? _etaFreshnessTimer;
+  DateTime? _roadRouteUpdatedAt;
   RideTrackingPhase? _lastRoutedPhase;
   DateTime? _lastRouteFetchAt;
   int _routeGeneration = 0;
   int? _routeFetchGeneration;
 
   /// Route refreshes hit a paid backend Google Routes call. The live marker
-  /// remains real-time; the decorative road line gets a five-minute/500 m
-  /// safety refresh and always refreshes when its target changes.
-  static const _routeRefreshMeters = 500.0;
-  static const _routeRefreshThrottle = Duration(minutes: 5);
+  /// remains real-time; traffic-aware routes refresh each minute and sooner
+  /// after a deviation. Target changes invalidate the route immediately.
+  static const _routeRefreshThrottle = Duration(seconds: 60);
+  static const _offRouteThresholdMeters = 65.0;
   static const _fallbackRouteRetryInterval = Duration(seconds: 30);
 
   @override
@@ -105,6 +118,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // Build the car bitmap once. Anything that arrives before this
     // resolves will use the default-yellow fallback marker.
     _initCarIcon();
+    _etaFreshnessTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || _remainingEtaMinutes == null) return;
+      if (!_hasFreshEtaSource(_lastDriverPos)) {
+        setState(() => _remainingEtaMinutes = null);
+      }
+    });
   }
 
   Future<void> _initCarIcon() async {
@@ -124,6 +143,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   void dispose() {
+    _etaFreshnessTimer?.cancel();
     _diagnosticBus.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -135,6 +155,14 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // Phase flip (en-route → arrived → in-progress) changes the target
     // waypoint — force-refresh the route so the line doesn't keep
     // pointing at pickup after the trip starts.
+    if (oldWidget.bottomInset != widget.bottomInset ||
+        oldWidget.phase != widget.phase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final pos = _lastDriverPos;
+        if (pos != null) unawaited(_followCamera(pos));
+      });
+    }
     if (oldWidget.phase != widget.phase) {
       _invalidateRoute();
       final pos = _lastDriverPos;
@@ -148,7 +176,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     debugPrint(
       '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
     );
-    setState(() => _lastDriverPos = next);
+    setState(() {
+      _lastDriverPos = next;
+      _publishEta(next);
+    });
     _diagnosticBus.value = _LiveTrackDiagnostic(
       provider: next != null
           ? '(${next.latitude.toStringAsFixed(4)}, ${next.longitude.toStringAsFixed(4)})'
@@ -182,7 +213,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   void _invalidateRoute() {
     _routeGeneration += 1;
-    _lastRoutedFrom = null;
+    _liveRoute = null;
+    _roadRouteUpdatedAt = null;
+    _remainingEtaMinutes = null;
     _lastRoutedPhase = null;
     _lastRouteFetchAt = null;
     _routePolyline = const [];
@@ -194,33 +227,24 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// decoded polyline in state so the map paints it.
   ///
   /// Throttled to avoid hammering Google Directions on every GPS tick —
-  /// skips unless the driver has moved 500 m and five minutes have passed,
-  /// while phase/target changes continue to invalidate immediately.
+  /// refreshes traffic each minute, including while stationary. Off-route
+  /// recovery is bounded to one request per 30 seconds.
   Future<void> _syncRoute(LiveDriverPosition pos) async {
     final generation = _routeGeneration;
     final target = _targetForPhase();
     if (target == null) return;
     final origin = LatLng(pos.latitude, pos.longitude);
 
-    // Skip refetch when we already have a fresh-enough route.
-    final lastFrom = _lastRoutedFrom;
     final phaseChanged = _lastRoutedPhase != widget.phase;
-    if (!phaseChanged && _routePolyline.isNotEmpty) {
-      final lastAt = _lastRouteFetchAt;
-      if (lastFrom == null) {
-        if (lastAt != null &&
-            DateTime.now().difference(lastAt) < _fallbackRouteRetryInterval) {
-          return;
-        }
-      } else {
-        final drift = _haversineMeters(lastFrom, origin);
-        if (drift < _routeRefreshMeters) return;
-      }
-      if (lastAt != null &&
-          lastFrom != null &&
-          DateTime.now().difference(lastAt) < _routeRefreshThrottle) {
-        return;
-      }
+    final progress = _liveRoute
+        ?.progressAt((latitude: pos.latitude, longitude: pos.longitude));
+    final offRoute = (progress?.offRouteMeters ?? 0) > _offRouteThresholdMeters;
+    final refreshInterval = _liveRoute == null || offRoute
+        ? _fallbackRouteRetryInterval
+        : _routeRefreshThrottle;
+    final lastAt = _lastRouteFetchAt;
+    if (lastAt != null && DateTime.now().difference(lastAt) < refreshInterval) {
+      return;
     }
     if (_routeFetchGeneration == generation) return;
 
@@ -249,10 +273,20 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           return;
         }
       }
-      setState(() => _routePolyline = route.polyline);
-      if (!route.isFallback) {
-        _lastRoutedFrom = origin;
-      }
+      setState(() {
+        _routePolyline = route.polyline;
+        _roadRouteUpdatedAt = route.isFallback ? null : DateTime.now();
+        _liveRoute = route.isFallback
+            ? null
+            : LiveRoute(
+                points: route.polyline
+                    .map((p) => (latitude: p.latitude, longitude: p.longitude))
+                    .toList(),
+                distanceMeters: route.distanceMeters.toDouble(),
+                durationSeconds: route.durationSeconds.toDouble(),
+              );
+        _publishEta(_lastDriverPos);
+      });
       _lastRoutedPhase = widget.phase;
     } catch (e) {
       debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
@@ -263,17 +297,32 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     }
   }
 
-  /// Great-circle distance in metres — used to throttle route refetches.
-  double _haversineMeters(LatLng a, LatLng b) {
-    const earthRadius = 6371000.0;
-    final lat1 = a.latitude * math.pi / 180.0;
-    final lat2 = b.latitude * math.pi / 180.0;
-    final dLat = (b.latitude - a.latitude) * math.pi / 180.0;
-    final dLng = (b.longitude - a.longitude) * math.pi / 180.0;
-    final s1 = math.sin(dLat / 2);
-    final s2 = math.sin(dLng / 2);
-    final h = s1 * s1 + s2 * s2 * math.cos(lat1) * math.cos(lat2);
-    return 2 * earthRadius * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  bool _hasFreshEtaSource(LiveDriverPosition? position) {
+    if (position == null || _roadRouteUpdatedAt == null) return false;
+    final now = DateTime.now();
+    final fixAt = position.updatedAt;
+    return (fixAt == null ||
+            now.difference(fixAt) <= const Duration(seconds: 20)) &&
+        now.difference(_roadRouteUpdatedAt!) <= const Duration(minutes: 2);
+  }
+
+  void _publishEta(LiveDriverPosition? position) {
+    final progress = position == null
+        ? null
+        : _liveRoute?.progressAt(
+            (latitude: position.latitude, longitude: position.longitude));
+    _remainingEtaMinutes = _hasFreshEtaSource(position) &&
+            progress != null &&
+            progress.offRouteMeters <= _offRouteThresholdMeters
+        ? progress.etaMinutes
+        : null;
+    final minutes = _remainingEtaMinutes;
+    if (minutes == null) return;
+    if (widget.phase == RideTrackingPhase.inProgress) {
+      ref.read(tripEtaProvider.notifier).setEta(minutes);
+    } else if (widget.phase == RideTrackingPhase.enRoute) {
+      ref.read(rideEtaProvider.notifier).setEta(minutes);
+    }
   }
 
   LatLng? _targetForPhase() {
@@ -309,7 +358,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       target,
     );
     try {
-      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
     } catch (_) {
       // Bounds fit fails on a freshly-mounted map with no layout pass yet.
       // Fall back to centring on the driver — the next tick re-tries.
@@ -330,7 +379,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       LatLng(dest!.lat!, dest.lng!),
     );
     try {
-      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
       _initialBoundsFit = true;
     } catch (_) {
       // Same first-frame race as in _followCamera — retry on next tick.
@@ -474,6 +523,16 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
               target: initialCenter,
               zoom: 14,
             ),
+            // Camera bounds must use the visible map above the trip sheet.
+            // Leave a usable viewport even when the details sheet is expanded.
+            padding: EdgeInsets.only(
+              top: statusBarHeight + 150,
+              bottom: widget.bottomInset.clamp(
+                0.0,
+                math.max(0.0,
+                    MediaQuery.sizeOf(context).height - statusBarHeight - 270),
+              ),
+            ),
             markers: _buildMarkers(),
             polylines: _buildPolylines(),
             myLocationEnabled: false,
@@ -519,14 +578,14 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   Widget _topPill() {
     switch (widget.phase) {
       case RideTrackingPhase.enRoute:
-        return _EtaPill(etaMinutes: widget.etaMinutes);
+        return _EtaPill(etaMinutes: _remainingEtaMinutes);
       case RideTrackingPhase.arrived:
         return const _ArrivedPill();
       case RideTrackingPhase.inProgress:
-        return _InProgressPill(minutes: widget.etaMinutes);
+        return _InProgressPill(minutes: _remainingEtaMinutes);
       case RideTrackingPhase.completed:
       case RideTrackingPhase.cancelled:
-        return _InProgressPill(minutes: widget.etaMinutes);
+        return _InProgressPill(minutes: _remainingEtaMinutes);
     }
   }
 }
@@ -689,7 +748,7 @@ class RideDestinationOverlay extends StatelessWidget {
 // ── Status pills ──────────────────────────────────────────────────────────────
 
 class _EtaPill extends StatelessWidget {
-  final int etaMinutes;
+  final int? etaMinutes;
   const _EtaPill({required this.etaMinutes});
 
   @override
@@ -714,7 +773,9 @@ class _EtaPill extends StatelessWidget {
               size: 14, color: MyShopColors.textPrimary),
           const SizedBox(width: 6),
           Text(
-            'ARRIVING IN $etaMinutes MINS',
+            etaMinutes == null
+                ? 'UPDATING PICKUP ETA…'
+                : 'ARRIVING IN $etaMinutes MINS',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -767,7 +828,7 @@ class _ArrivedPill extends StatelessWidget {
 }
 
 class _InProgressPill extends StatelessWidget {
-  final int minutes;
+  final int? minutes;
   const _InProgressPill({required this.minutes});
 
   @override
@@ -791,7 +852,9 @@ class _InProgressPill extends StatelessWidget {
           const Icon(Icons.navigation_rounded, size: 14, color: Colors.white),
           const SizedBox(width: 6),
           Text(
-            'IN TRANSIT · $minutes MIN',
+            minutes == null
+                ? 'UPDATING DESTINATION ETA…'
+                : 'IN TRANSIT · $minutes MIN',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,

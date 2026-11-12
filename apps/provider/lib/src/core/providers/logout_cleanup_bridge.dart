@@ -18,6 +18,7 @@ import 'provider_online_intent.dart';
 import '../services/job_offer_receipt_service.dart';
 import '../services/incoming_request_overlay_presenter.dart';
 import '../services/local_notification_service.dart';
+import '../services/native_background_location_service.dart';
 
 typedef JobRequestAlertCleanup = Future<void> Function({
   required String jobId,
@@ -97,6 +98,13 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     if (!wasAuthed || isAuthed) return;
 
     debugPrint('[Logout] tearing down session-scoped state');
+    final closingLocationSession =
+        ref.read(providerLocationSessionProvider)?.onlineSessionId;
+    unawaited(
+      NativeBackgroundLocationService.stop(
+        expectedOnlineSessionId: closingLocationSession,
+      ),
+    );
 
     // AuthController owns exact-role Online-intent deletion; this bridge owns
     // only the in-memory identity and notice teardown.
