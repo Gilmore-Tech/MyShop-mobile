@@ -422,7 +422,8 @@ class CommissionPaymentWindow {
     final hours = _nonNegativeIntOrNull(json['windowHours']);
     final amount = _nonNegativeIntOrNull(json['outstandingPesewas']);
     final due = DateTime.tryParse(
-        json['dueAt'] is String ? json['dueAt'] as String : '');
+      json['dueAt'] is String ? json['dueAt'] as String : '',
+    );
     if (hours == null ||
         hours == 0 ||
         amount == null ||
@@ -430,10 +431,11 @@ class CommissionPaymentWindow {
         due == null ||
         json['overdue'] is! bool) return null;
     return CommissionPaymentWindow(
-        windowHours: hours,
-        dueAt: due.toUtc(),
-        outstandingPesewas: amount,
-        overdue: json['overdue'] as bool);
+      windowHours: hours,
+      dueAt: due.toUtc(),
+      outstandingPesewas: amount,
+      overdue: json['overdue'] as bool,
+    );
   }
 
   final int windowHours;
