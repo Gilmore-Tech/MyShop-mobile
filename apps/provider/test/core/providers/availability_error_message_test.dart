@@ -3,6 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/providers/availability_controller.dart';
 
 void main() {
+  test('overdue commission explains full settlement before going online', () {
+    const error = ApiException(
+      message: 'internal debt details',
+      statusCode: 403,
+      errorCode: 'PROVIDER_COMMISSION_WINDOW_OVERDUE',
+    );
+    expect(
+      friendlyAvailabilityApiError(error),
+      'Your commission payment window has ended. Pay all outstanding '
+      'commission in Earnings before going online or accepting new work.',
+    );
+  });
+
   test('verified-state mismatch gives an actionable support path', () {
     const error = ApiException(
       message: 'internal verification aggregate mismatch',
