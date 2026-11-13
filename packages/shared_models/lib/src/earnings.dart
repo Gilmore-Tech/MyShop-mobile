@@ -408,6 +408,40 @@ enum EarningsReconciliationReason {
 }
 
 /// Mirrors `GET /v1/payments/earnings/summary`.
+/// Server-authored deadline for settling the full cash commission balance.
+class CommissionPaymentWindow {
+  const CommissionPaymentWindow({
+    required this.windowHours,
+    required this.dueAt,
+    required this.outstandingPesewas,
+    required this.overdue,
+  });
+
+  static CommissionPaymentWindow? tryParse(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final hours = _nonNegativeIntOrNull(json['windowHours']);
+    final amount = _nonNegativeIntOrNull(json['outstandingPesewas']);
+    final due = DateTime.tryParse(
+        json['dueAt'] is String ? json['dueAt'] as String : '');
+    if (hours == null ||
+        hours == 0 ||
+        amount == null ||
+        amount == 0 ||
+        due == null ||
+        json['overdue'] is! bool) return null;
+    return CommissionPaymentWindow(
+        windowHours: hours,
+        dueAt: due.toUtc(),
+        outstandingPesewas: amount,
+        overdue: json['overdue'] as bool);
+  }
+
+  final int windowHours;
+  final DateTime dueAt;
+  final int outstandingPesewas;
+  final bool overdue;
+}
+
 class EarningsSummary {
   const EarningsSummary({
     required this.role,
@@ -436,6 +470,7 @@ class EarningsSummary {
     this.nextPayoutEligibleAt,
     this.minimumWithdrawalPesewas,
     bool? hasBalanceBreakdownContract,
+    this.commissionPaymentWindow,
     this.hasPrimaryActionContract = false,
     this.primaryAction,
   })  : hasValidCashCommissionOwedPesewas =
@@ -457,6 +492,8 @@ class EarningsSummary {
 
   factory EarningsSummary.fromJson(Map<String, dynamic> json) {
     return EarningsSummary(
+      commissionPaymentWindow:
+          CommissionPaymentWindow.tryParse(json['commissionPaymentWindow']),
       role: EarningsRole.parse(json['role'] as String?),
       period: EarningsPeriod.parse(json['period'] as String?),
       startDate: DateTime.tryParse(json['startDate'] as String? ?? '')?.toUtc(),
@@ -565,6 +602,8 @@ class EarningsSummary {
   /// This remains authoritative until the backend transactionally applies a
   /// remittance or clawback deduction and returns a reduced value. Mobile must
   /// not infer that an available payout balance has already offset this debt.
+  final CommissionPaymentWindow? commissionPaymentWindow;
+
   final int cashCommissionOwedPesewas;
 
   /// Whether [cashCommissionOwedPesewas] came from an exact non-negative,
