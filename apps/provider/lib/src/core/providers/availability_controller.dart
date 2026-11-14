@@ -100,6 +100,9 @@ String friendlyAvailabilityApiError(ApiException error) {
   }
 
   switch (error.errorCode) {
+    case 'PROVIDER_COMMISSION_WINDOW_OVERDUE':
+      return 'Your commission payment window has ended. Pay all outstanding '
+          'commission in Earnings before going online or accepting new work.';
     case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
       return 'Your commission owing has reached the allowed limit. Pay down '
           'the outstanding commission before going Online to receive new requests.';

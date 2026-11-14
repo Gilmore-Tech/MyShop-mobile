@@ -35,6 +35,53 @@ void main() {
     GoogleMapsFlutterPlatform.instance = _FakeMapsPlatform();
   });
   tearDown(() => GoogleMapsFlutterPlatform.instance = original);
+  testWidgets(
+      'renders intermediate car positions instead of teleporting on GPS updates',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+          home: Scaffold(
+              body: RideRouteMap(
+        destination: 'Destination',
+        etaMinutes: 10,
+      ))),
+    ));
+    final at = DateTime.utc(2026, 11, 14);
+    container.read(liveDriverPositionProvider.notifier).state =
+        LiveDriverPosition(
+      latitude: 6.7,
+      longitude: -1.6,
+      heading: 90,
+      updatedAt: at,
+      isLiveFix: true,
+    );
+    await tester.pump();
+    container.read(liveDriverPositionProvider.notifier).state =
+        LiveDriverPosition(
+      latitude: 6.7,
+      longitude: -1.599,
+      heading: 90,
+      updatedAt: at.add(const Duration(seconds: 4)),
+      isLiveFix: true,
+    );
+    await tester.pump();
+    Marker driver() => tester
+        .widget<GoogleMap>(find.byType(GoogleMap))
+        .markers
+        .singleWhere((m) => m.markerId.value == 'driver');
+    expect(driver().position.longitude, closeTo(-1.6, 0.000001));
+    await tester.pump(const Duration(seconds: 2));
+    expect(driver().position.longitude, closeTo(-1.5995, 0.00002));
+    await tester.pump(const Duration(seconds: 2));
+    expect(driver().position.longitude, closeTo(-1.599, 0.000001));
+    await tester.pump(const Duration(seconds: 20));
+    expect(driver().position.longitude, closeTo(-1.599, 0.000001));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final phase in [
     RideTrackingPhase.enRoute,
     RideTrackingPhase.inProgress

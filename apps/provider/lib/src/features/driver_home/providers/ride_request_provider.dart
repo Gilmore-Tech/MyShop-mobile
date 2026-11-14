@@ -586,6 +586,9 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return 'This ride request was not sent to you.';
       case 'DRIVER_PROFILE_REQUIRED':
         return 'Your driver profile is incomplete — finish verification to accept rides.';
+      case 'PROVIDER_COMMISSION_WINDOW_OVERDUE':
+        return 'Your commission payment window has ended. Pay all outstanding '
+            'commission in Earnings before going online or accepting new work.';
       case 'PROVIDER_COMMISSION_DEBT_CAP_REACHED':
         return 'Your commission owing has reached the allowed limit. Pay down '
             'the outstanding commission before accepting new rides.';

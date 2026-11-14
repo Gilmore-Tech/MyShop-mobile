@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import 'commission_window_notice.dart';
+
 /// Every state rendered in the earnings payout slot.
 ///
 /// Only [payCommission], [withdraw], [setupPayoutMethod], and the legacy
@@ -345,15 +347,24 @@ class EarningsPayoutAction extends StatelessWidget {
 
     switch (state.kind) {
       case EarningsPayoutActionKind.payCommission:
-        return ElevatedButton.icon(
-          key: const Key('earnings-pay-commission'),
-          onPressed: () => onPayCommission(state.commissionOwedPesewas),
-          icon: const Icon(Icons.payments_rounded, size: 18),
-          label: Text(state.label),
-          style: _buttonStyle(
-            backgroundColor: MyShopColors.error,
-            foregroundColor: Colors.white,
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (summary?.commissionPaymentWindow case final window?) ...[
+              CommissionWindowNotice(window: window),
+              const SizedBox(height: 12),
+            ],
+            ElevatedButton.icon(
+              key: const Key('earnings-pay-commission'),
+              onPressed: () => onPayCommission(state.commissionOwedPesewas),
+              icon: const Icon(Icons.payments_rounded, size: 18),
+              label: Text(state.label),
+              style: _buttonStyle(
+                backgroundColor: MyShopColors.error,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         );
       case EarningsPayoutActionKind.requestPayout:
         return ElevatedButton.icon(
