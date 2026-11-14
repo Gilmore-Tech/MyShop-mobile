@@ -20,12 +20,12 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
 case "$APP" in
   client)
-    APPROVED_MARKETING_VERSION=1.4.17
-    LOCAL_BUILD_NUMBER_FLOOR=49
+    APPROVED_MARKETING_VERSION=1.4.18
+    LOCAL_BUILD_NUMBER_FLOOR=50
     ;;
   provider)
-    APPROVED_MARKETING_VERSION=1.4.15
-    LOCAL_BUILD_NUMBER_FLOOR=47
+    APPROVED_MARKETING_VERSION=1.4.16
+    LOCAL_BUILD_NUMBER_FLOOR=48
     ;;
 esac
 # Builds through each app's floor are occupied by retained release artifacts,
