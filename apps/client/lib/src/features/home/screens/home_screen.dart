@@ -216,7 +216,8 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
   static const _maximumAutomaticPickupAge = Duration(minutes: 5);
   static const _maximumAutomaticPickupAccuracyMetres = 250.0;
 
-  bool _openingRide = false;
+  bool _rideNavigationPending = false;
+  int _pickupSeedGeneration = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -246,21 +247,40 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
     );
   }
 
-  Future<void> _openRide() async {
-    if (_openingRide) return;
-    _openingRide = true;
+  void _openRide() {
+    if (_rideNavigationPending) return;
+    _rideNavigationPending = true;
+    final generation = ++_pickupSeedGeneration;
     try {
-      // Opening the ride flow must never wait on GPS or reverse geocoding.
-      // Those best-effort lookups can take up to 12 seconds indoors or on a
-      // weak connection. The estimate screen is usable while pickup recovery
-      // continues, and the guards below ensure an explicit user selection
-      // always wins.
-      unawaited(_seedPickupFromCurrentLocation());
-      await context.push<void>(AppRoutes.rideEstimate);
+      // A push Future lasts until the page is popped and may stay pending if
+      // redirects replace it. It must never own the Home card's tap lock.
+      final navigation = context.push<void>(AppRoutes.rideEstimate);
+      unawaited(navigation.then<void>((_) {
+        if (mounted && generation == _pickupSeedGeneration) {
+          _pickupSeedGeneration++;
+        }
+      }, onError: (Object error, StackTrace stack) {
+        if (mounted && generation == _pickupSeedGeneration) {
+          _pickupSeedGeneration++;
+        }
+        debugPrint('[HOME] ride navigation failed: $error');
+      }));
+      // GPS and labels are advisory; the destination opens immediately.
+      unawaited(_seedPickupFromCurrentLocation(generation));
     } finally {
-      _openingRide = false;
+      // Suppress duplicate taps in this frame, without a process-lifetime
+      // latch when navigation is redirected, replaced, or fails to complete.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _rideNavigationPending = false;
+      });
     }
   }
+
+  bool _isCurrentPickupSeed(int generation) =>
+      mounted &&
+      generation == _pickupSeedGeneration &&
+      GoRouter.of(context).state.uri.path.startsWith('/ride/') &&
+      !ref.read(rideSearchProvider).wasSubmitted;
 
   /// Carries the home-screen current location into the ride flow so the user
   /// doesn't have to pick it again. Each new ride asks for a fresh GPS fix;
@@ -269,7 +289,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
   /// recent last-known fix only after confirming permission and service state;
   /// an unrelated process-lifetime cache is never reused here. An explicitly
   /// selected pickup is never replaced.
-  Future<void> _seedPickupFromCurrentLocation() async {
+  Future<void> _seedPickupFromCurrentLocation(int generation) async {
     final existingDraft = ref.read(rideSearchProvider);
     if (existingDraft.pickup != null && !existingDraft.wasSubmitted) return;
     if (existingDraft.wasSubmitted) clearRideRequestDraft(ref.read);
@@ -287,7 +307,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       position = null;
     }
 
-    if (!mounted || !_openingRide) return;
+    if (!_isCurrentPickupSeed(generation)) return;
     // The rider may have selected a pickup while the platform location request
     // was in flight. That explicit choice always wins over automatic GPS.
     if (ref.read(rideSearchProvider).pickup != null) return;
@@ -323,7 +343,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       place = null;
     }
 
-    if (!mounted || !_openingRide) return;
+    if (!_isCurrentPickupSeed(generation)) return;
     // Navigation is already open, so the rider may have selected a pickup
     // while reverse geocoding was in flight. Never overwrite that explicit
     // choice with a delayed automatic result.
@@ -331,7 +351,8 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
     final seededPickup = _writePickup(position, place);
 
     if (_isGenericCurrentPlace(place)) {
-      unawaited(_refreshPickupLabel(position, placeLookup, seededPickup));
+      unawaited(
+          _refreshPickupLabel(position, placeLookup, seededPickup, generation));
     }
   }
 
@@ -348,6 +369,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
     Position pos,
     Future<ReverseGeocodePlace> placeLookup,
     RideLocation seededPickup,
+    int generation,
   ) async {
     ReverseGeocodePlace place;
     try {
@@ -358,7 +380,7 @@ class _ServiceCardsRowState extends ConsumerState<_ServiceCardsRow> {
       debugPrint('[LOC] delayed ride pickup reverse-geocode failed: $error');
       return;
     }
-    if (!mounted || !_openingRide) return;
+    if (!_isCurrentPickupSeed(generation)) return;
     if (_isGenericCurrentPlace(place)) return;
     final current = ref.read(rideSearchProvider);
     if (current.wasSubmitted || !identical(current.pickup, seededPickup)) {

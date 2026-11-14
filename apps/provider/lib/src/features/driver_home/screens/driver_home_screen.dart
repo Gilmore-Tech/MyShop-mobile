@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
@@ -59,10 +60,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   /// smoothed GPS fix so the car glides rather than teleporting on each update.
   late final AnimationController _moveController;
 
-  LatLng? _fromPos;
-  LatLng? _toPos;
-  double _fromRotation = 0;
-  double _toRotation = 0;
+  final VehicleMotion _driverMotion = VehicleMotion();
+  Duration _lastRenderedFrame = Duration.zero;
   LatLng? _currentPos;
   double _currentRotation = 0;
   final GpsPositionSmoother _positionSmoother = GpsPositionSmoother();
@@ -228,29 +227,26 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     await _goToCurrentLocation();
   }
 
-  /// Linearly interpolates between two headings along the short arc, so the
-  /// car rotates the correct way when crossing 0°/360°.
-  double _lerpAngle(double from, double to, double t) {
-    var diff = (to - from) % 360;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    return (from + diff * t) % 360;
-  }
+  // A ticker clock makes presentation independent of wall-clock corrections.
+  DateTime _motionNow = DateTime.now();
+  DateTime? _motionEpoch;
 
   void _onAnimationTick() {
-    final from = _fromPos;
-    final to = _toPos;
     final icon = _carIcon;
-    if (from == null || to == null || icon == null) return;
-
-    final t = _moveController.value;
-    final lat = from.latitude + (to.latitude - from.latitude) * t;
-    final lng = from.longitude + (to.longitude - from.longitude) * t;
-    final rotation = _lerpAngle(_fromRotation, _toRotation, t);
-
-    _currentPos = LatLng(lat, lng);
-    _currentRotation = rotation;
-
+    if (icon == null) return;
+    final elapsed = _moveController.lastElapsedDuration ??
+        (_moveController.value >= 1 ? _driverMotion.duration : Duration.zero);
+    if (_motionEpoch != null) _motionNow = _motionEpoch!.add(elapsed);
+    if (_driverMotion.duration > Duration.zero &&
+        _moveController.value < 1 &&
+        elapsed - _lastRenderedFrame < const Duration(milliseconds: 32)) {
+      return;
+    }
+    _lastRenderedFrame = elapsed;
+    final pose = _driverMotion.sample(_motionNow);
+    if (pose == null || !mounted) return;
+    _currentPos = LatLng(pose.point.latitude, pose.point.longitude);
+    _currentRotation = pose.heading;
     setState(() {
       _driverMarker = Marker(
         markerId: const MarkerId('driver_self'),
@@ -258,7 +254,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         icon: icon,
         anchor: const Offset(0.5, 0.5),
         flat: true,
-        rotation: rotation,
+        rotation: pose.heading,
       );
     });
   }
@@ -282,39 +278,33 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         ? _currentRotation
         : position.heading;
 
-    // First fix after going online: show immediately and centre the camera.
-    if (_currentPos == null) {
-      _currentPos = displayPoint;
-      _currentRotation = targetRotation;
-      setState(() {
-        _driverMarker = Marker(
-          markerId: const MarkerId('driver_self'),
-          position: displayPoint,
-          icon: icon,
-          anchor: const Offset(0.5, 0.5),
-          flat: true,
-          rotation: targetRotation,
-        );
-      });
-
-      if (!_hasCenteredOnDriver) {
-        _hasCenteredOnDriver = true;
-        if (!mounted) return;
-        await _animateCameraTo(displayPoint, zoom: 16.5);
-      }
+    final firstFix = _currentPos == null;
+    final accepted = _driverMotion.update(
+      point: (
+        latitude: displayPoint.latitude,
+        longitude: displayPoint.longitude
+      ),
+      heading: targetRotation,
+      fixAt: position.timestamp,
+      now: _motionNow,
+    );
+    if (!accepted) return;
+    // Use the actual fix cadence, rather than a fixed 900 ms dash followed by
+    // a pause. Both heading and position continue from the displayed pose.
+    _moveController.stop();
+    _motionEpoch = _motionNow;
+    _lastRenderedFrame = Duration.zero;
+    if (_driverMotion.duration > Duration.zero) {
+      _moveController.duration = _driverMotion.duration;
+      _moveController.forward(from: 0);
+    } else {
+      _onAnimationTick();
+    }
+    if (firstFix && !_hasCenteredOnDriver) {
+      _hasCenteredOnDriver = true;
+      await _animateCameraTo(displayPoint, zoom: 16.5);
       return;
     }
-
-    // Subsequent fixes: animate from wherever the marker currently is (even
-    // mid-tween) to the new snapped target.
-    _fromPos = _currentPos;
-    _toPos = displayPoint;
-    _fromRotation = _currentRotation;
-    _toRotation = targetRotation;
-    _moveController
-      ..stop()
-      ..reset()
-      ..forward();
 
     if (_followDriverCamera) {
       await _animateCameraTo(displayPoint, zoom: 16.5);
@@ -327,16 +317,13 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     }
     _moveController.stop();
     _positionSmoother.reset();
+    _driverMotion.reset();
     setState(() {
       _driverMarker = null;
       _hasCenteredOnDriver = false;
       _currentPos = null;
-      _fromPos = null;
-      _toPos = null;
       _followDriverCamera = true;
       _currentRotation = 0;
-      _fromRotation = 0;
-      _toRotation = 0;
     });
   }
 
@@ -424,9 +411,6 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
               }),
             ),
           ),
-
-          if (surgeAreas.isNotEmpty)
-            const Positioned(top: 151, left: 16, child: SurgeHeatmapLegend()),
 
           // ── 2. Frosted-glass header ──
           const Positioned(

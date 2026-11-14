@@ -101,6 +101,7 @@ void main() {
     bool currentPositionIsFresh = true,
     FutureOr<Region?> Function(Ref ref)? operationalRegionResolver,
     FutureOr<String> Function(Ref ref)? currentLocationLabelResolver,
+    String? Function(BuildContext, GoRouterState)? routeRedirect,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -109,6 +110,7 @@ void main() {
 
     final router = GoRouter(
       initialLocation: AppRoutes.home,
+      redirect: routeRedirect,
       routes: [
         GoRoute(
           path: AppRoutes.home,
@@ -707,6 +709,49 @@ void main() {
 
     refresh.complete(null);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'ride card opens again after the booking route is replaced by Home',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => null);
+    await pumpHome(tester, locationService: location);
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+    final router = GoRouter.of(tester.element(find.text('Ride estimate')));
+    router.go(AppRoutes.home);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ride estimate'), findsOneWidget);
+  });
+
+  testWidgets('a redirected launch cannot leave the home ride card locked',
+      (tester) async {
+    final location = _MockCurrentLocationService();
+    when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
+        .thenAnswer((_) async => null);
+    var attempts = 0;
+    await pumpHome(
+      tester,
+      locationService: location,
+      routeRedirect: (_, state) {
+        if (state.uri.path == AppRoutes.rideEstimate && ++attempts == 1) {
+          return AppRoutes.home;
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+    expect(find.text('Book Akwaaba Ride'), findsOneWidget);
+
+    await tester.tap(find.text('Book Akwaaba Ride'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ride estimate'), findsOneWidget);
+    expect(attempts, 2);
   });
 
   testWidgets('manual pickup wins while background geocoding is pending',

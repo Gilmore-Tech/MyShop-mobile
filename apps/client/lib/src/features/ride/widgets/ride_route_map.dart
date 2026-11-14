@@ -61,7 +61,8 @@ class _LiveTrackDiagnostic {
       _LiveTrackDiagnostic(provider: 'awaiting first fix', marker: 'pending');
 }
 
-class _RideRouteMapState extends ConsumerState<RideRouteMap> {
+class _RideRouteMapState extends ConsumerState<RideRouteMap>
+    with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
 
   /// Bitmap for the driver marker. Lazy-built on first use because canvas
@@ -74,6 +75,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// listener on every socket / REST fix. Drives both the driver marker's
   /// position+rotation and (after first fix) the follow-camera.
   LiveDriverPosition? _lastDriverPos;
+  final VehicleMotion _driverMotion = VehicleMotion();
+  VehiclePose? _displayedDriver;
+  late final AnimationController _motionController;
+  Duration _lastRenderedFrame = Duration.zero;
 
   /// Current authoritative route endpoints. Destination changes replace this
   /// state live; the previous captured-once behavior left the rider map aimed
@@ -114,6 +119,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   @override
   void initState() {
     super.initState();
+    _motionController = AnimationController(vsync: this)
+      ..addListener(_onMotionFrame);
     _searchState = ref.read(rideSearchProvider);
     // Build the car bitmap once. Anything that arrives before this
     // resolves will use the default-yellow fallback marker.
@@ -143,6 +150,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   void dispose() {
+    _motionController.dispose();
     _etaFreshnessTimer?.cancel();
     _diagnosticBus.dispose();
     _mapController?.dispose();
@@ -172,7 +180,50 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   // ── Pipeline helpers ─────────────────────────────────────────────────────
 
+  // A ticker clock makes presentation independent of wall-clock corrections.
+  DateTime _motionNow = DateTime.now();
+  DateTime? _motionEpoch;
+
+  void _onMotionFrame() {
+    final elapsed = _motionController.lastElapsedDuration ??
+        (_motionController.value >= 1 ? _driverMotion.duration : Duration.zero);
+    if (_motionEpoch != null) _motionNow = _motionEpoch!.add(elapsed);
+    // Native marker updates cross a platform channel. Cap them at 30 fps so
+    // queued platform work cannot trail behind incoming GPS on slower phones.
+    if (_motionController.value < 1 &&
+        elapsed - _lastRenderedFrame < const Duration(milliseconds: 32)) {
+      return;
+    }
+    _lastRenderedFrame = elapsed;
+    if (mounted) {
+      setState(() => _displayedDriver = _driverMotion.sample(_motionNow));
+    }
+  }
+
   void _onDriverPosition(LiveDriverPosition? next) {
+    if (!mounted) return;
+    if (next == null) {
+      _motionController.stop();
+      _driverMotion.reset();
+      _displayedDriver = null;
+    } else {
+      final accepted = _driverMotion.update(
+        point: (latitude: next.latitude, longitude: next.longitude),
+        heading: next.heading,
+        fixAt: next.updatedAt,
+        now: _motionNow,
+        route: _liveRoute?.points ?? const [],
+      );
+      if (!accepted) return;
+      _displayedDriver = _driverMotion.sample(_motionNow);
+      _motionController.stop();
+      _motionEpoch = _motionNow;
+      if (_driverMotion.duration > Duration.zero) {
+        _lastRenderedFrame = Duration.zero;
+        _motionController.duration = _driverMotion.duration;
+        _motionController.forward(from: 0);
+      }
+    }
     debugPrint(
       '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
     );
@@ -408,7 +459,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // Pick up any driver fix that arrived before the map mounted.
     final pos = ref.read(liveDriverPositionProvider);
     if (pos != null) {
+      final hadDriver = _lastDriverPos != null;
       _onDriverPosition(pos);
+      if (hadDriver) await _followCamera(pos);
     } else {
       await _fitInitialBounds();
     }
@@ -464,19 +517,19 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       );
     }
 
-    final pos = _lastDriverPos;
+    final pos = _displayedDriver;
     if (pos != null) {
       markers.add(
         Marker(
           markerId: const MarkerId('driver'),
-          position: LatLng(pos.latitude, pos.longitude),
+          position: LatLng(pos.point.latitude, pos.point.longitude),
           // Use the custom car bitmap if it finished rendering; otherwise
           // a default-yellow marker so the driver is visible from frame 1.
           icon: _carIcon ??
               BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueYellow,
               ),
-          rotation: pos.heading ?? 0,
+          rotation: pos.heading,
           // Anchor at the centre so rotation pivots on the visual middle
           // of the car (matches the square bitmap's centre).
           anchor: const Offset(0.5, 0.5),
