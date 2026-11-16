@@ -55,10 +55,14 @@ void main() {
     final motion = VehicleMotion();
     motion.update(point: start, now: now, heading: 350);
     final at = now.add(const Duration(seconds: 4));
-    motion.update(point: east, now: at, heading: 10);
+    motion.update(
+      point: (latitude: 6.701, longitude: -1.5998225),
+      now: at,
+      heading: 10,
+    );
     expect(
       motion.sample(at.add(const Duration(seconds: 2)))!.heading,
-      closeTo(0, 0.01),
+      anyOf(closeTo(0, 0.01), closeTo(360, 0.01)),
     );
   });
 
@@ -73,6 +77,52 @@ void main() {
       motion.sample(at.add(const Duration(seconds: 2)))!.point.longitude,
       closeTo(start.longitude, 0.000001),
     );
+  });
+
+  test('a noisy compass cannot turn a moving car sideways on a straight road',
+      () {
+    final motion = VehicleMotion();
+    motion.update(point: start, now: now, heading: 90);
+    final at = now.add(const Duration(seconds: 5));
+    motion.update(point: east, now: at, heading: 0, route: [start, east]);
+    for (var ms = 0; ms <= 5000; ms += 100) {
+      expect(
+        motion.sample(at.add(Duration(milliseconds: ms)))!.heading,
+        closeTo(90, 1),
+      );
+    }
+  });
+
+  test('GPS offset does not create sideways connector legs on a road', () {
+    final motion = VehicleMotion();
+    const a = (latitude: 6.70008, longitude: -1.5999);
+    const b = (latitude: 6.70009, longitude: -1.5991);
+    motion.update(point: a, now: now, heading: 90);
+    final at = now.add(const Duration(seconds: 5));
+    motion.update(point: b, now: at, heading: 0, route: [start, east]);
+    var last = a;
+    for (var ms = 100; ms <= 5000; ms += 100) {
+      final pose = motion.sample(at.add(Duration(milliseconds: ms)))!;
+      expect(pose.point.longitude, greaterThan(last.longitude));
+      expect(pose.heading, inInclusiveRange(85, 95));
+      expect(pose.point.latitude, inInclusiveRange(a.latitude, b.latitude));
+      last = pose.point;
+    }
+    expect(last, b);
+  });
+
+  test('ten-second GPS cadence keeps moving beyond the old five-second cap',
+      () {
+    final motion = VehicleMotion();
+    motion.update(point: start, now: now, fixAt: now, heading: 90);
+    final at = now.add(const Duration(seconds: 10));
+    motion.update(point: east, now: at, fixAt: at, heading: 90);
+    final halfway = motion.sample(at.add(const Duration(seconds: 5)))!;
+    final later = motion.sample(at.add(const Duration(seconds: 8)))!;
+    expect(halfway.point.longitude, closeTo(-1.5995, 0.000001));
+    expect(later.point.longitude, greaterThan(halfway.point.longitude));
+    expect(later.point.longitude, lessThan(east.longitude));
+    expect(motion.sample(at.add(const Duration(seconds: 10)))!.point, east);
   });
 
   test('rejects stale/invalid fixes and recovers immediately after a long gap',
