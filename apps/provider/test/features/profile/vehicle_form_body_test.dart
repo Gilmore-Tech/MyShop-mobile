@@ -4,6 +4,39 @@ import 'package:myshop_provider/src/features/profile/models/vehicle_form_state.d
 import 'package:myshop_provider/src/features/profile/widgets/vehicle_form_body.dart';
 
 void main() {
+  testWidgets('Regular is preselected and locked for new vehicles',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    VehicleFormState? submitted;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VehicleFormBody(
+      initialValue: const VehicleFormState(
+          make: 'Toyota',
+          model: 'Corolla',
+          year: '2024',
+          plate: 'GR-1234-24',
+          color: 'Silver'),
+      categories: const [
+        VehicleCategoryChoice(
+            id: 'regular-id',
+            name: 'Regular',
+            description: '',
+            isRequired: true)
+      ],
+      submitLabel: 'Save vehicle',
+      onSubmit: (value) async {
+        submitted = value;
+        return null;
+      },
+    ))));
+    await tester.tap(find.text('Regular (required)'));
+    await tester.tap(find.text('Save vehicle'));
+    await tester.pumpAndSettle();
+    expect(submitted?.rideCategoryIds, {'regular-id'});
+  });
+
   testWidgets('blocks submission until a vehicle category is selected',
       (tester) async {
     VehicleFormState? submitted;

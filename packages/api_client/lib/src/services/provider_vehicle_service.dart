@@ -372,6 +372,25 @@ class ProviderVehicleService {
     }
   }
 
+  Future<ProviderVehicleMutationResult> requestCategories({
+    required String vehicleId,
+    required int expectedVersion,
+    required List<String> rideCategoryIds,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/providers/me/vehicles/$vehicleId/category-requests',
+        data: {
+          'expectedVersion': expectedVersion,
+          'rideCategoryIds': rideCategoryIds,
+        },
+      );
+      return _mutationResult(response);
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(error);
+    }
+  }
+
   Future<ProviderVehicleMutationResult> requestRemoval({
     required String vehicleId,
     required int expectedVersion,

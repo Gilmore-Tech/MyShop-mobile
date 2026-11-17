@@ -21,6 +21,7 @@ class DriverCategoriesStep extends ConsumerWidget {
     final options = ref.watch(rideCategoryOptionsProvider(draft.regionId));
 
     void toggle(String slug) {
+      if (slug == 'regular') return;
       // Fresh-read merge (same pattern as the profile/vehicle steps) so a
       // rebuild between taps can never write a stale draft and drop a prior
       // selection.
@@ -45,8 +46,8 @@ class DriverCategoriesStep extends ConsumerWidget {
           ),
           const SizedBox(height: MyShopSpacing.xs),
           Text(
-            'Pick one or more. Each is verified by our team before you start '
-            'receiving those requests.',
+            'Regular is included for every driver. Choose any additional categories. '
+            'Each category is verified before you receive its requests.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: MyShopSpacing.md),
@@ -81,14 +82,20 @@ class DriverCategoriesStep extends ConsumerWidget {
               }
               return Column(
                 children: [
+                  if (!cats.any((c) => c.slug == 'regular'))
+                    const Text(
+                        'Regular is unavailable in this region. Contact support before signing up.'),
                   for (final c in cats)
                     Padding(
                       padding: const EdgeInsets.only(bottom: MyShopSpacing.sm),
                       child: _CategoryTile(
-                        name: c.name,
+                        name: c.slug == 'regular'
+                            ? '${c.name} (required)'
+                            : c.name,
                         description: c.description,
                         selected: draft.rideCategories.contains(c.slug),
-                        onTap: () => toggle(c.slug),
+                        onTap:
+                            c.slug == 'regular' ? null : () => toggle(c.slug),
                       ),
                     ),
                   if (showAll && draft.rideCategories.isEmpty)
@@ -126,7 +133,7 @@ class _CategoryTile extends StatelessWidget {
   final String name;
   final String description;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
