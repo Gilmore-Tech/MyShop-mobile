@@ -58,17 +58,18 @@ class VehicleMotion {
     // Ignore stationary compass noise; it must not spin a parked car.
     _to = VehiclePose(
       point,
-      current != null && distance < 1 ? current.heading : targetHeading,
+      current != null && distance < 3 ? current.heading : targetHeading,
     );
     // Reconnects and implausible jumps are recovery fixes, not a journey to
     // animate across the city. No extrapolation when a stream stops arriving.
     duration = current == null || elapsed.inSeconds > 15 || distance > 750
         ? Duration.zero
-        : Duration(milliseconds: elapsed.inMilliseconds.clamp(350, 5000));
+        : Duration(milliseconds: elapsed.inMilliseconds.clamp(350, 15000));
     _path = _roadPath(_from!.point, point, route);
-    if ((heading == null || !heading.isFinite || heading < 0) &&
-        _path.length > 2 &&
-        distance >= 2) {
+    // A moving car must face its actual trajectory. A compass/bearing from
+    // a noisy fix can be perpendicular to the road (or zero while moving).
+    // Use supplied heading only for the first fix and sub-3m movement.
+    if (current != null && distance >= 3) {
       for (var i = _path.length - 1; i > 0; i--) {
         if (_distance(_path[i - 1], _path[i]) > 0.5) {
           _to = VehiclePose(point, _bearing(_path[i - 1], _path[i]));
@@ -148,13 +149,31 @@ class VehicleMotion {
     if (end.along - start.along > _distance(from, to) * 3 + 30) {
       return [from, to];
     }
-    return [
-      from,
-      start.point,
-      for (var i = start.segment + 1; i <= end.segment; i++) route[i],
-      end.point,
-      to,
-    ];
+    // Carry the GPS offset gradually along the road. Explicit connector
+    // legs from raw GPS to the projected road made cars swerve sideways at
+    // the start/end of every update, even on a perfectly straight road.
+    final length = end.along - start.along;
+    final points = <RoutePoint>[from];
+    var along = start.along;
+    for (var i = start.segment + 1; i <= end.segment; i++) {
+      along += _distance(
+        i == start.segment + 1 ? start.point : route[i - 1],
+        route[i],
+      );
+      final t = ((along - start.along) / length).clamp(0.0, 1.0);
+      points.add(
+        (
+          latitude: route[i].latitude +
+              (from.latitude - start.point.latitude) * (1 - t) +
+              (to.latitude - end.point.latitude) * t,
+          longitude: route[i].longitude +
+              (from.longitude - start.point.longitude) * (1 - t) +
+              (to.longitude - end.point.longitude) * t,
+        ),
+      );
+    }
+    points.add(to);
+    return points;
   }
 
   static ({RoutePoint point, int segment, double offset, double along})

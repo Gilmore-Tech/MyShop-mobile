@@ -15,6 +15,8 @@ import 'package:myshop_client/src/features/ride/screens/ride_tracking_screen.dar
 
 class _Directions extends Mock implements DirectionsService {}
 
+class _MapController extends Mock implements GoogleMapController {}
+
 class _FakeMapsPlatform extends GoogleMapsFlutterPlatform {
   @override
   Widget buildViewWithConfiguration(
@@ -31,10 +33,93 @@ void main() {
   late GoogleMapsFlutterPlatform original;
   setUp(() {
     registerFallbackValue(const LatLng(0, 0));
+    registerFallbackValue(CameraUpdate.newLatLng(const LatLng(0, 0)));
     original = GoogleMapsFlutterPlatform.instance;
     GoogleMapsFlutterPlatform.instance = _FakeMapsPlatform();
   });
   tearDown(() => GoogleMapsFlutterPlatform.instance = original);
+  testWidgets('camera stays at a stable scale and follows the displayed car',
+      (tester) async {
+    final controller = _MapController();
+    final updates = <Object>[];
+    when(() =>
+            controller.animateCamera(any(), duration: any(named: 'duration')))
+        .thenAnswer((invocation) async {
+      updates
+          .add((invocation.positionalArguments.first as CameraUpdate).toJson());
+    });
+    when(() => controller.dispose()).thenAnswer((_) async {});
+    var visible = LatLngBounds(
+      southwest: const LatLng(6.695, -1.605),
+      northeast: const LatLng(6.705, -1.595),
+    );
+    when(() => controller.getVisibleRegion()).thenAnswer((_) async => visible);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    var inset = 100.0;
+    late StateSetter rebuild;
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(home: StatefulBuilder(builder: (context, setState) {
+        rebuild = setState;
+        return Scaffold(
+            body: RideRouteMap(
+          destination: 'Destination',
+          etaMinutes: 10,
+          bottomInset: inset,
+        ));
+      })),
+    ));
+    GoogleMap map() => tester.widget<GoogleMap>(find.byType(GoogleMap));
+    map().onMapCreated!(controller);
+    await tester.pump();
+    final at = DateTime.utc(2026, 11, 16);
+    container.read(liveDriverPositionProvider.notifier).state =
+        LiveDriverPosition(
+      latitude: 6.7,
+      longitude: -1.6,
+      heading: 90,
+      updatedAt: at,
+    );
+    await tester.pump();
+    expect(updates, hasLength(1));
+    expect((updates.single as List).first, 'newCameraPosition');
+    container.read(liveDriverPositionProvider.notifier).state =
+        LiveDriverPosition(
+      latitude: 6.7,
+      longitude: -1.599,
+      heading: 90,
+      updatedAt: at.add(const Duration(seconds: 4)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(updates, hasLength(1));
+    // Moving the sheet must not refit/zoom the map on every drag frame.
+    for (var i = 0; i < 10; i++) {
+      rebuild(() => inset += 5);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(updates, hasLength(1));
+    visible = LatLngBounds(
+      southwest: const LatLng(6.69, -1.62),
+      northeast: const LatLng(6.695, -1.61),
+    );
+    final driver =
+        map().markers.singleWhere((m) => m.markerId.value == 'driver');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(updates, hasLength(2));
+    expect(updates.last, ['newLatLng', driver.position.toJson()]);
+    // Pause automatic recentering while the rider explores the map.
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(GoogleMap)));
+    await tester.pump(const Duration(seconds: 2));
+    expect(updates, hasLength(2));
+    await gesture.up();
+    await tester.pump(const Duration(seconds: 5));
+    expect(updates, hasLength(2));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
       'renders intermediate car positions instead of teleporting on GPS updates',
       (tester) async {
