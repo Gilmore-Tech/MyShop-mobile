@@ -382,7 +382,7 @@ class ProviderVehicleService {
         '/providers/me/vehicles/$vehicleId/category-requests',
         data: {
           'expectedVersion': expectedVersion,
-          'rideCategoryIds': rideCategoryIds
+          'rideCategoryIds': rideCategoryIds,
         },
       );
       return _mutationResult(response);

@@ -130,8 +130,8 @@ void main() {
     responseData = {
       'success': true,
       'data': {
-        'vehicle': {'id': 'vehicle-1', 'version': 4}
-      }
+        'vehicle': {'id': 'vehicle-1', 'version': 4},
+      },
     };
     final result = await ProviderVehicleService(dio).requestCategories(
       vehicleId: 'vehicle-1',
@@ -142,7 +142,7 @@ void main() {
     expect(captured.path, '/providers/me/vehicles/vehicle-1/category-requests');
     expect(captured.data, {
       'expectedVersion': 3,
-      'rideCategoryIds': ['comfort-id']
+      'rideCategoryIds': ['comfort-id'],
     });
     expect(result.version, 4);
   });
