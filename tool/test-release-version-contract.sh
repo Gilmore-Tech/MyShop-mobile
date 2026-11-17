@@ -33,15 +33,15 @@ expect_failure "arithmetic-multiplication build number" env RELEASE_BUILD_NUMBER
 expect_failure "arithmetic-division build number" env RELEASE_BUILD_NUMBER='40/1' bash "$RESOLVER" client
 expect_failure "whitespace build number" env RELEASE_BUILD_NUMBER=' 40' bash "$RESOLVER" client
 expect_failure "leading-zero build number" env RELEASE_BUILD_NUMBER=041 bash "$RESOLVER" client
-expect_failure "previous client build number" env RELEASE_BUILD_NUMBER=50 bash "$RESOLVER" client
-expect_failure "previous provider build number" env RELEASE_BUILD_NUMBER=48 bash "$RESOLVER" provider
+expect_failure "previous client build number" env RELEASE_BUILD_NUMBER=51 bash "$RESOLVER" client
+expect_failure "previous provider build number" env RELEASE_BUILD_NUMBER=49 bash "$RESOLVER" provider
 expect_failure "non-portable build number" env RELEASE_BUILD_NUMBER=2100000001 bash "$RESOLVER" client
 expect_failure "integer-overflow build number" env RELEASE_BUILD_NUMBER=18446744073709551654 bash "$RESOLVER" client
 expect_failure "unknown app" env RELEASE_BUILD_NUMBER=42 bash "$RESOLVER" artisan
 
-CLIENT_EXPECTED=$'--build-name=1.4.18\n--build-number=51\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.18'
-PROVIDER_EXPECTED=$'--build-name=1.4.16\n--build-number=49\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.16'
-expect_output "client release" "$CLIENT_EXPECTED" env RELEASE_BUILD_NUMBER=51 bash "$RESOLVER" client
-expect_output "provider release" "$PROVIDER_EXPECTED" env RELEASE_BUILD_NUMBER=49 bash "$RESOLVER" provider
+CLIENT_EXPECTED=$'--build-name=1.4.19\n--build-number=52\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.19'
+PROVIDER_EXPECTED=$'--build-name=1.4.17\n--build-number=50\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.17'
+expect_output "client release" "$CLIENT_EXPECTED" env RELEASE_BUILD_NUMBER=52 bash "$RESOLVER" client
+expect_output "provider release" "$PROVIDER_EXPECTED" env RELEASE_BUILD_NUMBER=50 bash "$RESOLVER" provider
 
 echo "Release-version contract tests passed"
