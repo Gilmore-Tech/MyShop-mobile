@@ -82,14 +82,16 @@ RegistrationDraftIssue? registrationCorrectionForErrorCode(
     if (const {
       'RIDE_CATEGORIES_REQUIRED',
       'INVALID_RIDE_CATEGORY',
+      'RIDE_CATEGORY_UNAVAILABLE',
+      'REGULAR_CATEGORY_UNAVAILABLE',
     }.contains(errorCode)) {
       return const RegistrationDraftIssue(
-        step: 2,
+        step: 3,
         message: 'Review ride categories',
       );
     }
     if (errorCode == 'INVALID_REGION') {
-      return const RegistrationDraftIssue(step: 3, message: 'Review region');
+      return const RegistrationDraftIssue(step: 2, message: 'Review region');
     }
     if (const {
       'LEGAL_DOCUMENT_CHANGED',
@@ -146,12 +148,12 @@ RegistrationDraftIssue? registrationCorrectionForFieldErrors(
     }
     if (fields.contains('ridecategories')) {
       return const RegistrationDraftIssue(
-        step: 2,
+        step: 3,
         message: 'Review ride categories',
       );
     }
     if (fields.contains('regionid')) {
-      return const RegistrationDraftIssue(step: 3, message: 'Review region');
+      return const RegistrationDraftIssue(step: 2, message: 'Review region');
     }
     if (fields.contains('legalacceptances')) {
       return const RegistrationDraftIssue(step: 4, message: 'Review policies');
@@ -203,13 +205,13 @@ RegistrationDraftIssue? firstDriverRegistrationIssue(
   }
   if (draft.rideCategories.isEmpty) {
     return const RegistrationDraftIssue(
-      step: 2,
+      step: 3,
       message: 'Select at least one available ride category.',
     );
   }
   if (regionSelectionRequired && draft.regionId.isEmpty) {
     return const RegistrationDraftIssue(
-      step: 3,
+      step: 2,
       message: 'Choose an available region.',
     );
   }
@@ -265,10 +267,11 @@ class DriverRegistrationDraft {
     this.vehicleYear = '',
     this.vehiclePlate = '',
     this.vehicleColor = '',
-    this.rideCategories = const [],
+    List<String> rideCategories = const [],
     this.regionId = '',
     this.referralCode = '',
-  });
+  }) : rideCategories =
+            List<String>.unmodifiable({'regular', ...rideCategories});
 
   final String fullName;
   final String email;

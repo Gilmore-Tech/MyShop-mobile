@@ -12,11 +12,13 @@ class VehicleCategoryChoice {
     required this.id,
     required this.name,
     required this.description,
+    this.isRequired = false,
   });
 
   final String id;
   final String name;
   final String description;
+  final bool isRequired;
 }
 
 class VehicleFormBody extends StatefulWidget {
@@ -57,7 +59,10 @@ class _VehicleFormBodyState extends State<VehicleFormBody> {
     _yearController = TextEditingController(text: initial.year);
     _plateController = TextEditingController(text: initial.plate);
     _colorController = TextEditingController(text: initial.color);
-    _categoryIds = Set<String>.from(initial.rideCategoryIds);
+    _categoryIds = {
+      ...initial.rideCategoryIds,
+      ...widget.categories.where((c) => c.isRequired).map((c) => c.id)
+    };
   }
 
   @override
@@ -201,7 +206,7 @@ class _VehicleFormBodyState extends State<VehicleFormBody> {
         Text('Ride categories', style: MyShopTypography.h3),
         const SizedBox(height: MyShopSpacing.xs),
         Text(
-          'Select every category this vehicle should serve. Each category is reviewed for this vehicle.',
+          'Regular is required. Choose additional categories for review.',
           style: MyShopTypography.body2,
         ),
         const SizedBox(height: MyShopSpacing.sm),
@@ -211,18 +216,20 @@ class _VehicleFormBodyState extends State<VehicleFormBody> {
             child: _VehicleCategoryTile(
               category: category,
               selected: _categoryIds.contains(category.id),
-              onChanged: (selected) {
-                setState(() {
-                  if (selected) {
-                    _categoryIds.add(category.id);
-                  } else {
-                    _categoryIds.remove(category.id);
-                  }
-                  _errors = Map<String, String>.from(_errors)
-                    ..remove('rideCategoryIds');
-                  _submitError = null;
-                });
-              },
+              onChanged: category.isRequired
+                  ? null
+                  : (selected) {
+                      setState(() {
+                        if (selected) {
+                          _categoryIds.add(category.id);
+                        } else {
+                          _categoryIds.remove(category.id);
+                        }
+                        _errors = Map<String, String>.from(_errors)
+                          ..remove('rideCategoryIds');
+                        _submitError = null;
+                      });
+                    },
             ),
           ),
         if (_errors['rideCategoryIds'] case final categoryError?)
@@ -271,7 +278,7 @@ class _VehicleCategoryTile extends StatelessWidget {
 
   final VehicleCategoryChoice category;
   final bool selected;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +287,7 @@ class _VehicleCategoryTile extends StatelessWidget {
       checked: selected,
       label: category.name,
       child: InkWell(
-        onTap: () => onChanged(!selected),
+        onTap: onChanged == null ? null : () => onChanged!(!selected),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           constraints: const BoxConstraints(minHeight: 56),
@@ -307,7 +314,11 @@ class _VehicleCategoryTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(category.name, style: MyShopTypography.body1),
+                    Text(
+                        category.isRequired
+                            ? '${category.name} (required)'
+                            : category.name,
+                        style: MyShopTypography.body1),
                     if (category.description.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(

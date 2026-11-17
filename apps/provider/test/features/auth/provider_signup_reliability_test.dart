@@ -197,7 +197,7 @@ void main() {
         'INVALID_RIDE_CATEGORY',
         ProviderType.driver,
       )?.step,
-      2,
+      3,
     );
     expect(
       registrationCorrectionForErrorCode(
