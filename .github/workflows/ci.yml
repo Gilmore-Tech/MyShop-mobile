@@ -7,6 +7,23 @@ on:
     branches: [main, staging]
 
 jobs:
+  staging-promotion:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require staging as the source of main promotions
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$BASE_BRANCH" == "main" ]]; then
+            if [[ "$HEAD_BRANCH" != "staging" || "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+              echo "::error::Main accepts pull requests only from this repository's staging branch. Send feature, fix, and release changes through staging first."
+              exit 1
+            fi
+          fi
+
   analyze-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -41,6 +58,7 @@ jobs:
           bash tool/test-release-source-contract.sh
           bash tool/test-release-artifact-contract.sh
           bash tool/test-release-workflow-contract.sh
+          python3 tool/test-promotion-policy.py
 
   build-client-android:
     runs-on: ubuntu-latest

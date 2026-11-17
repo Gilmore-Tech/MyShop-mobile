@@ -72,13 +72,19 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   BitmapDescriptor? _carIcon;
 
   /// Last-known driver position. Updated by the `liveDriverPositionProvider`
-  /// listener on every socket / REST fix. Drives both the driver marker's
-  /// position+rotation and (after first fix) the follow-camera.
+  /// listener on every socket / REST fix. Drives route and ETA calculations;
+  /// marker and camera presentation use the interpolated pose.
   LiveDriverPosition? _lastDriverPos;
   final VehicleMotion _driverMotion = VehicleMotion();
   VehiclePose? _displayedDriver;
   late final AnimationController _motionController;
   Duration _lastRenderedFrame = Duration.zero;
+  Timer? _cameraFollowTimer;
+  Timer? _resumeCameraTimer;
+  Timer? _cameraSettlingTimer;
+  bool _cameraBusy = false;
+  bool _driverCameraInitialized = false;
+  bool _cameraPaused = false;
 
   /// Current authoritative route endpoints. Destination changes replace this
   /// state live; the previous captured-once behavior left the rider map aimed
@@ -122,6 +128,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     _motionController = AnimationController(vsync: this)
       ..addListener(_onMotionFrame);
     _searchState = ref.read(rideSearchProvider);
+    _cameraFollowTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      unawaited(_followCamera());
+    });
     // Build the car bitmap once. Anything that arrives before this
     // resolves will use the default-yellow fallback marker.
     _initCarIcon();
@@ -150,6 +159,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
 
   @override
   void dispose() {
+    _cameraFollowTimer?.cancel();
+    _resumeCameraTimer?.cancel();
+    _cameraSettlingTimer?.cancel();
     _motionController.dispose();
     _etaFreshnessTimer?.cancel();
     _diagnosticBus.dispose();
@@ -160,17 +172,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   @override
   void didUpdateWidget(covariant RideRouteMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Phase flip (en-route → arrived → in-progress) changes the target
-    // waypoint — force-refresh the route so the line doesn't keep
-    // pointing at pickup after the trip starts.
-    if (oldWidget.bottomInset != widget.bottomInset ||
-        oldWidget.phase != widget.phase) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final pos = _lastDriverPos;
-        if (pos != null) unawaited(_followCamera(pos));
-      });
-    }
+    // Map padding handles sheet resizing without refitting on every drag frame.
+    // Refresh only the route when a phase change switches the target waypoint.
     if (oldWidget.phase != widget.phase) {
       _invalidateRoute();
       final pos = _lastDriverPos;
@@ -206,6 +209,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
       _motionController.stop();
       _driverMotion.reset();
       _displayedDriver = null;
+      _driverCameraInitialized = false;
     } else {
       final accepted = _driverMotion.update(
         point: (latitude: next.latitude, longitude: next.longitude),
@@ -240,7 +244,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
           : 'cleared',
     );
     if (next != null) {
-      _followCamera(next);
+      unawaited(_followCamera());
       _syncRoute(next);
     }
   }
@@ -259,7 +263,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     _initialBoundsFit = false;
     final driver = _lastDriverPos;
     if (driver != null) unawaited(_syncRoute(driver));
-    unawaited(_fitInitialBounds());
+    if (driver == null) unawaited(_fitInitialBounds());
   }
 
   void _invalidateRoute() {
@@ -393,35 +397,75 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     }
   }
 
-  Future<void> _followCamera(LiveDriverPosition pos) async {
+  /// Keep a stable scale and let the car travel inside the viewport. Only
+  /// recenter near its edge, using the displayed pose rather than a GPS fix
+  /// the marker has not reached yet. Never queue overlapping camera commands.
+  Future<void> _followCamera() async {
     final mc = _mapController;
-    if (mc == null) return;
-    final target = _targetForPhase();
-    if (target == null) {
-      // No phase-target — just centre on the driver.
-      await mc.animateCamera(
-        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
-      );
-      return;
-    }
-    final bounds = _boundsFromTwo(
-      LatLng(pos.latitude, pos.longitude),
-      target,
-    );
+    final pose = _displayedDriver;
+    if (mc == null || pose == null || _cameraBusy || _cameraPaused) return;
+    final point = LatLng(pose.point.latitude, pose.point.longitude);
+    _cameraBusy = true;
+    var moved = false;
     try {
-      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
-    } catch (_) {
-      // Bounds fit fails on a freshly-mounted map with no layout pass yet.
-      // Fall back to centring on the driver — the next tick re-tries.
-      await mc.animateCamera(
-        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
-      );
+      if (!_driverCameraInitialized) {
+        moved = true;
+        await mc.animateCamera(
+          CameraUpdate.newCameraPosition(
+              CameraPosition(target: point, zoom: 16)),
+          duration: const Duration(milliseconds: 400),
+        );
+        _driverCameraInitialized = true;
+        return;
+      }
+      final bounds = await mc.getVisibleRegion();
+      if (!mounted || _cameraPaused) return;
+      final latMargin =
+          (bounds.northeast.latitude - bounds.southwest.latitude) * 0.25;
+      final lngSpan =
+          (bounds.northeast.longitude - bounds.southwest.longitude + 360) % 360;
+      final lngFromWest =
+          (point.longitude - bounds.southwest.longitude + 360) % 360;
+      final inside = point.latitude > bounds.southwest.latitude + latMargin &&
+          point.latitude < bounds.northeast.latitude - latMargin &&
+          lngFromWest > lngSpan * 0.25 &&
+          lngFromWest < lngSpan * 0.75;
+      if (!inside) {
+        moved = true;
+        await mc.animateCamera(CameraUpdate.newLatLng(point),
+            duration: const Duration(milliseconds: 400));
+      }
+    } catch (e) {
+      // Native layout may not be ready yet; the follow timer retries.
+      debugPrint('[LIVE-TRACK] Camera follow deferred: $e');
+    } finally {
+      // animateCamera completes when native animation starts, not when it ends.
+      if (moved && mounted) {
+        _cameraSettlingTimer = Timer(const Duration(milliseconds: 450), () {
+          _cameraBusy = false;
+        });
+      } else {
+        _cameraBusy = false;
+      }
     }
+  }
+
+  void _pauseCamera() {
+    _resumeCameraTimer?.cancel();
+    _cameraPaused = true;
+  }
+
+  void _resumeCameraLater() {
+    _resumeCameraTimer?.cancel();
+    _resumeCameraTimer = Timer(const Duration(seconds: 15), () {
+      _cameraPaused = false;
+      unawaited(_followCamera());
+    });
   }
 
   Future<void> _fitInitialBounds() async {
     final mc = _mapController;
-    if (mc == null || _initialBoundsFit) return;
+    if (mc == null || _initialBoundsFit || _cameraBusy) return;
     final pickup = _searchState.pickup;
     final dest = _searchState.destination;
     if (pickup?.lat == null || dest?.lat == null) return;
@@ -429,11 +473,19 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
       LatLng(pickup!.lat!, pickup.lng!),
       LatLng(dest!.lat!, dest.lng!),
     );
+    _cameraBusy = true;
     try {
-      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24));
+      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 24),
+          duration: const Duration(milliseconds: 400));
       _initialBoundsFit = true;
     } catch (_) {
       // Same first-frame race as in _followCamera — retry on next tick.
+    } finally {
+      if (mounted) {
+        _cameraSettlingTimer = Timer(const Duration(milliseconds: 450), () {
+          _cameraBusy = false;
+        });
+      }
     }
   }
 
@@ -461,7 +513,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     if (pos != null) {
       final hadDriver = _lastDriverPos != null;
       _onDriverPosition(pos);
-      if (hadDriver) await _followCamera(pos);
+      if (hadDriver) await _followCamera();
     } else {
       await _fitInitialBounds();
     }
@@ -570,34 +622,43 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     return Stack(
       children: [
         Positioned.fill(
-          child: GoogleMap(
-            key: const ValueKey('rideRouteMap'),
-            initialCameraPosition: CameraPosition(
-              target: initialCenter,
-              zoom: 14,
-            ),
-            // Camera bounds must use the visible map above the trip sheet.
-            // Leave a usable viewport even when the details sheet is expanded.
-            padding: EdgeInsets.only(
-              top: statusBarHeight + 150,
-              bottom: widget.bottomInset.clamp(
-                0.0,
-                math.max(0.0,
-                    MediaQuery.sizeOf(context).height - statusBarHeight - 270),
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => _pauseCamera(),
+            onPointerUp: (_) => _resumeCameraLater(),
+            onPointerCancel: (_) => _resumeCameraLater(),
+            child: GoogleMap(
+              key: const ValueKey('rideRouteMap'),
+              initialCameraPosition: CameraPosition(
+                target: initialCenter,
+                zoom: 14,
               ),
+              // Camera bounds must use the visible map above the trip sheet.
+              // Leave a usable viewport even when the details sheet is expanded.
+              padding: EdgeInsets.only(
+                top: statusBarHeight + 150,
+                bottom: widget.bottomInset.clamp(
+                  0.0,
+                  math.max(
+                      0.0,
+                      MediaQuery.sizeOf(context).height -
+                          statusBarHeight -
+                          270),
+                ),
+              ),
+              markers: _buildMarkers(),
+              polylines: _buildPolylines(),
+              myLocationEnabled: false,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              // Required for Android — sometimes the platform view needs a
+              // single hint to be touchable in stacked layouts. Identical
+              // pattern the pickup/destination picker uses.
+              gestureRecognizers: const {},
+              onMapCreated: _onMapCreated,
             ),
-            markers: _buildMarkers(),
-            polylines: _buildPolylines(),
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: false,
-            // Required for Android — sometimes the platform view needs a
-            // single hint to be touchable in stacked layouts. Identical
-            // pattern the pickup/destination picker uses.
-            gestureRecognizers: const {},
-            onMapCreated: _onMapCreated,
           ),
         ),
         Positioned(
