@@ -124,4 +124,26 @@ void main() {
     expect(captured.headers.containsKey('If-Match'), isFalse);
     expect(result.version, 4);
   });
+  test(
+      'category requests send only requested categories with concurrency version',
+      () async {
+    responseData = {
+      'success': true,
+      'data': {
+        'vehicle': {'id': 'vehicle-1', 'version': 4},
+      },
+    };
+    final result = await ProviderVehicleService(dio).requestCategories(
+      vehicleId: 'vehicle-1',
+      expectedVersion: 3,
+      rideCategoryIds: ['comfort-id'],
+    );
+    expect(captured.method, 'POST');
+    expect(captured.path, '/providers/me/vehicles/vehicle-1/category-requests');
+    expect(captured.data, {
+      'expectedVersion': 3,
+      'rideCategoryIds': ['comfort-id'],
+    });
+    expect(result.version, 4);
+  });
 }

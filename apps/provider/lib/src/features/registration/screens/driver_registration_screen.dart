@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
 import '../providers/regions_provider.dart';
+import '../providers/ride_categories_provider.dart';
 import '../providers/registration_controller.dart';
 import '../widgets/driver_categories_step.dart';
 import '../widgets/driver_profile_step.dart';
@@ -88,7 +89,11 @@ class _DriverRegistrationScreenState
         }
         return true;
       case 3:
-        return d.rideCategories.isNotEmpty;
+        final available =
+            ref.read(rideCategoryOptionsProvider(d.regionId)).valueOrNull;
+        return available != null &&
+            d.rideCategories
+                .every((slug) => available.any((c) => c.slug == slug));
       default:
         return d.isComplete;
     }
@@ -142,6 +147,9 @@ class _DriverRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(driverRegistrationProvider);
+    if (_currentStep == 3) {
+      ref.watch(rideCategoryOptionsProvider(draft.regionId));
+    }
     final policyAccepted = ref.watch(
       policyAcceptedProvider(ProviderType.driver),
     );

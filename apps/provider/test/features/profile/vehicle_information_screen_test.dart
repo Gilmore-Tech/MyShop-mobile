@@ -1,4 +1,5 @@
 import 'package:api_client/api_client.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,12 +40,28 @@ void main() {
         reasonCodes: const [],
       );
 
+  final categoryService = _CategoryService();
+
   Widget screen({
     ProviderVehicleApprovalStatus status =
         ProviderVehicleApprovalStatus.approved,
   }) {
     return ProviderScope(
       overrides: [
+        providerVehicleServiceProvider.overrideWithValue(categoryService),
+        providerVehicleRideCategoriesProvider
+            .overrideWith((ref) async => const [
+                  ProviderRideCategoryChoice(
+                      id: 'regular-id',
+                      name: 'Regular',
+                      slug: 'regular',
+                      description: ''),
+                  ProviderRideCategoryChoice(
+                      id: 'comfort-id',
+                      name: 'Comfort',
+                      slug: 'comfort',
+                      description: ''),
+                ]),
         providerTypeProvider.overrideWith((ref) => ProviderType.driver),
         providerVehiclesProvider.overrideWith(
           (ref) async => ProviderVehiclesResponse(
@@ -83,6 +100,49 @@ void main() {
     );
   });
 
+  testWidgets('requests another category while keeping approved categories',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request categories'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(CheckboxListTile, 'Regular'), findsNothing);
+    await tester.tap(find.text('Comfort'));
+    await tester.pump();
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+    expect(categoryService.requested, ['comfort-id']);
+    expect(categoryService.expectedVersion, 4);
+    expect(find.text('Request ride categories'), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keeps a failed request open for retry', (tester) async {
+    categoryService.fail = true;
+    addTearDown(() => categoryService.fail = false);
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request categories'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Comfort'));
+    await tester.pump();
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not send this request'), findsOneWidget);
+    expect(find.text('Request ride categories'), findsOneWidget);
+    categoryService.fail = false;
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request ride categories'), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('does not expose direct editing while a vehicle is under review',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
@@ -97,4 +157,27 @@ void main() {
     expect(find.text('Edit'), findsNothing);
     expect(find.text('Add another vehicle'), findsOneWidget);
   });
+}
+
+class _CategoryService extends ProviderVehicleService {
+  _CategoryService() : super(Dio());
+  List<String>? requested;
+  int? expectedVersion;
+  bool fail = false;
+
+  @override
+  Future<ProviderVehicleMutationResult> requestCategories(
+      {required String vehicleId,
+      required int expectedVersion,
+      required List<String> rideCategoryIds}) async {
+    if (fail) {
+      throw ApiException.fromDioException(DioException(
+          requestOptions: RequestOptions(path: '/category-requests'),
+          type: DioExceptionType.connectionError));
+    }
+    requested = rideCategoryIds;
+    this.expectedVersion = expectedVersion;
+    return ProviderVehicleMutationResult(
+        vehicleId: vehicleId, version: expectedVersion + 1);
+  }
 }

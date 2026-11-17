@@ -10,6 +10,7 @@ import '../providers/provider_type_provider.dart';
 import '../providers/provider_vehicle_provider.dart';
 import '../utils/vehicle_eligibility_copy.dart';
 import '../widgets/vehicle_form_body.dart';
+import '../widgets/request_vehicle_categories_dialog.dart';
 
 class VehicleInformationScreen extends ConsumerWidget {
   const VehicleInformationScreen({super.key});
@@ -61,6 +62,15 @@ class VehicleInformationScreen extends ConsumerWidget {
                                 ProviderVehicleApprovalStatus.retired &&
                             !vehicle.removalRequested
                         ? () => _requestRemoval(context, ref, vehicle)
+                        : null,
+                    onCategoryRequest: vehicle.approvalStatus !=
+                                ProviderVehicleApprovalStatus.retired &&
+                            !vehicle.removalRequested &&
+                            vehicle.pendingRevision == null
+                        ? () => showDialog<void>(
+                            context: context,
+                            builder: (_) => RequestVehicleCategoriesDialog(
+                                vehicle: vehicle))
                         : null,
                     onDocuments: () => context.push('/account/documents'),
                   ),
@@ -194,9 +204,9 @@ class ProviderVehicleFormScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(providerVehicleRideCategoriesProvider),
         ),
         data: (choices) {
-          if (choices.isEmpty) {
+          if (!choices.any((choice) => choice.slug == 'regular')) {
             return MyShopErrorBody(
-              message: 'No ride categories are available',
+              message: 'Regular ride enrollment is unavailable',
               subtitle: 'Try again later or contact support.',
               onRetry: () =>
                   ref.invalidate(providerVehicleRideCategoriesProvider),
@@ -210,6 +220,7 @@ class ProviderVehicleFormScreen extends ConsumerWidget {
                     id: choice.id,
                     name: choice.name,
                     description: choice.description,
+                    isRequired: choice.slug == 'regular',
                   ),
                 )
                 .toList(growable: false),
@@ -250,12 +261,14 @@ class _VehicleCard extends StatelessWidget {
     required this.isSelectedOnline,
     required this.onRemovalRequest,
     required this.onDocuments,
+    required this.onCategoryRequest,
   });
 
   final ProviderVehicle vehicle;
   final bool isSelectedOnline;
   final VoidCallback? onRemovalRequest;
   final VoidCallback onDocuments;
+  final VoidCallback? onCategoryRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -388,6 +401,11 @@ class _VehicleCard extends StatelessWidget {
                 icon: const Icon(Icons.description_outlined, size: 18),
                 label: const Text('Documents'),
               ),
+              if (onCategoryRequest != null)
+                OutlinedButton.icon(
+                    onPressed: onCategoryRequest,
+                    icon: const Icon(Icons.playlist_add),
+                    label: const Text('Request categories')),
               if (onRemovalRequest != null)
                 TextButton(
                   onPressed: onRemovalRequest,
