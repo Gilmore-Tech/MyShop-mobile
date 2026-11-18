@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Portrait activities must not restrict installation by device orientation. -->
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false"/>
+
     <!-- ── Internet ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
