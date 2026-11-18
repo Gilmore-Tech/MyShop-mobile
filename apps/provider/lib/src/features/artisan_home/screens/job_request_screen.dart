@@ -708,8 +708,14 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       total: effectiveBidAmount,
                       // Estimate only; the backend snapshots the authoritative
                       // rate when money is finalized. Never invent a fallback.
-                      feePercent:
-                          ref.watch(commissionRatePercentProvider).valueOrNull,
+                      feePercent: effectiveJob.regionId == null
+                          ? null
+                          : ref
+                              .watch(commissionRatePercentProvider(
+                                effectiveJob.regionId!,
+                              ))
+                              .asData
+                              ?.value,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),

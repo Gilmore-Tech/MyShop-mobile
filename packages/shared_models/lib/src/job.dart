@@ -64,6 +64,7 @@ class Job {
     required this.description,
     required this.latitude,
     required this.longitude,
+    this.regionId,
     this.categoryName,
     this.addressText,
     this.photos = const [],
@@ -148,6 +149,7 @@ class Job {
       id: json['jobId'] as String? ?? json['id'] as String,
       status: JobStatus.fromString(json['status'] as String),
       categoryId: json['categoryId'] as String? ?? '',
+      regionId: (json['regionId'] ?? json['region_id']) as String?,
       categoryName: json['categoryName'] as String?,
       description: json['description'] as String? ?? '',
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
@@ -191,6 +193,10 @@ class Job {
   final String description;
   final double latitude;
   final double longitude;
+
+  /// Immutable booking region; commission estimates must follow this region,
+  /// even when the provider is currently working somewhere else.
+  final String? regionId;
   final String? addressText;
   final List<String> photos;
   final String? scheduledFor;
@@ -278,6 +284,7 @@ class Job {
 
   Job copyWith({
     String? id,
+    String? regionId,
     JobStatus? status,
     String? categoryId,
     String? categoryName,
@@ -307,6 +314,7 @@ class Job {
   }) {
     return Job(
       id: id ?? this.id,
+      regionId: regionId ?? this.regionId,
       status: status ?? this.status,
       categoryId: categoryId ?? this.categoryId,
       categoryName: categoryName ?? this.categoryName,
