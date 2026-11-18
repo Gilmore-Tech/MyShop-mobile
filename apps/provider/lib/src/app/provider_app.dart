@@ -5,7 +5,8 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
-import '../core/di/providers.dart' show dioProvider, systemTelemetryProvider;
+import '../core/di/providers.dart'
+    show commissionRatePercentProvider, dioProvider, systemTelemetryProvider;
 import '../core/providers/app_update_provider.dart';
 import '../core/providers/availability_controller.dart';
 import '../core/providers/availability_reconciliation_bridge.dart';
@@ -90,6 +91,9 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         // `appForegroundedProvider` (e.g. the open-jobs REST poller)
         // re-enables itself before the network calls below fire.
         ref.read(appForegroundedProvider.notifier).state = true;
+        // Commission changes are infrequent. Refresh session-cached regional
+        // estimates on resume, including regions whose screens were closed.
+        ref.invalidate(commissionRatePercentProvider);
         // Restart the artisan-jobs poll + silent reload to catch up on
         // anything FCM didn't deliver while we were paused.
         if (ref.exists(artisanJobsProvider)) {

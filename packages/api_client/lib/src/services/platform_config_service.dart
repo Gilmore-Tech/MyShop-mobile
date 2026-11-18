@@ -30,9 +30,12 @@ class PlatformConfigService {
   /// Reads a single config entry. Returns the raw `value` field — callers
   /// are responsible for parsing (most values are JSON-encoded strings
   /// like `"20"` for numbers, `"true"` for booleans).
-  Future<String?> get(String key) async {
+  Future<String?> get(String key, {String? regionId}) async {
     try {
-      final response = await _dio.get('/config/$key');
+      final response = await _dio.get(
+        '/config/$key',
+        queryParameters: regionId == null ? null : {'regionId': regionId},
+      );
       final data = _unwrap(response) as Map<String, dynamic>;
       final value = data['value'];
       if (value == null) return null;
@@ -46,8 +49,8 @@ class PlatformConfigService {
   /// payout thresholds…). Returns null when the key is missing or the
   /// value can't be parsed. Callers must choose behavior appropriate to the
   /// rule; financial callers must not silently substitute a local percentage.
-  Future<num?> getNumber(String key) async {
-    final raw = await get(key);
+  Future<num?> getNumber(String key, {String? regionId}) async {
+    final raw = await get(key, regionId: regionId);
     if (raw == null) return null;
     final cleaned = raw.replaceAll('"', '').trim();
     return num.tryParse(cleaned);
@@ -56,8 +59,8 @@ class PlatformConfigService {
   /// Boolean helper for runtime feature flags. Accepts booleans encoded as
   /// JSON/string values (`true`, `"true"`, `1`, `"1"`). Returns null when the
   /// key exists but can't be parsed so callers can fall back safely.
-  Future<bool?> getBoolean(String key) async {
-    final raw = await get(key);
+  Future<bool?> getBoolean(String key, {String? regionId}) async {
+    final raw = await get(key, regionId: regionId);
     if (raw == null) return null;
     final cleaned = raw.replaceAll('"', '').trim().toLowerCase();
     if (cleaned == 'true' || cleaned == '1') return true;

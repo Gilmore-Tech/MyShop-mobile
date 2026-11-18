@@ -204,13 +204,18 @@ final platformConfigServiceProvider = Provider<PlatformConfigService>((ref) {
   return PlatformConfigService(ref.watch(dioProvider));
 });
 
-/// Cached commission rate for estimate-only UI. Financial finalization remains
-/// server-authoritative and fail-closed. An unavailable or invalid value is an
-/// error state; silently substituting a percentage would misquote providers.
-final commissionRatePercentProvider = FutureProvider<num>((ref) async {
-  final value = await ref
-      .watch(platformConfigServiceProvider)
-      .getNumber('commission_rate_percent');
+/// Region-specific estimate only. Final commission always comes from the server.
+/// Cache for this app session; ProviderApp invalidates all regions on resume.
+/// Read lazily so regions without an estimate do not cause extra API calls.
+final commissionRatePercentProvider =
+    FutureProvider.family<num, String>((ref, regionId) async {
+  if (regionId.trim().isEmpty) {
+    throw StateError('The job region is unavailable.');
+  }
+  final value = await ref.watch(platformConfigServiceProvider).getNumber(
+        'commission_rate_percent',
+        regionId: regionId,
+      );
   if (value == null || !value.isFinite || value < 0 || value > 100) {
     throw StateError('Commission configuration is unavailable or invalid.');
   }
