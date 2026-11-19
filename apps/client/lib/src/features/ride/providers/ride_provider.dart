@@ -1235,6 +1235,7 @@ class LiveDriverPosition {
     required this.longitude,
     this.heading,
     this.updatedAt,
+    this.receivedAt,
     this.isLiveFix = false,
   });
 
@@ -1242,6 +1243,7 @@ class LiveDriverPosition {
   final double longitude;
   final double? heading;
   final DateTime? updatedAt;
+  final DateTime? receivedAt;
   final bool isLiveFix;
 }
 
@@ -1262,13 +1264,22 @@ void applyLiveDriverPosition(
     return;
   }
   final current = read(liveDriverPositionProvider);
-  if (current != null && current.isLiveFix && current.updatedAt != null) {
-    if (!position.isLiveFix &&
-        (now ?? DateTime.now()).difference(current.updatedAt!) <
-            const Duration(seconds: 15)) {
-      return;
+  if (current != null && current.isLiveFix) {
+    if (!position.isLiveFix) {
+      // A snapshot repeating the last live point provides no new movement.
+      // Keeping its original capture time preserves the next segment's cadence.
+      final repeatsLivePoint = current.latitude == position.latitude &&
+          current.longitude == position.longitude;
+      final receipt = current.receivedAt ?? current.updatedAt;
+      if (repeatsLivePoint ||
+          (receipt != null &&
+              (now ?? DateTime.now()).difference(receipt) <
+                  const Duration(seconds: 15))) {
+        return;
+      }
     }
     if (position.isLiveFix &&
+        current.updatedAt != null &&
         position.updatedAt != null &&
         !position.updatedAt!.isAfter(current.updatedAt!)) {
       return;

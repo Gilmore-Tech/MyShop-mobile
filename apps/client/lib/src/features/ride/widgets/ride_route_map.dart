@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -76,8 +77,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   /// marker and camera presentation use the interpolated pose.
   LiveDriverPosition? _lastDriverPos;
   final VehicleMotion _driverMotion = VehicleMotion();
-  VehiclePose? _displayedDriver;
-  late final AnimationController _motionController;
+  final _displayedDriver = ValueNotifier<VehiclePose?>(null);
+  late final Ticker _motionTicker;
+  late final Stopwatch _motionClock;
+  Duration _motionEndsAt = Duration.zero;
   Duration _lastRenderedFrame = Duration.zero;
   Timer? _cameraFollowTimer;
   Timer? _resumeCameraTimer;
@@ -125,8 +128,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   @override
   void initState() {
     super.initState();
-    _motionController = AnimationController(vsync: this)
-      ..addListener(_onMotionFrame);
+    _motionClock = WidgetsBinding.instance.samplingClock.stopwatch()..start();
+    _motionTicker = createTicker(_onMotionFrame);
     _searchState = ref.read(rideSearchProvider);
     _cameraFollowTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       unawaited(_followCamera());
@@ -162,7 +165,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     _cameraFollowTimer?.cancel();
     _resumeCameraTimer?.cancel();
     _cameraSettlingTimer?.cancel();
-    _motionController.dispose();
+    _motionTicker.dispose();
+    _displayedDriver.dispose();
     _etaFreshnessTimer?.cancel();
     _diagnosticBus.dispose();
     _mapController?.dispose();
@@ -183,49 +187,50 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
 
   // ── Pipeline helpers ─────────────────────────────────────────────────────
 
-  // A ticker clock makes presentation independent of wall-clock corrections.
-  DateTime _motionNow = DateTime.now();
-  DateTime? _motionEpoch;
+  // The monotonic clock keeps counting between fixes, including while the
+  // parked marker has no active ticker. It is independent of either phone's GPS clock.
+  DateTime _motionTime(Duration elapsed) =>
+      DateTime.fromMicrosecondsSinceEpoch(elapsed.inMicroseconds, isUtc: true);
 
-  void _onMotionFrame() {
-    final elapsed = _motionController.lastElapsedDuration ??
-        (_motionController.value >= 1 ? _driverMotion.duration : Duration.zero);
-    if (_motionEpoch != null) _motionNow = _motionEpoch!.add(elapsed);
-    // Native marker updates cross a platform channel. Cap them at 30 fps so
-    // queued platform work cannot trail behind incoming GPS on slower phones.
-    if (_motionController.value < 1 &&
-        elapsed - _lastRenderedFrame < const Duration(milliseconds: 32)) {
+  void _onMotionFrame(Duration _) {
+    final elapsed = _motionClock.elapsed;
+    if (elapsed >= _motionEndsAt) {
+      _motionTicker.stop();
+    } else if (elapsed - _lastRenderedFrame <
+        const Duration(milliseconds: 32)) {
       return;
     }
     _lastRenderedFrame = elapsed;
-    if (mounted) {
-      setState(() => _displayedDriver = _driverMotion.sample(_motionNow));
-    }
+    _displayedDriver.value = _driverMotion.sample(_motionTime(elapsed));
   }
 
   void _onDriverPosition(LiveDriverPosition? next) {
     if (!mounted) return;
     if (next == null) {
-      _motionController.stop();
+      _motionTicker.stop();
       _driverMotion.reset();
-      _displayedDriver = null;
+      _displayedDriver.value = null;
       _driverCameraInitialized = false;
     } else {
+      final elapsed = _motionClock.elapsed;
+      final now = _motionTime(elapsed);
       final accepted = _driverMotion.update(
         point: (latitude: next.latitude, longitude: next.longitude),
         heading: next.heading,
-        fixAt: next.updatedAt,
-        now: _motionNow,
+        // Snapshots are stamped on receipt by the rider. Only live fixes
+        // have capture times that can be compared across driver samples.
+        fixAt: next.isLiveFix ? next.updatedAt : null,
+        now: now,
         route: _liveRoute?.points ?? const [],
       );
       if (!accepted) return;
-      _displayedDriver = _driverMotion.sample(_motionNow);
-      _motionController.stop();
-      _motionEpoch = _motionNow;
-      if (_driverMotion.duration > Duration.zero) {
-        _lastRenderedFrame = Duration.zero;
-        _motionController.duration = _driverMotion.duration;
-        _motionController.forward(from: 0);
+      _displayedDriver.value = _driverMotion.sample(now);
+      _motionEndsAt = elapsed + _driverMotion.duration;
+      _lastRenderedFrame = elapsed;
+      if (_driverMotion.duration == Duration.zero) {
+        _motionTicker.stop();
+      } else if (!_motionTicker.isActive) {
+        _motionTicker.start();
       }
     }
     debugPrint(
@@ -355,7 +360,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   bool _hasFreshEtaSource(LiveDriverPosition? position) {
     if (position == null || _roadRouteUpdatedAt == null) return false;
     final now = DateTime.now();
-    final fixAt = position.updatedAt;
+    final fixAt = position.updatedAt ?? position.receivedAt;
     return (fixAt == null ||
             now.difference(fixAt) <= const Duration(seconds: 20)) &&
         now.difference(_roadRouteUpdatedAt!) <= const Duration(minutes: 2);
@@ -402,7 +407,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
   /// the marker has not reached yet. Never queue overlapping camera commands.
   Future<void> _followCamera() async {
     final mc = _mapController;
-    final pose = _displayedDriver;
+    final pose = _displayedDriver.value;
     if (mc == null || pose == null || _cameraBusy || _cameraPaused) return;
     final point = LatLng(pose.point.latitude, pose.point.longitude);
     _cameraBusy = true;
@@ -512,8 +517,11 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     final pos = ref.read(liveDriverPositionProvider);
     if (pos != null) {
       final hadDriver = _lastDriverPos != null;
-      _onDriverPosition(pos);
-      if (hadDriver) await _followCamera();
+      if (hadDriver) {
+        await _followCamera();
+      } else {
+        _onDriverPosition(pos);
+      }
     } else {
       await _fitInitialBounds();
     }
@@ -538,7 +546,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
     };
   }
 
-  Set<Marker> _buildMarkers() {
+  Set<Marker> _waypointMarkers() {
     final markers = <Marker>{};
     final pickup = _searchState.pickup;
     final dest = _searchState.destination;
@@ -569,30 +577,25 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
       );
     }
 
-    final pos = _displayedDriver;
-    if (pos != null) {
-      markers.add(
-        Marker(
-          markerId: const MarkerId('driver'),
-          position: LatLng(pos.point.latitude, pos.point.longitude),
-          // Use the custom car bitmap if it finished rendering; otherwise
-          // a default-yellow marker so the driver is visible from frame 1.
-          icon: _carIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueYellow,
-              ),
-          rotation: pos.heading,
-          // Anchor at the centre so rotation pivots on the visual middle
-          // of the car (matches the square bitmap's centre).
-          anchor: const Offset(0.5, 0.5),
-          flat: true, // Marker stays flat against the map when tilted.
-          infoWindow: const InfoWindow(title: 'Driver'),
-        ),
-      );
-    }
-
     return markers;
   }
+
+  Marker _driverMarker(VehiclePose pos) => Marker(
+        markerId: const MarkerId('driver'),
+        position: LatLng(pos.point.latitude, pos.point.longitude),
+        // Use the custom car bitmap if it finished rendering; otherwise
+        // a default-yellow marker so the driver is visible from frame 1.
+        icon: _carIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueYellow,
+            ),
+        rotation: pos.heading,
+        // Anchor at the centre so rotation pivots on the visual middle
+        // of the car (matches the square bitmap's centre).
+        anchor: const Offset(0.5, 0.5),
+        flat: true, // Marker stays flat against the map when tilted.
+        infoWindow: const InfoWindow(title: 'Driver'),
+      );
 
   // ── Build ────────────────────────────────────────────────────────────────
 
@@ -618,6 +621,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
             : const LatLng(6.6885, -1.6244);
 
     final statusBarHeight = MediaQuery.paddingOf(context).top;
+    final waypoints = _waypointMarkers();
+    final polylines = _buildPolylines();
 
     return Stack(
       children: [
@@ -627,37 +632,40 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap>
             onPointerDown: (_) => _pauseCamera(),
             onPointerUp: (_) => _resumeCameraLater(),
             onPointerCancel: (_) => _resumeCameraLater(),
-            child: GoogleMap(
-              key: const ValueKey('rideRouteMap'),
-              initialCameraPosition: CameraPosition(
-                target: initialCenter,
-                zoom: 14,
-              ),
-              // Camera bounds must use the visible map above the trip sheet.
-              // Leave a usable viewport even when the details sheet is expanded.
-              padding: EdgeInsets.only(
-                top: statusBarHeight + 150,
-                bottom: widget.bottomInset.clamp(
-                  0.0,
-                  math.max(
-                      0.0,
-                      MediaQuery.sizeOf(context).height -
-                          statusBarHeight -
-                          270),
+            child: ValueListenableBuilder<VehiclePose?>(
+              valueListenable: _displayedDriver,
+              builder: (context, pose, _) => GoogleMap(
+                key: const ValueKey('rideRouteMap'),
+                initialCameraPosition: CameraPosition(
+                  target: initialCenter,
+                  zoom: 14,
                 ),
+                // Camera bounds must use the visible map above the trip sheet.
+                // Leave a usable viewport even when the details sheet is expanded.
+                padding: EdgeInsets.only(
+                  top: statusBarHeight + 150,
+                  bottom: widget.bottomInset.clamp(
+                    0.0,
+                    math.max(
+                        0.0,
+                        MediaQuery.sizeOf(context).height -
+                            statusBarHeight -
+                            270),
+                  ),
+                ),
+                markers: {...waypoints, if (pose != null) _driverMarker(pose)},
+                polylines: polylines,
+                myLocationEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                compassEnabled: false,
+                // Required for Android — sometimes the platform view needs a
+                // single hint to be touchable in stacked layouts. Identical
+                // pattern the pickup/destination picker uses.
+                gestureRecognizers: const {},
+                onMapCreated: _onMapCreated,
               ),
-              markers: _buildMarkers(),
-              polylines: _buildPolylines(),
-              myLocationEnabled: false,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: false,
-              // Required for Android — sometimes the platform view needs a
-              // single hint to be touchable in stacked layouts. Identical
-              // pattern the pickup/destination picker uses.
-              gestureRecognizers: const {},
-              onMapCreated: _onMapCreated,
             ),
           ),
         ),

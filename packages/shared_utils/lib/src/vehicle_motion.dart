@@ -18,6 +18,7 @@ class VehicleMotion {
   DateTime? _startedAt;
   DateTime? _lastFixAt;
   DateTime? _lastReceivedAt;
+  bool _previousFixHadTimestamp = false;
   List<RoutePoint> _path = const [];
   List<double> _distances = const [];
   Duration duration = Duration.zero;
@@ -40,17 +41,23 @@ class VehicleMotion {
       return false;
     }
     final current = sample(now);
-    final elapsed = fixAt != null && previousTimestamp != null
-        ? fixAt.difference(previousTimestamp)
-        : _lastReceivedAt == null
-            ? const Duration(seconds: 4)
-            : now.difference(_lastReceivedAt!);
+    final elapsed =
+        _previousFixHadTimestamp && fixAt != null && previousTimestamp != null
+            ? fixAt.difference(previousTimestamp)
+            : _lastReceivedAt == null
+                ? const Duration(seconds: 4)
+                : now.difference(_lastReceivedAt!);
     final distance = current == null ? 0.0 : _distance(current.point, point);
     final targetHeading = heading != null && heading.isFinite && heading >= 0
         ? heading % 360
         : current == null || distance < 2
             ? current?.heading ?? 0
             : _bearing(current.point, point);
+    final sameTarget = _to?.point == point;
+    final remaining = _startedAt == null
+        ? Duration.zero
+        : duration - now.difference(_startedAt!);
+    _previousFixHadTimestamp = fixAt != null;
     _lastFixAt = fixAt ?? _lastFixAt;
     _lastReceivedAt = now;
     _startedAt = now;
@@ -62,10 +69,21 @@ class VehicleMotion {
     );
     // Reconnects and implausible jumps are recovery fixes, not a journey to
     // animate across the city. No extrapolation when a stream stops arriving.
-    duration = current == null || elapsed.inSeconds > 15 || distance > 750
-        ? Duration.zero
-        : Duration(milliseconds: elapsed.inMilliseconds.clamp(350, 15000));
-    _path = _roadPath(_from!.point, point, route);
+    // Screen-off uploads can arrive 15–30 seconds apart. Keep animating
+    // ordinary driving at that cadence, including motorway speeds.
+    final maxDistance = math.max(750, elapsed.inMilliseconds * 0.05);
+    if (current == null ||
+        elapsed > const Duration(seconds: 30) ||
+        distance > maxDistance) {
+      duration = Duration.zero;
+    } else if (sameTarget) {
+      // A heartbeat at the same coordinates must not change the arrival time.
+      duration = remaining.isNegative ? Duration.zero : remaining;
+    } else {
+      duration =
+          Duration(milliseconds: elapsed.inMilliseconds.clamp(350, 30000));
+    }
+    _path = distance == 0 ? [point] : _roadPath(_from!.point, point, route);
     // A moving car must face its actual trajectory. A compass/bearing from
     // a noisy fix can be perpendicular to the road (or zero while moving).
     // Use supplied heading only for the first fix and sub-3m movement.
@@ -128,6 +146,7 @@ class VehicleMotion {
     _to = null;
     _lastFixAt = null;
     _lastReceivedAt = null;
+    _previousFixHadTimestamp = false;
     _startedAt = null;
     _path = const [];
     _distances = const [];

@@ -6,6 +6,7 @@ import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/providers/provider_location_session_provider.dart';
 import '../../../core/services/recovering_location_stream.dart';
+import '../../profile/providers/provider_type_provider.dart';
 
 typedef OnlinePositionLoader = Future<Position> Function();
 typedef OnlinePositionStreamLoader = Stream<Position> Function();
@@ -66,7 +67,7 @@ Future<Position> resolvePeriodicOnlinePosition(
 }
 
 LocationSettings onlineStreamLocationSettings(TargetPlatform platform,
-    {bool nativeWorkerActive = false}) {
+    {bool nativeWorkerActive = false, bool onRide = false}) {
   if (platform == TargetPlatform.android) {
     return AndroidSettings(
       accuracy: LocationAccuracy.high,
@@ -76,7 +77,7 @@ LocationSettings onlineStreamLocationSettings(TargetPlatform platform,
       // truthfully refresh its capture timestamp. Request periodic fixes even
       // at zero movement and let the REST writer retain its 15-second cadence.
       distanceFilter: 0,
-      intervalDuration: const Duration(seconds: 4),
+      intervalDuration: Duration(seconds: onRide ? 2 : 4),
       // Keep the proven Flutter foreground service as a deployment-order
       // fallback for an older backend that cannot issue a native credential.
       foregroundNotificationConfig: nativeWorkerActive
@@ -173,13 +174,16 @@ final driverLocationStreamProvider =
     );
     return const Stream<Position>.empty();
   }
+  final onRide = status.isBusy && ref.watch(providerTypeProvider).isDriver;
   return recoveringLocationStream(
-    () => _openOnlinePositionStream(nativeWorkerActive: nativeWorkerActive),
+    () => _openOnlinePositionStream(
+      onlineStreamLocationSettings(defaultTargetPlatform,
+          nativeWorkerActive: nativeWorkerActive, onRide: onRide),
+    ),
   );
 });
 
-Stream<Position> _openOnlinePositionStream(
-    {required bool nativeWorkerActive}) async* {
+Stream<Position> _openOnlinePositionStream(LocationSettings settings) async* {
   debugPrint('[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
@@ -231,8 +235,5 @@ Stream<Position> _openOnlinePositionStream(
   // bounded by platform cadence and the separate 15-second REST writer. On
   // Android the foreground notification keeps the stream prioritized while
   // backgrounded; on iOS Background Modes + Always permission cover lock.
-  yield* Geolocator.getPositionStream(
-    locationSettings: onlineStreamLocationSettings(defaultTargetPlatform,
-        nativeWorkerActive: nativeWorkerActive),
-  );
+  yield* Geolocator.getPositionStream(locationSettings: settings);
 }

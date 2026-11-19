@@ -34,6 +34,22 @@ void main() {
     applyLiveDriverPosition(container.read, fix(6.68, seconds: 4), now: now);
     expect(container.read(liveDriverPositionProvider)?.latitude, 6.70);
   });
+  test('a delayed live fix takes priority from the time it arrives', () {
+    final live = LiveDriverPosition(
+      latitude: 6.69,
+      longitude: -1.62,
+      isLiveFix: true,
+      updatedAt: now.subtract(const Duration(seconds: 20)),
+      receivedAt: now,
+    );
+    applyLiveDriverPosition(container.read, live, now: now);
+    applyLiveDriverPosition(container.read, fix(6.68, live: false), now: now);
+    expect(container.read(liveDriverPositionProvider), same(live));
+    applyLiveDriverPosition(container.read, fix(6.69, live: false),
+        now: now.add(const Duration(seconds: 17)));
+    expect(container.read(liveDriverPositionProvider), same(live));
+  });
+
   test('snapshots recover when live events stop', () {
     applyLiveDriverPosition(container.read, fix(6.69), now: now);
     applyLiveDriverPosition(container.read, fix(6.70, live: false),
