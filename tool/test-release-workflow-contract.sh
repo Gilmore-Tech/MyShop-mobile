@@ -179,7 +179,7 @@ env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 53 both "$REPO" >/dev/null
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 54 both "$REPO" >/dev/null
 
 expect_failure "non-dispatch event" env \
   GITHUB_EVENT_NAME=push \
