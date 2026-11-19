@@ -30,6 +30,13 @@ void main() {
     expect(android.foregroundNotificationConfig!.setOngoing, isTrue);
   });
 
+  test('Android requests a driver fix every two seconds during a ride', () {
+    final settings =
+        onlineStreamLocationSettings(TargetPlatform.android, onRide: true)
+            as AndroidSettings;
+    expect(settings.intervalDuration, const Duration(seconds: 2));
+  });
+
   test('Apple online stream does not suppress stationary fixes', () {
     final settings = onlineStreamLocationSettings(TargetPlatform.iOS);
 

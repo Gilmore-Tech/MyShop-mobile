@@ -125,6 +125,21 @@ void main() {
     expect(motion.sample(at.add(const Duration(seconds: 10)))!.point, east);
   });
 
+  test('repeat coordinates preserve the planned arrival time', () {
+    final motion = VehicleMotion();
+    motion.update(point: start, now: now);
+    final moving = now.add(const Duration(seconds: 5));
+    motion.update(point: east, now: moving);
+    final repeated = moving.add(const Duration(seconds: 4));
+    final before = motion.sample(repeated)!;
+    motion.update(point: east, now: repeated);
+    expect(motion.sample(repeated)!.point, before.point);
+    expect(motion.duration, const Duration(seconds: 1));
+    expect(motion.sample(repeated.add(motion.duration))!.point, east);
+    motion.update(point: east, now: repeated.add(const Duration(seconds: 5)));
+    expect(motion.duration, Duration.zero);
+  });
+
   test('rejects stale/invalid fixes and recovers immediately after a long gap',
       () {
     final motion = VehicleMotion();
