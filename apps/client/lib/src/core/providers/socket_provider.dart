@@ -984,9 +984,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
         '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading',
       );
       final timestamp = payload['timestamp'];
+      final receivedAt = DateTime.now();
       final updatedAt = timestamp is num && timestamp.isFinite
           ? DateTime.fromMillisecondsSinceEpoch(timestamp.toInt())
-          : parseSocketDate(timestamp) ?? DateTime.now();
+          : parseSocketDate(timestamp);
       applyLiveDriverPosition(
         ref.container.read,
         LiveDriverPosition(
@@ -994,6 +995,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           longitude: lng.toDouble(),
           heading: heading?.toDouble(),
           updatedAt: updatedAt,
+          receivedAt: receivedAt,
           isLiveFix: true,
         ),
       );

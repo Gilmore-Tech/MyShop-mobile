@@ -171,6 +171,69 @@ void main() {
     RideTrackingPhase.enRoute,
     RideTrackingPhase.inProgress
   ]) {
+    testWidgets(
+        'animates sparse GPS and resumes live fixes after a snapshot during $phase',
+        (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+            home: Scaffold(
+                body: RideRouteMap(
+          destination: 'Destination',
+          etaMinutes: 5,
+          phase: phase,
+        ))),
+      ));
+      final at = DateTime.utc(2026, 11, 18);
+      void fix(double longitude, int seconds, {bool live = true}) {
+        applyLiveDriverPosition(
+            container.read,
+            LiveDriverPosition(
+              latitude: 6.7,
+              longitude: longitude,
+              updatedAt: at.add(Duration(seconds: seconds)),
+              isLiveFix: live,
+            ),
+            now: at.add(Duration(seconds: seconds)));
+      }
+
+      double longitude() => tester
+          .widget<GoogleMap>(find.byType(GoogleMap))
+          .markers
+          .singleWhere((m) => m.markerId.value == 'driver')
+          .position
+          .longitude;
+
+      // Snapshot time comes from the rider's clock. The driver's captured
+      // fix can be newer evidence even when its clock reads a second earlier.
+      fix(-1.600, 1, live: false);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      fix(-1.5999, 0);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(longitude(), allOf(greaterThan(-1.600), lessThan(-1.5999)));
+      await tester.pump(const Duration(seconds: 16));
+      fix(-1.5999, 17, live: false);
+      await tester.pump(const Duration(seconds: 3));
+      expect(longitude(), closeTo(-1.5999, 0.000001));
+
+      // Background uploads can be 20 seconds apart on an ordinary drive.
+      fix(-1.598, 20);
+      await tester.pump();
+      expect(longitude(), closeTo(-1.5999, 0.000001));
+      await tester.pump(const Duration(seconds: 3));
+      final intermediate = longitude();
+      expect(intermediate, allOf(greaterThan(-1.5999), lessThan(-1.598)));
+      await tester.pump(const Duration(seconds: 1));
+      expect(longitude(), allOf(greaterThan(intermediate), lessThan(-1.598)));
+      await tester.pump(const Duration(seconds: 30));
+      expect(longitude(), closeTo(-1.598, 0.000001));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('GPS updates the car and road ETA together during $phase',
         (tester) async {
       final directions = _Directions();
