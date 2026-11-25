@@ -9,65 +9,40 @@ import 'package:myshop_client/src/features/services/providers/services_provider.
 class _MockCategoryService extends Mock implements api.CategoryService {}
 
 void main() {
-  test('loads the public catalogue outside an operational region', () async {
-    final categoryService = _MockCategoryService();
-    when(() => categoryService.getCategories()).thenAnswer(
-      (_) async => const [
-        api.ServiceCategory(
-          id: 'plumbing',
-          name: 'Plumbing',
-          slug: 'plumbing',
-        ),
-      ],
-    );
-    final container = ProviderContainer(
-      overrides: [
-        currentOperationalRegionProvider.overrideWith((_) async => null),
-        categoryServiceProvider.overrideWithValue(categoryService),
-      ],
-    );
+  test('loads only the selected jobs township when booking from elsewhere',
+      () async {
+    final service = _MockCategoryService();
+    final container = ProviderContainer(overrides: [
+      currentOperationalRegionProvider.overrideWith((_) async => null),
+      categoryServiceProvider.overrideWithValue(service),
+    ]);
     addTearDown(container.dispose);
-
-    final categories = await container.read(serviceCategoriesProvider.future);
-
-    expect(categories, hasLength(1));
-    expect(categories.single.name, 'Plumbing');
-    verify(() => categoryService.getCategories()).called(1);
+    expect(await container.read(serviceCategoriesProvider.future), isEmpty);
+    verifyZeroInteractions(service);
+    for (final id in ['accra', 'cape-coast']) {
+      when(() => service.getCategories(regionId: id)).thenAnswer(
+        (_) async =>
+            [api.ServiceCategory(id: id, name: 'Plumber', slug: 'plumber')],
+      );
+      container.read(selectedJobTownshipProvider.notifier).state = id;
+      final categories = await container.read(serviceCategoriesProvider.future);
+      expect(categories.single.id, id);
+      verify(() => service.getCategories(regionId: id)).called(1);
+    }
+    verifyNever(() => service.getCategories());
   });
 
-  test('keeps the global artisan catalogue browsable in a ride-only region',
-      () async {
-    final categoryService = _MockCategoryService();
-    when(() => categoryService.getCategories()).thenAnswer(
-      (_) async => const [
-        api.ServiceCategory(
-          id: 'plumbing',
-          name: 'Plumbing',
-          slug: 'plumbing',
-        ),
-      ],
-    );
-    final container = ProviderContainer(
-      overrides: [
-        currentOperationalRegionProvider.overrideWith(
-          (_) async => const api.Region(
-            id: 'bono',
-            name: 'Bono Region',
-            code: 'bono',
-            ridesEnabled: true,
-            jobsEnabled: false,
-            serviceAreaName: 'Sunyani',
-          ),
-        ),
-        categoryServiceProvider.overrideWithValue(categoryService),
-      ],
-    );
+  test('defaults the catalogue to the current jobs township', () async {
+    final service = _MockCategoryService();
+    when(() => service.getCategories(regionId: 'takoradi'))
+        .thenAnswer((_) async => []);
+    final container = ProviderContainer(overrides: [
+      currentOperationalRegionProvider.overrideWith((_) async =>
+          const api.Region(id: 'takoradi', name: 'Takoradi', code: 'TAK')),
+      categoryServiceProvider.overrideWithValue(service),
+    ]);
     addTearDown(container.dispose);
-
-    final categories = await container.read(serviceCategoriesProvider.future);
-
-    expect(categories, hasLength(1));
-    expect(categories.single.name, 'Plumbing');
-    verify(() => categoryService.getCategories()).called(1);
+    await container.read(serviceCategoriesProvider.future);
+    verify(() => service.getCategories(regionId: 'takoradi')).called(1);
   });
 }

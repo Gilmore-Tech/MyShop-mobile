@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/services_provider.dart';
+import '../widgets/job_township_picker.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 //
@@ -45,6 +46,7 @@ class _AllCategoriesScreenState extends ConsumerState<AllCategoriesScreen> {
               controller: _searchController,
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
             ),
+            const JobTownshipPicker(),
             Expanded(
               child: categoriesAsync.when(
                 loading: () => const _GridSkeleton(),

@@ -15,6 +15,8 @@ class Region {
     this.ridesEnabled = true,
     this.jobsEnabled = true,
     this.serviceAreaName,
+    this.centerLatitude,
+    this.centerLongitude,
   });
 
   factory Region.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,8 @@ class Region {
       ridesEnabled: json['ridesEnabled'] as bool? ?? true,
       jobsEnabled: json['jobsEnabled'] as bool? ?? true,
       serviceAreaName: json['serviceAreaName'] as String?,
+      centerLatitude: (json['centerLatitude'] as num?)?.toDouble(),
+      centerLongitude: (json['centerLongitude'] as num?)?.toDouble(),
     );
   }
 
@@ -34,4 +38,6 @@ class Region {
   final bool ridesEnabled;
   final bool jobsEnabled;
   final String? serviceAreaName;
+  final double? centerLatitude;
+  final double? centerLongitude;
 }

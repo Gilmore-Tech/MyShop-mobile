@@ -307,16 +307,16 @@ void main() {
     final location = _MockCurrentLocationService();
     final places = _MockGooglePlacesService();
     final outsidePosition = _position(
-      latitude: 5.6037,
-      longitude: -0.1870,
+      latitude: 9.4034,
+      longitude: -0.8424,
       timestamp: DateTime.now(),
     );
     when(() => location.ensure(forceRefresh: true, retryOnFailure: false))
         .thenAnswer((_) async => outsidePosition);
-    when(() => places.reverseGeocodePlace(5.6037, -0.1870)).thenAnswer(
+    when(() => places.reverseGeocodePlace(9.4034, -0.8424)).thenAnswer(
       (_) async => const ReverseGeocodePlace(
-        name: 'Accra pickup',
-        address: 'Accra, Ghana',
+        name: 'Tamale pickup',
+        address: 'Tamale, Ghana',
       ),
     );
 
@@ -345,8 +345,8 @@ void main() {
   testWidgets('does not classify an OS-cached location as current',
       (tester) async {
     final cachedOutsidePosition = _position(
-      latitude: 5.6037,
-      longitude: -0.1870,
+      latitude: 9.4034,
+      longitude: -0.8424,
       timestamp: DateTime.now().subtract(const Duration(minutes: 1)),
     );
 
@@ -510,8 +510,8 @@ void main() {
     final location = _MockCurrentLocationService();
     final places = _MockGooglePlacesService();
     final outsidePosition = _position(
-      latitude: 5.6037,
-      longitude: -0.1870,
+      latitude: 9.4034,
+      longitude: -0.8424,
       timestamp: DateTime.now().subtract(const Duration(seconds: 30)),
     );
     final recentIndoorFix = _position(
@@ -573,8 +573,8 @@ void main() {
   testWidgets('manual pickup does not replace the physical region position',
       (tester) async {
     final outsidePosition = _position(
-      latitude: 5.6037,
-      longitude: -0.1870,
+      latitude: 9.4034,
+      longitude: -0.8424,
       timestamp: DateTime.now(),
     );
     final container = await pumpHome(
