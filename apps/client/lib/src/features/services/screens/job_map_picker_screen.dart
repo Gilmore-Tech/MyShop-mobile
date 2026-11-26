@@ -7,11 +7,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import '../../../core/constants/mapbox_config.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/recent_locations_provider.dart';
 import '../providers/job_form_provider.dart';
+import '../providers/services_provider.dart';
 
 /// Full-screen Google Map with a center crosshair for pin-dropping.
 /// The user moves the map; on "Confirm" we reverse-geocode the center
@@ -26,9 +26,8 @@ class JobMapPickerScreen extends ConsumerStatefulWidget {
 class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
   GoogleMapController? _mapController;
 
-  /// Ultimate fallback when GPS is unavailable AND we have no prior fix.
-  static const _kumasiFallback =
-      LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
+  static const _ghanaCenter = LatLng(7.95, -1.02);
+  double _initialZoom = 15;
 
   late LatLng _currentCenter;
   String _address = '';
@@ -47,13 +46,25 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
       _currentCenter = LatLng(state.latitude!, state.longitude!);
       return;
     }
-    // Otherwise seed from the cached device fix; fall back to Kumasi and
-    // hand-off to GPS once the map controller is ready.
+    final selectedTownshipId = ref.read(selectedJobTownshipProvider);
+    final townships = ref.read(jobTownshipsProvider).valueOrNull;
+    if (selectedTownshipId != null && townships != null) {
+      for (final town in townships) {
+        if (town.id == selectedTownshipId &&
+            town.centerLatitude != null &&
+            town.centerLongitude != null) {
+          _currentCenter = LatLng(town.centerLatitude!, town.centerLongitude!);
+          _initialZoom = 12;
+          return;
+        }
+      }
+    }
     final cached = ref.read(currentDevicePositionProvider);
     if (cached != null) {
       _currentCenter = LatLng(cached.latitude, cached.longitude);
     } else {
-      _currentCenter = _kumasiFallback;
+      _currentCenter = _ghanaCenter;
+      _initialZoom = 6;
       _centerOnUserOnMapReady = true;
     }
   }
@@ -156,7 +167,7 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: _currentCenter,
-                zoom: 15,
+                zoom: _initialZoom,
               ),
               onMapCreated: (controller) {
                 _mapController = controller;

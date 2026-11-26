@@ -406,6 +406,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // Mirror connection state for the UI.
   final sub = socket.connectionStream.listen((connected) {
     ref.container.read(socketConnectedProvider.notifier).state = connected;
+    if (ref.container.exists(townshipJobFeedProvider)) {
+      ref.container.invalidate(townshipJobFeedProvider);
+    }
     if (connected) {
       ref.container.read(surgeAreasRevisionProvider.notifier).state++;
     }
@@ -723,25 +726,21 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('job:new', handleJob)
       ..on('job:request', handleJob); // legacy
 
-    // Platform-wide anonymised "Live Job Feed" snapshots — independent of
-    // category/radius eligibility. Drives the read-only artisan-home carousel.
-    void handleJobFeed(dynamic data) {
-      if (data is! Map<String, dynamic>) {
-        debugPrint(
-            '[WS] job:feed:new payload not a Map — got ${data.runtimeType}');
-        return;
-      }
-      try {
-        final snapshot = LiveFeedJob.fromJson(data);
-        ref.container.read(liveJobFeedProvider.notifier).prepend(snapshot);
-      } catch (e, st) {
-        debugPrint('[WS] Failed to parse job:feed:new payload: $e\n$st');
-      }
+    // Refresh against the artisan's current township, including during a
+    // rolling deployment where an older server still sends a snapshot.
+    for (final event in [
+      'job:feed:new',
+      'job:feed:refresh',
+      'job:feed:region-changed'
+    ]) {
+      socket
+        ..off(event)
+        ..on(event, (_) {
+          if (ref.container.exists(townshipJobFeedProvider)) {
+            ref.container.invalidate(townshipJobFeedProvider);
+          }
+        });
     }
-
-    socket
-      ..off('job:feed:new')
-      ..on('job:feed:new', handleJobFeed);
 
     debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
 

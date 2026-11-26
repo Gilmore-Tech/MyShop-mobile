@@ -1155,7 +1155,7 @@ fix, regression test, staging proof, telemetry/alert, rollback, and support work
 - [ ] Enforce arrive/start/end proximity on the server using fresh, accurate location.
 - [ ] Implement the approved warning/override flow with audit metadata and abuse monitoring.
 - [ ] Test GPS drift, boundary points, location denial, stale/offline location, spoofing policy, multi-stop, and emergency exceptions.
-- [ ] Prove staging accepts Accra and production rejects it while both accept approved in-boundary test points.
+- [ ] Verify rides and artisan jobs resolve in Cape Coast, Accra, Koforidua, and Takoradi after the township migration. Check an out-of-area pickup in Tamale with production service-area checks enabled.
 
 ### Cancellations, disputes, ratings, and safety
 

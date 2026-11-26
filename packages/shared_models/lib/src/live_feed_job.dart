@@ -20,7 +20,7 @@ class LiveFeedJob {
     return LiveFeedJob(
       id: json['id'] as String,
       categoryName: json['categoryName'] as String? ?? 'Service',
-      areaLabel: json['areaLabel'] as String? ?? 'Kumasi area',
+      areaLabel: json['areaLabel'] as String? ?? 'Area unavailable',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       createdAt: DateTime.parse(json['createdAt'] as String),

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../providers/services_provider.dart';
+import '../widgets/job_township_picker.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 //
@@ -165,6 +166,7 @@ class _CategoriesSection extends ConsumerWidget {
           onActionTap: () => context.push(AppRoutes.servicesAllCategories),
         ),
         SizedBox(height: h * 0.014),
+        const JobTownshipPicker(),
         categoriesAsync.when(
           loading: () => const _CategoriesSkeletonGrid(),
           error: (_, __) => const SizedBox.shrink(),
